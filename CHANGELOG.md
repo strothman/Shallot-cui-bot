@@ -14,9 +14,12 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **feat(security): implement bot owner and admin authorization guards on server commands and message deletion** (`36d890a`)
 
 ### Maintenance
+* **docs: update changelog with security authorization guard implementation details** (`1296a3d`)
 * **docs: consolidate into single novice-friendly README.md** (`1819575`)
 * **chore: update changelog to reflect Shallot-CUI Bot v2.3.0 initialization and updated ignore rules** (`c567c7b`)
 * **chore: expand .gitignore with safety rules** (`c8ddbc6`)
+* Working tree modification: `M bot.py`
+* Working tree modification: `M monitor.py`
 
 ---
 ## [2.3.0] - 2026-08-26

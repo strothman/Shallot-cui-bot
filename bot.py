@@ -3560,14 +3560,29 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
             active_generations[generation_id] = gen_data
             save_generations()
 
+        last_grid_prog_time = [0.0]
+
+        async def on_grid_progress(val, max_val):
+            now = asyncio.get_event_loop().time()
+            if (now - last_grid_prog_time[0] >= 1.5 or val >= max_val) and max_val > 0:
+                last_grid_prog_time[0] = now
+                bar = create_progress_bar(val, max_val, length=10)
+                pct = min(100, int((val / max_val) * 100))
+                prog_content = f"🎨 **Generating Images...**\n`{bar}` **{pct}%** (Step `{val}/{max_val}`)\n*Model: `{selected_model}`*"
+                try:
+                    if msg:
+                        await edit_message_fallback(interaction, msg.id, content=prog_content)
+                except Exception:
+                    pass
+
         start_time = time.perf_counter()
         if is_flux:
             results = []
             for wf in workflows_list:
-                res = await comfy_client.generate(wf, generation_id=generation_id)
+                res = await comfy_client.generate(wf, generation_id=generation_id, progress_callback=on_grid_progress)
                 results.append(res)
         else:
-            tasks = [comfy_client.generate(wf, generation_id=generation_id) for wf in workflows_list]
+            tasks = [comfy_client.generate(wf, generation_id=generation_id, progress_callback=on_grid_progress) for wf in workflows_list]
             results = await asyncio.gather(*tasks)
 
         elapsed_time = time.perf_counter() - start_time
