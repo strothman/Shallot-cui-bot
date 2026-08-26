@@ -691,18 +691,16 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
 
     embed.set_footer(text=f"Requested by {user_name} (ID: {user_id}){timing_text}")
     
-    if status_message_id and interaction:
-        try:
-            chan_id = interaction.channel_id
-            channel = interaction.channel or await bot.fetch_channel(chan_id)
-            status_msg = await channel.fetch_message(status_message_id)
-            if status_msg:
-                await status_msg.delete()
-        except Exception as del_err:
-            logger.debug(f"Could not delete status message {status_message_id}: {del_err}")
-
     tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
     content = f"{tag}**Imagine:** {truncate_prompt(display_prompt, 100)}"
+
+    # In-Place Message Transformation: Edit the original progress status message directly
+    if status_message_id and interaction:
+        try:
+            await edit_message_fallback(interaction, status_message_id, content=content, embed=embed, file=file, view=view)
+            return
+        except Exception as edit_err:
+            logger.info(f"Could not transform status message in-place ({edit_err}). Falling back to new message delivery.")
 
     posted = False
     if interaction and interaction.channel_id:
@@ -3568,7 +3566,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
                 last_grid_prog_time[0] = now
                 bar = create_progress_bar(val, max_val, length=10)
                 pct = min(100, int((val / max_val) * 100))
-                prog_content = f"🎨 **Generating Images...**\n`{bar}` **{pct}%** (Step `{val}/{max_val}`)\n*Model: `{selected_model}`*"
+                prog_content = f"🎨 **Generating Images...**\n`[{bar}]` **{pct}%** (Step {val}/{max_val})\n*Model:* `{selected_model}`"
                 try:
                     if msg:
                         await edit_message_fallback(interaction, msg.id, content=prog_content)

@@ -11,6 +11,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **feat: initialize Shallot-CUI Bot v2.3.0 standalone repository** (`9acba56`)
 
 ### Changed
+* **feat(progress): upgrade monitor.py with live WebSocket HUD and implement real-time Discord image generation progress bars** (`df9c912`)
 * **feat(security): implement bot owner and admin authorization guards on server commands and message deletion** (`36d890a`)
 
 ### Maintenance
@@ -19,7 +20,6 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **chore: update changelog to reflect Shallot-CUI Bot v2.3.0 initialization and updated ignore rules** (`c567c7b`)
 * **chore: expand .gitignore with safety rules** (`c8ddbc6`)
 * Working tree modification: `M bot.py`
-* Working tree modification: `M monitor.py`
 
 ---
 ## [2.3.0] - 2026-08-26
