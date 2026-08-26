@@ -7,6 +7,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-08-26]
 
 ### Added
+* **feat(diagnostics): add ComfyUI server error analyzer and AI copy-paste diagnostics tool** (`7d818fd`)
 * **docs: add automated README synchronization validator and update documentation coverage** (`cbb1b9d`)
 * **feat: initialize Shallot-CUI Bot v2.3.0 standalone repository** (`9acba56`)
 
@@ -20,8 +21,6 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **docs: consolidate into single novice-friendly README.md** (`1819575`)
 * **chore: update changelog to reflect Shallot-CUI Bot v2.3.0 initialization and updated ignore rules** (`c567c7b`)
 * **chore: expand .gitignore with safety rules** (`c8ddbc6`)
-* Working tree modification: `?? check_comfy_errors.bat`
-* Working tree modification: `?? check_comfy_errors.py`
 
 ---
 ## [2.3.0] - 2026-08-26
