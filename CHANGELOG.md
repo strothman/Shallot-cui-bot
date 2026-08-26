@@ -7,17 +7,10 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-08-26]
 
 ### Added
-* **feat: initialize modular Discord bot framework for ComfyUI server management with automated configuration and testing tools** (`d7bfaa7`)
-* **feat: initialize core backend services and scaffold frontend dashboard for LoRA trigger finder** (`6db8efd`)
+* **feat: initialize Shallot-CUI Bot v2.3.0 standalone repository** (`9acba56`)
 
 ### Maintenance
-* **chore: initialize error logging, changelog, and database cache files** (`da4be9c`)
-* Working tree modification: `M bot.py`
-* Working tree modification: `M config.py`
-* Working tree modification: `M db.py`
-* Working tree modification: `M parsers.py`
-* Working tree modification: `M suite_test.py`
-* Working tree modification: `?? model_architecture.py`
+* **chore: expand .gitignore with safety rules** (`c8ddbc6`)
 
 ---
 ## [2.3.0] - 2026-08-26
