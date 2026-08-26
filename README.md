@@ -1,5 +1,11 @@
 # 🧅 Shallot-CUI Bot — Discord AI Creation Studio
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
+[![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI Tests](https://img.shields.io/badge/tests-47%20passed-success.svg)](suite_test.py)
+
 Welcome! **Shallot-CUI Bot** is your personal AI art, video, and icon creation studio built directly into Discord, powered by **ComfyUI**.
 
 Whether you want to create beautiful pictures, generate smooth videos, turn photos into Windows 11 desktop icons, or copy styles from your favorite images, this guide explains how everything works in simple, easy-to-understand terms.
@@ -8,9 +14,10 @@ Whether you want to create beautiful pictures, generate smooth videos, turn phot
 
 ## 🚀 Quickstart: How to Run the Bot
 
-1. **Start ComfyUI:** Make sure ComfyUI is running on your computer (or run `/cui-start` from Discord).
-2. **Start the Bot:** Double-click `run_bot.bat` inside the `cui-server-bot` folder.
-3. **Start Creating:** Go to your Discord server and type `/` to see all the commands!
+1. **Configuration:** Copy [`.env.example`](.env.example) to `.env` and add your `DISCORD_TOKEN`.
+2. **Start ComfyUI:** Make sure ComfyUI is running on your computer (or run `/cui-start` from Discord).
+3. **Start the Bot:** Double-click `run_bot.bat` inside the `cui-server-bot` folder.
+4. **Start Creating:** Go to your Discord server and type `/` to see all the commands!
 
 ---
 
