@@ -11,6 +11,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **feat: initialize Shallot-CUI Bot v2.3.0 standalone repository** (`9acba56`)
 
 ### Changed
+* **feat(ui): implement single in-place transforming message for zero-scroll generation progress** (`8cd3ea6`)
 * **feat(progress): upgrade monitor.py with live WebSocket HUD and implement real-time Discord image generation progress bars** (`df9c912`)
 * **feat(security): implement bot owner and admin authorization guards on server commands and message deletion** (`36d890a`)
 
@@ -19,7 +20,8 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **docs: consolidate into single novice-friendly README.md** (`1819575`)
 * **chore: update changelog to reflect Shallot-CUI Bot v2.3.0 initialization and updated ignore rules** (`c567c7b`)
 * **chore: expand .gitignore with safety rules** (`c8ddbc6`)
-* Working tree modification: `M bot.py`
+* Working tree modification: `?? check_comfy_errors.bat`
+* Working tree modification: `?? check_comfy_errors.py`
 
 ---
 ## [2.3.0] - 2026-08-26
