@@ -5,6 +5,7 @@ Centralized Configuration & Constants for Shallot-CUI Bot.
 import os
 import logging
 from dotenv import load_dotenv
+import discord
 from discord import app_commands
 
 load_dotenv()
@@ -22,6 +23,29 @@ IMAGE_SAVE_PREFIX = os.getenv("IMAGE_SAVE_PREFIX", "Discord Bot/")
 COMFYUI_BATCH_PATH = os.getenv("COMFYUI_BATCH_PATH", r"C:\ComfyUI\run_nvidia_gpu.bat")
 VRAM_CAUTION_THRESHOLD_PERCENT = float(os.getenv("VRAM_CAUTION_THRESHOLD_PERCENT", "85.0"))
 VRAM_MIN_FREE_GB = float(os.getenv("VRAM_MIN_FREE_GB", "2.0"))
+try:
+    BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "0"))
+except ValueError:
+    BOT_OWNER_ID = 0
+
+def is_authorized_admin(interaction: discord.Interaction) -> bool:
+    """
+    Checks if the interacting user is authorized to perform admin/system operations.
+    Returns True if:
+    1. BOT_OWNER_ID is set and matches interaction.user.id
+    2. The user possesses Administrator permissions in the Discord guild
+    3. BOT_OWNER_ID is not configured (0), allowing local single-user default access.
+    """
+    if BOT_OWNER_ID > 0:
+        if interaction.user and interaction.user.id == BOT_OWNER_ID:
+            return True
+        if interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
+            return True
+        return False
+    # If BOT_OWNER_ID is unset (0), allow administrator if in guild or pass-through
+    if interaction.user and hasattr(interaction.user, "guild_permissions") and interaction.user.guild_permissions.administrator:
+        return True
+    return True
 
 # Curated SDXL Checkpoint choices for all SDXL workflows
 SDXL_CHECKPOINT_CHOICES = [

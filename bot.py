@@ -112,6 +112,7 @@ IMAGE_SAVE_PREFIX = os.getenv("IMAGE_SAVE_PREFIX", "Discord Bot/")
 COMFYUI_BATCH_PATH = os.getenv("COMFYUI_BATCH_PATH", r"C:\ComfyUI\run_nvidia_gpu.bat")
 VRAM_CAUTION_THRESHOLD_PERCENT = float(os.getenv("VRAM_CAUTION_THRESHOLD_PERCENT", "85.0"))
 VRAM_MIN_FREE_GB = float(os.getenv("VRAM_MIN_FREE_GB", "2.0"))
+from config import BOT_OWNER_ID, is_authorized_admin
 
 # Curated SDXL Checkpoint choices for all SDXL workflows (keeps lists clean and free of non-SDXL models)
 SDXL_CHECKPOINT_CHOICES = [
@@ -2275,9 +2276,32 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         if message is None or message.author.id != bot.user.id:
             return
 
+        # Check authorization: allow deletion if:
+        # 1. User is BOT_OWNER_ID
+        # 2. User has manage_messages or administrator permissions
+        # 3. User is the requester (user ID present in embed footer or message content)
+        is_auth = False
+        if BOT_OWNER_ID > 0 and payload.user_id == BOT_OWNER_ID:
+            is_auth = True
+        elif payload.member and (payload.member.guild_permissions.manage_messages or payload.member.guild_permissions.administrator):
+            is_auth = True
+        else:
+            user_id_str = str(payload.user_id)
+            if user_id_str in message.content:
+                is_auth = True
+            elif message.embeds:
+                for emb in message.embeds:
+                    if emb.footer and emb.footer.text and user_id_str in emb.footer.text:
+                        is_auth = True
+                        break
+
+        if not is_auth:
+            logger.info(f"Unauthorized reaction delete attempt by user {payload.user_id} on message {payload.message_id}.")
+            return
+
         # Delete the bot's message
         await message.delete()
-        logger.info(f"Deleted bot message {payload.message_id} in channel {payload.channel_id} triggered by reaction '{emoji_name}'.")
+        logger.info(f"Deleted bot message {payload.message_id} in channel {payload.channel_id} triggered by reaction '{emoji_name}' from authorized user {payload.user_id}.")
 
     except discord.NotFound:
         pass
@@ -7130,6 +7154,10 @@ def terminate_existing_comfyui() -> bool:
 @app_commands.describe(force="Force start even if high VRAM usage (Tdarr) is detected")
 async def cui_start_command(interaction: discord.Interaction, force: bool = False):
     global comfy_process
+    if not is_authorized_admin(interaction):
+        await interaction.response.send_message("⛔ **Access Denied:** Only the bot owner or server administrators can start or manage the ComfyUI server.", ephemeral=True)
+        return
+
     await safe_defer(interaction, thinking=True)
 
     # 1. Terminate any existing instance so we always start a completely fresh instance
@@ -7216,6 +7244,10 @@ async def cui_start_command(interaction: discord.Interaction, force: bool = Fals
 @bot.tree.command(name="cui-stop", description="Stop the local ComfyUI server remotely.")
 async def cui_stop_command(interaction: discord.Interaction):
     global comfy_process
+    if not is_authorized_admin(interaction):
+        await interaction.response.send_message("⛔ **Access Denied:** Only the bot owner or server administrators can stop the ComfyUI server.", ephemeral=True)
+        return
+
     await safe_defer(interaction, thinking=True)
 
     is_currently_online = await comfy_client.is_online()
@@ -7453,6 +7485,10 @@ async def models_command(
 
 @bot.tree.command(name="scan_models", description="🔄 Scan local ComfyUI model directories and auto-register new models & LoRAs.")
 async def scan_models_command(interaction: discord.Interaction):
+    if not is_authorized_admin(interaction):
+        await interaction.response.send_message("⛔ **Access Denied:** Only the bot owner or server administrators can scan and register models.", ephemeral=True)
+        return
+
     await interaction.response.defer(ephemeral=True, thinking=True)
     
     import asyncio
