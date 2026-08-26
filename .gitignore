@@ -28,7 +28,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
 # SQLite Databases & WAL files
 cache.db
 cache.db-journal
@@ -36,24 +35,50 @@ cache.db-wal
 cache.db-shm
 *.sqlite
 *.sqlite3
-
 # Error journal
 error_log.json
-
 # Temporary Dataset Exports & Archives
 datasets/exports/
 *.zip
 *.tar.gz
 *.rar
-
 # OS-specific
 .DS_Store
 Thumbs.db
 ehthumbs.db
 desktop.ini
-
 # IDE & Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+# Environment & Secrets
+.env.local
+.env.*.local
+# OS & Editor
+# Large Binaries, Archives & Build Outputs
+*.7z
+*.pkg
+*.exe
+*.dll
+*.dmg
+*.app
+*.pak
+*.dat
+*.bin
+*.pdb
+release/
+out/
+dist-electron/
+deploy/
+.netlify/
+# Python Virtual Environments & Cache
+*.class
+*.pyd
+# Databases, Cache & Logs
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+cache.db*
+*.log
