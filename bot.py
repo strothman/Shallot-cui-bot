@@ -4543,16 +4543,42 @@ async def execute_video_core(
         wan_steps = settings.get("wan_steps", 6)
         wan_cfg = settings.get("wan_cfg", 1.0)
         wan_shift = settings.get("wan_shift", 8.0)
-        if duration == 10:
-            wan_frames = 161
-        elif duration == 5:
-            wan_frames = settings.get("wan_video_frames", 81)
-        else:
-            wan_frames = (duration * 16) + 1
+        
+        # 8GB VRAM Safe Duration & Frame Scaling:
+        # Keep diffusion model frames bounded at 81 frames to avoid 64k token VRAM thrashing/freezing,
+        # using high-quality accelerated RIFE interpolation for extended durations (10s = 4x RIFE -> 324 frames @ 32 FPS).
+        wan_frames = settings.get("wan_video_frames", 81)
         rife_ckpt = settings.get("rife_ckpt", "rife49.pth")
-        rife_multiplier = settings.get("rife_multiplier", 2)
         wan_fps = settings.get("wan_video_fps", 32)
-        duration_sec = (wan_frames * rife_multiplier) / wan_fps if wan_fps > 0 else (wan_frames - 1) / 16.0
+
+        if duration == 10:
+            duration_sec = 10.0
+            if smoothness == "fast":
+                rife_multiplier = 2
+                out_fps = 16
+                use_rife = True
+            else:
+                rife_multiplier = 4
+                out_fps = wan_fps
+                use_rife = True
+            total_output_frames = wan_frames * rife_multiplier
+        elif duration == 5:
+            duration_sec = 5.0
+            if smoothness == "fast":
+                rife_multiplier = 1
+                out_fps = 16
+                use_rife = False
+            else:
+                rife_multiplier = 2
+                out_fps = wan_fps
+                use_rife = True
+            total_output_frames = wan_frames * rife_multiplier
+        else:
+            duration_sec = float(duration)
+            rife_multiplier = 2
+            out_fps = wan_fps
+            use_rife = (smoothness != "fast")
+            total_output_frames = wan_frames * rife_multiplier
 
         # Configure workflow parameters
         if "1" in workflow:
@@ -4587,12 +4613,12 @@ async def execute_video_core(
             workflow["31"]["inputs"]["steps"] = wan_steps
             workflow["31"]["inputs"]["cfg"] = wan_cfg
         
-        # Configure RIFE & Video Output based on chosen smoothness
+        # Configure RIFE & Video Output based on chosen smoothness & duration
         seed_suffix = f"_seed{video_seed}"
-        if smoothness == "fast":
+        if not use_rife:
             if "9" in workflow:
                 workflow["9"]["inputs"]["images"] = ["10", 0]
-                workflow["9"]["inputs"]["frame_rate"] = 16
+                workflow["9"]["inputs"]["frame_rate"] = out_fps
                 workflow["9"]["inputs"]["filename_prefix"] = f"{get_dated_save_prefix('video')}Wan22_I2V_Fast{seed_suffix}"
             if "75" in workflow:
                 del workflow["75"]
@@ -4608,7 +4634,7 @@ async def execute_video_core(
                 workflow["9"]["inputs"]["images"] = ["75", 0]
                 workflow["9"]["inputs"]["filename_prefix"] = f"{get_dated_save_prefix('video')}Wan22_I2V{seed_suffix}"
                 if "frame_rate" in workflow["9"]["inputs"]:
-                    workflow["9"]["inputs"]["frame_rate"] = wan_fps
+                    workflow["9"]["inputs"]["frame_rate"] = out_fps
 
         # Configure MMAudio Video-to-Audio Foley Synthesis if enabled
         enable_audio = settings.get("enable_video_audio", True) if audio is None else audio
@@ -4634,7 +4660,7 @@ async def execute_video_core(
             workflow["152"]["inputs"]["cfg"] = mmaudio_cfg
             
             # Connect image source for MMAudio based on smoothness mode
-            if smoothness == "fast":
+            if not use_rife:
                 workflow["152"]["inputs"]["images"] = ["10", 0]
             else:
                 workflow["152"]["inputs"]["images"] = ["75", 0]
@@ -4650,42 +4676,89 @@ async def execute_video_core(
                 del workflow["9"]["inputs"]["audio"]
 
         # Setup live progress callback for Discord server presence status & chat embed updates
-        last_update_time = [0]
+        last_update_time = [0.0]
         status_msg = [None]
         total_steps_done = [0]
         last_val = [0]
+        expected_total = wan_steps if wan_steps > 0 else 6
+
+        # Send immediate initial progress embed so user sees instant feedback
+        init_bar = create_progress_bar(0, expected_total)
+        init_embed = discord.Embed(
+            title="🎬 Generating Wan 2.2 Video...",
+            description=(
+                f"**Motion Prompt:** {prompt}\n"
+                f"**Progress:** {init_bar}\n"
+                f"**Duration:** {duration_sec:.1f}s ({wan_frames} frames @ {wan_fps} FPS)\n"
+                f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
+                f"**Model:** `{os.path.basename(wan_high_gguf)}`"
+            ),
+            color=discord.Color.gold()
+        )
+        init_embed.set_footer(text="⏳ Initializing & Loading Wan 2.2 GGUF models into VRAM...")
+        try:
+            status_msg[0] = await send_followup_fallback(interaction, embed=init_embed)
+        except Exception:
+            pass
 
         async def on_video_progress(val, max_val):
+            # Handle audio synthesis stage (Flow Matching 25 steps)
+            if max_val == 25:
+                presence_str = f"🔊 Video Audio: Step {val}/25"
+                asyncio.create_task(update_bot_presence(presence_str))
+                now = asyncio.get_event_loop().time()
+                if now - last_update_time[0] >= 1.2 or val == max_val:
+                    last_update_time[0] = now
+                    audio_bar = create_progress_bar(val, max_val)
+                    prog_embed = discord.Embed(
+                        title="🎬 Generating Wan 2.2 Video (Audio Foley)...",
+                        description=(
+                            f"**Motion Prompt:** {prompt}\n"
+                            f"**Progress:** {audio_bar}\n"
+                            f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
+                            f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
+                            f"**Model:** `{os.path.basename(wan_high_gguf)}`"
+                        ),
+                        color=discord.Color.gold()
+                    )
+                    prog_embed.set_footer(text="🔊 Synthesizing synchronized Foley audio track...")
+                    try:
+                        if status_msg[0]:
+                            await status_msg[0].edit(embed=prog_embed)
+                    except Exception:
+                        pass
+                return
+
             # Detect transition from Stage 1 (High Noise KSampler) to Stage 2 (Low Noise KSampler)
             if val < last_val[0]:
                 total_steps_done[0] += last_val[0]
             last_val[0] = val
 
             current_step = total_steps_done[0] + val
-            expected_total = wan_steps if wan_steps > 0 else (max_val * 2)
-
             percent = min(100, int((current_step / expected_total) * 100)) if expected_total > 0 else 0
             presence_str = f"🎬 Video: {percent}% (Step {current_step}/{expected_total})"
             
-            # Update sidebar user status
+            # Update sidebar user status & console title
             asyncio.create_task(update_bot_presence(presence_str))
             
             # Update chat embed progress bar (debounced to 1.2s to prevent rate limits)
             now = asyncio.get_event_loop().time()
-            if now - last_update_time[0] >= 1.2 or current_step == expected_total:
+            if now - last_update_time[0] >= 1.2 or current_step >= expected_total:
                 last_update_time[0] = now
-                bar = create_progress_bar(current_step, expected_total)
+                bar = create_progress_bar(min(current_step, expected_total), expected_total)
+                stage_name = "🎨 Low Noise KSampler (Stage 2/2)" if current_step > (expected_total // 2) else "🔄 High Noise KSampler (Stage 1/2)"
                 prog_embed = discord.Embed(
                     title="🎬 Generating Wan 2.2 Video...",
                     description=(
                         f"**Motion Prompt:** {prompt}\n"
                         f"**Progress:** {bar}\n"
+                        f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
                         f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
                         f"**Model:** `{os.path.basename(wan_high_gguf)}`"
                     ),
                     color=discord.Color.gold()
                 )
-                prog_embed.set_footer(text="Rendering frames on GPU...")
+                prog_embed.set_footer(text=f"{stage_name} — Rendering frames on GPU...")
                 try:
                     if status_msg[0] is None:
                         status_msg[0] = await send_followup_fallback(interaction, embed=prog_embed)
@@ -4757,7 +4830,7 @@ async def execute_video_core(
             title="🎬 Wan 2.2 Fast GGUF Video Generation Complete",
             description=(
                 f"**Motion Prompt:** {prompt}\n"
-                f"**Duration:** {duration_sec:.1f}s ({wan_frames} frames @ {wan_fps} FPS)\n"
+                f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
                 f"**Audio Track:** {audio_info}\n"
                 f"**Render Time:** `{elapsed_time:.1f}s` (Init: `{init_sec:.1f}s` | Sample: `{sample_sec:.1f}s` | Post: `{post_sec:.1f}s`)\n"
                 f"**Original Size:** {orig_w}x{orig_h}\n"
@@ -4776,7 +4849,7 @@ async def execute_video_core(
         await send_error_fallback(interaction, f"An error occurred during video generation: {e}")
 
 
-@bot.tree.command(name="video", description="Generate a 5s or 10s video clip with synchronized sound effects from an uploaded image using Wan 2.2.")
+@bot.tree.command(name="video", description="Generate a 5s or 10s video with synced audio from an image using Wan 2.2.")
 @app_commands.describe(
     image="The source image file you want to animate",
     prompt="Text prompt describing the desired video motion or action",
@@ -4989,8 +5062,27 @@ async def ltx_command(interaction: discord.Interaction, image: discord.Attachmen
             workflow["3"]["inputs"]["denoise"] = 1.0
 
         # Setup live progress callback
-        last_update_time = [0]
+        last_update_time = [0.0]
         status_msg = [None]
+
+        # Send immediate initial progress embed so user sees instant feedback
+        init_bar = create_progress_bar(0, 25)
+        init_embed = discord.Embed(
+            title="⚡ Generating LTX-Video...",
+            description=(
+                f"**Motion Prompt:** {prompt}\n"
+                f"**Progress:** {init_bar}\n"
+                f"**Duration:** {duration_sec:.1f}s ({ltx_frames} frames @ 25 FPS)\n"
+                f"**Motion Strength:** {motion_strength}/10\n"
+                f"**Resolution:** {width}x{height}"
+            ),
+            color=discord.Color.teal()
+        )
+        init_embed.set_footer(text="⏳ Initializing & Loading LTX model into VRAM...")
+        try:
+            status_msg[0] = await send_followup_fallback(interaction, embed=init_embed)
+        except Exception:
+            pass
 
         async def on_ltx_progress(val, max_val):
             percent = min(100, int((val / max_val) * 100)) if max_val > 0 else 0
@@ -5012,6 +5104,7 @@ async def ltx_command(interaction: discord.Interaction, image: discord.Attachmen
                     ),
                     color=discord.Color.teal()
                 )
+                prog_embed.set_footer(text="Sampling video frames on GPU...")
                 try:
                     if status_msg[0] is None:
                         status_msg[0] = await send_followup_fallback(interaction, embed=prog_embed)

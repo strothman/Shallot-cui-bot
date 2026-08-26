@@ -110,6 +110,18 @@ def init_db():
                     updated_at TEXT DEFAULT (datetime('now', 'localtime'))
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS live_status (
+                    id INTEGER PRIMARY KEY,
+                    step INTEGER DEFAULT 0,
+                    max_steps INTEGER DEFAULT 0,
+                    node_id TEXT,
+                    stage TEXT,
+                    prompt_id TEXT,
+                    prompt_text TEXT,
+                    updated_at REAL DEFAULT (julianday('now'))
+                )
+            """)
             try:
                 conn.execute("ALTER TABLE generation_metrics ADD COLUMN init_seconds REAL DEFAULT 0.0")
             except Exception:
@@ -879,4 +891,51 @@ def seed_default_model_registry():
     ]
     for fn, mtype, arch, subtype, dname in video_models:
         upsert_model_registry(fn, mtype, arch, subtype, display_name=dname)
+
+
+def set_live_status(step: int, max_steps: int, node_id: str = None, stage: str = None, prompt_id: str = None, prompt_text: str = None):
+    """Store active generation step progress and pipeline stage for cross-process live telemetry."""
+    try:
+        with get_db_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO live_status (id, step, max_steps, node_id, stage, prompt_id, prompt_text, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, ?, julianday('now'))
+            """, (step, max_steps, str(node_id) if node_id is not None else None, stage, prompt_id, prompt_text))
+            conn.commit()
+    except Exception as e:
+        logger.debug(f"Error setting live status: {e}")
+
+
+def get_live_status() -> dict:
+    """Retrieve active generation step progress and pipeline stage from SQLite."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT step, max_steps, node_id, stage, prompt_id, prompt_text, (julianday('now') - updated_at) * 86400 FROM live_status WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                step, max_steps, node_id, stage, prompt_id, prompt_text, age_sec = row
+                if age_sec is not None and age_sec < 180:
+                    return {
+                        "step": step or 0,
+                        "max_steps": max_steps or 0,
+                        "node_id": node_id,
+                        "stage": stage or "",
+                        "prompt_id": prompt_id,
+                        "prompt_text": prompt_text or "",
+                        "age_sec": round(age_sec, 1)
+                    }
+    except Exception as e:
+        logger.debug(f"Error fetching live status: {e}")
+    return None
+
+
+def clear_live_status():
+    """Clear active generation live progress record."""
+    try:
+        with get_db_connection() as conn:
+            conn.execute("DELETE FROM live_status WHERE id = 1")
+            conn.commit()
+    except Exception as e:
+        logger.debug(f"Error clearing live status: {e}")
 

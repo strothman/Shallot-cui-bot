@@ -1497,10 +1497,37 @@ class TestCUIBotFunctions(unittest.TestCase):
             bot_code = f.read()
         with open(auto_changelog.README_PATH, "r", encoding="utf-8") as f:
             readme_text = f.read()
-
         commands = set(re.findall(r'@(?:tree|bot\.tree)\.command\(name=[\'"]([^\'"]+)[\'"]', bot_code))
         missing = [cmd for cmd in commands if f"/{cmd}" not in readme_text and cmd not in readme_text]
         self.assertEqual(missing, [], f"The following slash commands are missing from README.md: {missing}")
+
+    def test_live_status_telemetry(self):
+        """Test inter-process live telemetry set, get, and clear functions in db.py."""
+        import db
+        db.init_db()
+        db.set_live_status(step=3, max_steps=6, node_id="3", stage="High Noise KSampler", prompt_text="A girl smiling")
+        stat = db.get_live_status()
+        self.assertIsNotNone(stat)
+        self.assertEqual(stat["step"], 3)
+        self.assertEqual(stat["max_steps"], 6)
+        self.assertEqual(stat["node_id"], "3")
+        self.assertEqual(stat["stage"], "High Noise KSampler")
+        self.assertEqual(stat["prompt_text"], "A girl smiling")
+
+        db.clear_live_status()
+        cleared = db.get_live_status()
+        self.assertIsNone(cleared)
+
+    def test_discord_command_description_lengths(self):
+        """Validates that all Discord slash command descriptions are <= 100 characters."""
+        import re
+        with open("bot.py", "r", encoding="utf-8") as f:
+            bot_code = f.read()
+
+        matches = re.findall(r'@(?:tree|bot\.tree)\.command\([^)]*description=[\x22\x27](.*?)[\x22\x27]', bot_code, re.DOTALL)
+        for desc in matches:
+            clean_desc = desc.replace('\n', ' ').strip()
+            self.assertLessEqual(len(clean_desc), 100, f"Command description exceeds Discord 100 char limit ({len(clean_desc)}): '{clean_desc}'")
 
 
 if __name__ == "__main__":

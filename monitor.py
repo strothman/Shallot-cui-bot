@@ -68,6 +68,11 @@ def extract_prompt_preview(prompt_dict):
                 texts.append(txt)
     return " | ".join(texts) if texts else "Image / Video Pipeline"
 
+try:
+    import db
+except ImportError:
+    db = None
+
 class ComfyLiveMonitor:
     def __init__(self):
         self.client_id = f"monitor_{uuid.uuid4().hex[:8]}"
@@ -79,12 +84,13 @@ class ComfyLiveMonitor:
         self.max_steps = 0
         self.current_node_id = None
         self.current_node_type = "Idle"
+        self.current_node_title = ""
         self.active_prompt_text = ""
         self.last_draw_time = 0
         self.session = None
 
     async def fetch_system_stats(self):
-        """Polls GPU VRAM and queue status every 2 seconds."""
+        """Polls GPU VRAM, queue status, and shared live telemetry every second."""
         while True:
             try:
                 if self.session and not self.session.closed:
@@ -103,11 +109,33 @@ class ComfyLiveMonitor:
                             q_data = await resp.json()
                             self.queue_running = q_data.get("queue_running", [])
                             self.queue_pending = q_data.get("queue_pending", [])
+
+                # 3. Inter-process Live Telemetry from SQLite
+                if db:
+                    live_stat = db.get_live_status()
+                    if live_stat and self.queue_running:
+                        if live_stat.get("step") is not None and live_stat.get("max_steps") is not None:
+                            self.current_step = live_stat["step"]
+                            self.max_steps = live_stat["max_steps"]
+                        if live_stat.get("node_id") and not self.current_node_id:
+                            self.current_node_id = live_stat["node_id"]
+                    elif not self.queue_running:
+                        self.current_step = 0
+                        self.max_steps = 0
+
+                # Resolve active executing node title from running job graph
+                if self.queue_running and len(self.queue_running[0]) > 2:
+                    prompt_graph = self.queue_running[0][2]
+                    if not self.active_prompt_text:
+                        self.active_prompt_text = extract_prompt_preview(prompt_graph)
+                    if self.current_node_id and str(self.current_node_id) in prompt_graph:
+                        node_dict = prompt_graph[str(self.current_node_id)]
+                        self.current_node_title = node_dict.get("_meta", {}).get("title") or node_dict.get("class_type", f"Node #{self.current_node_id}")
             except Exception:
                 self.is_online = False
 
             self.draw_ui()
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.8)
 
     def draw_ui(self):
         """Draws the terminal HUD."""
@@ -145,12 +173,13 @@ class ComfyLiveMonitor:
         if self.queue_running and self.max_steps > 0:
             pct = min(100, int((self.current_step / self.max_steps) * 100))
             prog_bar = render_ascii_bar(self.current_step, self.max_steps, length=28)
-            node_info = f"Node #{self.current_node_id}" if self.current_node_id else "Sampling"
-            lines.append(f"  {BOLD}{GREEN}[{prog_bar}] {pct}%{RESET}  •  Step {BOLD}{self.current_step}/{self.max_steps}{RESET}  •  {CYAN}{node_info}{RESET}")
+            node_label = self.current_node_title if self.current_node_title else (f"Node #{self.current_node_id}" if self.current_node_id else "Sampling")
+            lines.append(f"  {BOLD}{GREEN}[{prog_bar}] {pct}%{RESET}  •  Step {BOLD}{self.current_step}/{self.max_steps}{RESET}  •  {CYAN}{node_label}{RESET}")
             if self.active_prompt_text:
                 lines.append(f"  {DIM}Prompt:{RESET} {YELLOW}{self.active_prompt_text}{RESET}")
         elif self.queue_running:
-            lines.append(f"  {BOLD}{YELLOW}[ Initializing / Model Loading... ]{RESET} Active Jobs: {len(self.queue_running)}")
+            stage_desc = f"Running: {self.current_node_title}" if self.current_node_title else "Initializing / Model Loading..."
+            lines.append(f"  {BOLD}{YELLOW}[ {stage_desc} ]{RESET} Active Jobs: {len(self.queue_running)}")
             if self.active_prompt_text:
                 lines.append(f"  {DIM}Prompt:{RESET} {YELLOW}{self.active_prompt_text}{RESET}")
         else:
@@ -209,6 +238,8 @@ class ComfyLiveMonitor:
                                     self.current_step = 0
                                     self.max_steps = 0
                                     self.current_node_id = None
+                                    self.current_node_title = ""
+                                    self.active_prompt_text = ""
                                 else:
                                     self.current_node_id = node_id
                                 self.draw_ui()
