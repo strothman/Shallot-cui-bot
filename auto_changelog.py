@@ -154,7 +154,35 @@ def update_changelog(date_str: str = None) -> bool:
         f.write(new_content)
 
     print(f"[+] Successfully updated CHANGELOG.md for {date_str}.")
+    verify_readme_synchronization()
     return True
+
+README_PATH = os.path.join(os.path.dirname(__file__), "README.md")
+BOT_PATH = os.path.join(os.path.dirname(__file__), "bot.py")
+
+def verify_readme_synchronization():
+    """Validates that all registered slash commands in bot.py exist in README.md."""
+    if not os.path.exists(README_PATH) or not os.path.exists(BOT_PATH):
+        return
+
+    try:
+        with open(BOT_PATH, "r", encoding="utf-8") as f:
+            bot_code = f.read()
+        with open(README_PATH, "r", encoding="utf-8") as f:
+            readme_text = f.read()
+
+        commands = set(re.findall(r'@(?:tree|bot\.tree)\.command\(name=[\'"]([^\'"]+)[\'"]', bot_code))
+        missing_commands = [cmd for cmd in sorted(commands) if f"/{cmd}" not in readme_text and cmd not in readme_text]
+
+        if missing_commands:
+            print("\n⚠️ [DOCS ALERT] The following slash commands in bot.py are missing from README.md:")
+            for cmd in missing_commands:
+                print(f"   - /{cmd}")
+            print("   👉 Please update README.md so the user guide stays synchronized!")
+        else:
+            print(f"✅ README.md is fully synchronized! (Covering all {len(commands)} slash commands)")
+    except Exception as e:
+        print(f"ℹ️ Could not verify README sync: {e}")
 
 if __name__ == "__main__":
     import sys
@@ -164,4 +192,6 @@ if __name__ == "__main__":
         except Exception:
             pass
     update_changelog()
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-readme":
+        verify_readme_synchronization()
 

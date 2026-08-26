@@ -127,12 +127,16 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 
 ---
 
-## 📌 6. Saving Your Favorite Prompts & Styles
+## 📌 6. Managing Prompts, Styles & Negatives
 
 * **`/save_prompt name: Neon Dragon prompt:...`**: Save a prompt with a nickname.
 * **`/my_prompts`**: Browse, copy, edit, or launch your saved prompts with simple interactive buttons.
+* **`/edit_prompt`**: Edit an existing saved prompt.
+* **`/delete_prompt`**: Remove a prompt from your favorites.
 * **`/style list`**: Browse your saved `--sref` style codes.
 * **`/style batch prompt:... count: 5`**: Queue 5, 10, or 15 generations at once, testing different random or favorite styles!
+* **`/negative_show`**: View your active negative prompt in an embed with edit and reset buttons.
+* **`/set_negative`**: Change your default negative prompt.
 
 ---
 
@@ -146,12 +150,16 @@ Want to create your own custom character LoRA? The bot provides a full built-in 
 
 ---
 
-## ⚙️ 8. Server Controls & Utilities
+## ⚙️ 8. Server Controls & Management
 
 * **`/cui-start`**: Start your local ComfyUI server from Discord.
 * **`/cui-stop`**: Safely stop ComfyUI and free your graphics card memory.
 * **`/cui-status`**: Check if ComfyUI is online, view active jobs, and check your GPU VRAM.
 * **`/queue`**: View active rendering jobs with visual progress bars.
+* **`/models`**: View all registered Checkpoints and LoRAs grouped by architecture (SDXL, Flux, Wan, LTX).
+* **`/scan_models`**: One-click scanner that scans your ComfyUI models folder and adds newly downloaded checkpoints and LoRAs to the bot.
+* **`/variation_mode`**: Toggle variation strength between **High** and **Very High**.
+* **`/diagnostics`**: View render speeds, GPU stats, and recent generations.
 * **❌ Delete Any Message**: React with the **❌** (red X) emoji on any bot message to instantly delete it.
 
 ---
@@ -177,6 +185,7 @@ All high-resolution outputs are saved directly to your computer:
 | Find out what prompt made a photo | `/study image: [upload]` |
 | Try 4 outfits in 1 prompt | `/imagine prompt: a character wearing a {hoodie\|suit\|armor\|kimono}` |
 | Copy style from another image | `/imagine prompt: knight on a hill style_reference: [upload]` |
+| Scan for newly downloaded models | `/scan_models` |
 | Start ComfyUI | `/cui-start` |
 
 Have fun creating! 🎨✨
