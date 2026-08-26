@@ -1,0 +1,132 @@
+{
+  "1": {
+    "inputs": {
+      "image": "strothman.demo_illustration_gorgeous_woman_perform_medical_diag_360b481e-4f39-4a01-9c13-5e7433da4cb1.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model": "MiaoshouAI/Florence-2-large-PromptGen-v2.0",
+      "precision": "fp16",
+      "convert_to_safetensors": true
+    },
+    "class_type": "DownloadAndLoadFlorence2Model",
+    "_meta": {
+      "title": "DownloadAndLoadFlorence2Model"
+    }
+  },
+  "3": {
+    "inputs": {
+      "text_input": "",
+      "task": "caption",
+      "fill_mask": true,
+      "keep_model_loaded": false,
+      "max_new_tokens": 220,
+      "num_beams": 3,
+      "do_sample": false,
+      "output_mask_select": "",
+      "seed": 515490542658681,
+      "image": [
+        "1",
+        0
+      ],
+      "florence2_model": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "Florence2Run",
+    "_meta": {
+      "title": "Florence2Run - SDXL"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text_input": "",
+      "task": "detailed_caption",
+      "fill_mask": true,
+      "keep_model_loaded": false,
+      "max_new_tokens": 300,
+      "num_beams": 3,
+      "do_sample": false,
+      "output_mask_select": "",
+      "seed": 966940021621932,
+      "image": [
+        "1",
+        0
+      ],
+      "florence2_model": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "Florence2Run",
+    "_meta": {
+      "title": "Florence2Run - SDXL"
+    }
+  },
+  "9": {
+    "inputs": {
+      "text": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "caption"
+    }
+  },
+  "10": {
+    "inputs": {
+      "text": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "ShowText|pysssss",
+    "_meta": {
+      "title": "detailed_caption"
+    }
+  },
+  "19": {
+    "inputs": {
+      "find1": "overall",
+      "replace1": "general",
+      "find2": "tattoo",
+      "replace2": "bandage",
+      "find3": "camera",
+      "replace3": "viewer",
+      "text": [
+        "3",
+        2
+      ]
+    },
+    "class_type": "CR Text Replace",
+    "_meta": {
+      "title": "Image 1 Text Replace"
+    }
+  },
+  "20": {
+    "inputs": {
+      "find1": "overall",
+      "replace1": "general",
+      "find2": "tattoo",
+      "replace2": "bandage",
+      "find3": "camera",
+      "replace3": "viewer",
+      "text": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "CR Text Replace",
+    "_meta": {
+      "title": "Image 1 Text Replace"
+    }
+  }
+}

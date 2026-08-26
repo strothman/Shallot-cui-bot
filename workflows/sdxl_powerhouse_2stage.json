@@ -1,0 +1,204 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 123456789,
+      "steps": 25,
+      "cfg": 5.0,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": [
+        "20",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler (Stage 1 Base)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "waiIllustriousSDXL_v170.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 4
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "positive prompt placeholder",
+      "clip": [
+        "76",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "low quality, blurry, bad hands, extra fingers, distorted hands, deformed anatomy, bad face, malformed eyes, extra limbs, duplicate subject, signature, text, watermark, logo, cropped, flat lighting, muddy colors, cluttered background",
+      "clip": [
+        "76",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "15",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "14": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "upscale_method": "bicubic",
+      "scale_by": 1.35
+    },
+    "class_type": "LatentUpscaleBy",
+    "_meta": {
+      "title": "Latent Upscale By (1.35x)"
+    }
+  },
+  "15": {
+    "inputs": {
+      "seed": 123456789,
+      "steps": 15,
+      "cfg": 5.0,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "karras",
+      "denoise": 0.48,
+      "model": [
+        "20",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler (Stage 2 Latent Detail Refiner)"
+    }
+  },
+  "20": {
+    "inputs": {
+      "b1": 1.3,
+      "b2": 1.4,
+      "s1": 0.9,
+      "s2": 0.2,
+      "model": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "FreeU_V2",
+    "_meta": {
+      "title": "FreeU V2 (Enhance Clarity & Contrast)"
+    }
+  },
+  "75": {
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ],
+      "lora_name": "Semi-realism_illustrious.safetensors",
+      "strength_model": 0.0,
+      "strength_clip": 0.0
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA: Semi-Realism"
+    }
+  },
+  "76": {
+    "inputs": {
+      "model": [
+        "75",
+        0
+      ],
+      "clip": [
+        "75",
+        1
+      ],
+      "lora_name": "ogarla_epoch_5.safetensors",
+      "strength_model": 0.0,
+      "strength_clip": 0.0
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA: Ogarla"
+    }
+  }
+}

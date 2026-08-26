@@ -1,0 +1,69 @@
+{
+  "1": {
+    "inputs": {
+      "image": "outpaint-hyphoriaIlluNAI_v001-box1-3.0-28-004.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "2": {
+    "inputs": {
+      "model_name": "4x_foolhardy_Remacri.pth"
+    },
+    "class_type": "UpscaleModelLoader"
+  },
+  "3": {
+    "inputs": {
+      "upscale_model": [
+        "2",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel"
+  },
+  "7": {
+    "inputs": {
+      "image": [
+        "3",
+        0
+      ],
+      "width": 1920,
+      "height": 1920,
+      "upscale_method": "lanczos",
+      "keep_proportion": "resize",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu"
+    },
+    "class_type": "ImageResizeKJv2"
+  },
+  "6": {
+    "inputs": {
+      "images": [
+        "7",
+        0
+      ],
+      "filename_prefix": "v1920.",
+      "filename_keys": "",
+      "foldername_prefix": "%D",
+      "foldername_keys": "v1920 UPSCALE",
+      "delimiter": "-",
+      "save_job_data": "disabled",
+      "job_data_per_image": false,
+      "job_custom_text": "",
+      "save_metadata": true,
+      "counter_digits": 3,
+      "counter_position": "last",
+      "one_counter_per_folder": true,
+      "image_preview": true,
+      "output_ext": ".png",
+      "quality": 80
+    },
+    "class_type": "SaveImageExtended"
+  }
+}

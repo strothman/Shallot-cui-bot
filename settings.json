@@ -1,0 +1,16 @@
+{
+  "variation_mode": "very_high",
+  "wan_video_fps": 32,
+  "wan_video_frames": 81,
+  "wan_target_area": 399360,
+  "wan_high_gguf": "gguf\\dasiwaWAN22I2V14B_midnightflirtHigh-Q3_K_M.gguf",
+  "wan_low_gguf": "gguf\\dasiwaWAN22I2V14B_midnightflirtLow-Q3_K_M.gguf",
+  "wan_clip": "nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
+  "wan_clip_vision": "clip_vision_h.safetensors",
+  "wan_vae": "wan_2.1_vae.safetensors",
+  "rife_ckpt": "rife49.pth",
+  "rife_multiplier": 2,
+  "wan_steps": 6,
+  "wan_cfg": 1.0,
+  "wan_shift": 8.0
+}

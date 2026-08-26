@@ -1,0 +1,293 @@
+{
+  "1": {
+    "inputs": {
+      "image": "input_image.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "unet_name": "gguf\\dasiwaWAN22I2V14B_midnightflirtHigh-Q3_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF High Noise)"
+    }
+  },
+  "21": {
+    "inputs": {
+      "unet_name": "gguf\\dasiwaWAN22I2V14B_midnightflirtLow-Q3_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF Low Noise)"
+    }
+  },
+  "22": {
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "shift": 8.0
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3 (High Shift)"
+    }
+  },
+  "23": {
+    "inputs": {
+      "model": [
+        "21",
+        0
+      ],
+      "shift": 8.0
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3 (Low Shift)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "clip_name": "nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
+      "type": "wan",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "5": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "108": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "107": {
+    "inputs": {
+      "clip_vision": [
+        "108",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ],
+      "crop": "none"
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "CLIP Vision Encode"
+    }
+  },
+  "76": {
+    "inputs": {
+      "anything": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "Clean GPU VRAM"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "smooth video motion, high quality details",
+      "clip": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "blurry, distorted, low quality, static, flickering, jerky movement",
+      "clip": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "clip_vision_output": [
+        "76",
+        0
+      ],
+      "width": 832,
+      "height": 480,
+      "length": 81,
+      "batch_size": 1,
+      "start_image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "Wan Image to Video"
+    }
+  },
+  "3": {
+    "inputs": {
+      "model": [
+        "22",
+        0
+      ],
+      "add_noise": "enable",
+      "noise_seed": 123456789,
+      "steps": 6,
+      "cfg": 1.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "simple",
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "8",
+        2
+      ],
+      "start_at_step": 0,
+      "end_at_step": 3,
+      "return_with_leftover_noise": "enable"
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "High Noise KSampler"
+    }
+  },
+  "31": {
+    "inputs": {
+      "model": [
+        "23",
+        0
+      ],
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 6,
+      "cfg": 1.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "simple",
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "3",
+        0
+      ],
+      "start_at_step": 3,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable"
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "Low Noise KSampler"
+    }
+  },
+  "10": {
+    "inputs": {
+      "samples": [
+        "31",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "75": {
+    "inputs": {
+      "ckpt_name": "rife49.pth",
+      "clear_cache_after_n_frames": 20,
+      "multiplier": 2,
+      "fast_mode": true,
+      "ensemble": false,
+      "scale_factor": 1.0,
+      "dtype": "float16",
+      "torch_compile": false,
+      "batch_size": 1,
+      "frames": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "Frame Interpolation (RIFE 32 FPS)"
+    }
+  },
+  "9": {
+    "inputs": {
+      "frame_rate": 32,
+      "loop_count": 0,
+      "filename_prefix": "DiscordBot_Wan22_I2V",
+      "format": "video/h264-mp4",
+      "save_output": true,
+      "pingpong": false,
+      "images": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine"
+    }
+  }
+}
