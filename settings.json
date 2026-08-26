@@ -12,5 +12,12 @@
   "rife_multiplier": 2,
   "wan_steps": 6,
   "wan_cfg": 1.0,
-  "wan_shift": 8.0
+  "wan_shift": 8.0,
+  "enable_video_audio": true,
+  "mmaudio_model": "mmaudio_large_44k_v2_fp16.safetensors",
+  "mmaudio_vae": "mmaudio_vae_44k_fp16.safetensors",
+  "mmaudio_synchformer": "mmaudio_synchformer_fp16.safetensors",
+  "mmaudio_clip": "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+  "mmaudio_steps": 25,
+  "mmaudio_cfg": 4.5
 }

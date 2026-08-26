@@ -7,6 +7,8 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-08-26]
 
 ### Added
+* **feat(audio): integrate MMAudio video-to-audio Foley synthesis pipeline into Wan 2.2 video generation with 44.1kHz synchronized audio**
+* **feat(standards): add .env.example, MIT license, GitHub Actions CI workflow, and README badges** (`f98d260`)
 * **test(docs): add automated test verifying 100% sync between README.md, CHANGELOG.md, and bot slash commands** (`b631461`)
 * **feat(diagnostics): add ComfyUI server error analyzer and AI copy-paste diagnostics tool** (`7d818fd`)
 * **docs: add automated README synchronization validator and update documentation coverage** (`cbb1b9d`)
@@ -23,10 +25,6 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * **docs: consolidate into single novice-friendly README.md** (`1819575`)
 * **chore: update changelog to reflect Shallot-CUI Bot v2.3.0 initialization and updated ignore rules** (`c567c7b`)
 * **chore: expand .gitignore with safety rules** (`c8ddbc6`)
-* Working tree modification: `M README.md`
-* Working tree modification: `?? .env.example`
-* Working tree modification: `?? .github/`
-* Working tree modification: `?? LICENSE`
 
 ---
 ## [2.3.0] - 2026-08-26

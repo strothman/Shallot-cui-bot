@@ -4501,6 +4501,8 @@ async def execute_video_core(
     prompt: str,
     duration: int = 5,
     smoothness: str = "smooth",
+    audio: bool = True,
+    audio_prompt: str = None,
     seed: int = None
 ):
     """Core logic to generate a Wan 2.2 video from raw image bytes and user settings."""
@@ -4608,6 +4610,45 @@ async def execute_video_core(
                 if "frame_rate" in workflow["9"]["inputs"]:
                     workflow["9"]["inputs"]["frame_rate"] = wan_fps
 
+        # Configure MMAudio Video-to-Audio Foley Synthesis if enabled
+        enable_audio = settings.get("enable_video_audio", True) if audio is None else audio
+        if enable_audio and "150" in workflow and "151" in workflow and "152" in workflow:
+            mmaudio_model = settings.get("mmaudio_model", "mmaudio_large_44k_v2_fp16.safetensors")
+            mmaudio_vae = settings.get("mmaudio_vae", "mmaudio_vae_44k_fp16.safetensors")
+            mmaudio_synch = settings.get("mmaudio_synchformer", "mmaudio_synchformer_fp16.safetensors")
+            mmaudio_clip = settings.get("mmaudio_clip", "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors")
+            mmaudio_steps = settings.get("mmaudio_steps", 25)
+            mmaudio_cfg = settings.get("mmaudio_cfg", 4.5)
+
+            workflow["150"]["inputs"]["mmaudio_model"] = mmaudio_model
+            workflow["151"]["inputs"]["vae_model"] = mmaudio_vae
+            workflow["151"]["inputs"]["synchformer_model"] = mmaudio_synch
+            workflow["151"]["inputs"]["clip_model"] = mmaudio_clip
+
+            # Foley prompt: use custom audio_prompt if provided, else use motion prompt
+            foley_text = audio_prompt.strip() if audio_prompt and audio_prompt.strip() else prompt
+            workflow["152"]["inputs"]["prompt"] = foley_text
+            workflow["152"]["inputs"]["duration"] = float(duration_sec)
+            workflow["152"]["inputs"]["seed"] = video_seed
+            workflow["152"]["inputs"]["steps"] = mmaudio_steps
+            workflow["152"]["inputs"]["cfg"] = mmaudio_cfg
+            
+            # Connect image source for MMAudio based on smoothness mode
+            if smoothness == "fast":
+                workflow["152"]["inputs"]["images"] = ["10", 0]
+            else:
+                workflow["152"]["inputs"]["images"] = ["75", 0]
+
+            if "9" in workflow:
+                workflow["9"]["inputs"]["audio"] = ["152", 0]
+        else:
+            # Clean up MMAudio nodes if audio disabled
+            for nid in ["150", "151", "152"]:
+                if nid in workflow:
+                    del workflow[nid]
+            if "9" in workflow and "audio" in workflow["9"]["inputs"]:
+                del workflow["9"]["inputs"]["audio"]
+
         # Setup live progress callback for Discord server presence status & chat embed updates
         last_update_time = [0]
         status_msg = [None]
@@ -4710,11 +4751,14 @@ async def execute_video_core(
         
         file = discord.File(fp=video_file_io, filename=format_image_filename("wan22_video", video_seed, "mp4"))
 
+        audio_info = "🔊 `MMAudio (44.1kHz Synced Foley)`" if (enable_audio and "152" in workflow) else "🔇 `Disabled`"
+
         embed = discord.Embed(
             title="🎬 Wan 2.2 Fast GGUF Video Generation Complete",
             description=(
                 f"**Motion Prompt:** {prompt}\n"
                 f"**Duration:** {duration_sec:.1f}s ({wan_frames} frames @ {wan_fps} FPS)\n"
+                f"**Audio Track:** {audio_info}\n"
                 f"**Render Time:** `{elapsed_time:.1f}s` (Init: `{init_sec:.1f}s` | Sample: `{sample_sec:.1f}s` | Post: `{post_sec:.1f}s`)\n"
                 f"**Original Size:** {orig_w}x{orig_h}\n"
                 f"**8GB VRAM Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
@@ -4732,12 +4776,14 @@ async def execute_video_core(
         await send_error_fallback(interaction, f"An error occurred during video generation: {e}")
 
 
-@bot.tree.command(name="video", description="Generate a 5s or 10s video clip from an uploaded image using Wan 2.2 Image-to-Video.")
+@bot.tree.command(name="video", description="Generate a 5s or 10s video clip with synchronized sound effects from an uploaded image using Wan 2.2.")
 @app_commands.describe(
     image="The source image file you want to animate",
     prompt="Text prompt describing the desired video motion or action",
     duration="Video duration in seconds (5 or 10 seconds, default 5)",
     smoothness="Motion smoothing speed mode (Smooth 32 FPS vs Fast 16 FPS)",
+    audio="Generate synchronized audio/sound effects (default: True)",
+    audio_prompt="Optional custom sound effects / Foley prompt (defaults to motion prompt)",
     seed="Optional seed for generation reproducibility"
 )
 @app_commands.choices(
@@ -4750,7 +4796,16 @@ async def execute_video_core(
         app_commands.Choice(name="⚡ Ultra Fast (16 FPS - Native / No RIFE)", value="fast"),
     ]
 )
-async def video_command(interaction: discord.Interaction, image: discord.Attachment, prompt: str, duration: int = 5, smoothness: str = "smooth", seed: int = None):
+async def video_command(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+    prompt: str,
+    duration: int = 5,
+    smoothness: str = "smooth",
+    audio: bool = True,
+    audio_prompt: str = None,
+    seed: int = None
+):
     # Defer response since video generation takes time
     await safe_defer(interaction, thinking=True)
 
@@ -4768,6 +4823,8 @@ async def video_command(interaction: discord.Interaction, image: discord.Attachm
             prompt=prompt,
             duration=duration,
             smoothness=smoothness,
+            audio=audio,
+            audio_prompt=audio_prompt,
             seed=seed
         )
     except Exception as e:

@@ -272,6 +272,57 @@
       "title": "Frame Interpolation (RIFE 32 FPS)"
     }
   },
+  "150": {
+    "inputs": {
+      "mmaudio_model": "mmaudio_large_44k_v2_fp16.safetensors",
+      "base_precision": "fp16"
+    },
+    "class_type": "MMAudioModelLoader",
+    "_meta": {
+      "title": "MMAudio Model Loader"
+    }
+  },
+  "151": {
+    "inputs": {
+      "vae_model": "mmaudio_vae_44k_fp16.safetensors",
+      "synchformer_model": "mmaudio_synchformer_fp16.safetensors",
+      "clip_model": "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+      "mode": "44k",
+      "precision": "fp16"
+    },
+    "class_type": "MMAudioFeatureUtilsLoader",
+    "_meta": {
+      "title": "MMAudio Feature Utils Loader"
+    }
+  },
+  "152": {
+    "inputs": {
+      "mmaudio_model": [
+        "150",
+        0
+      ],
+      "feature_utils": [
+        "151",
+        0
+      ],
+      "duration": 5.0,
+      "steps": 25,
+      "cfg": 4.5,
+      "seed": 0,
+      "prompt": "high quality synchronized sound effects, ambient audio",
+      "negative_prompt": "silence, distorted noise, low quality, clipping, static",
+      "mask_away_clip": false,
+      "force_offload": true,
+      "images": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "MMAudioSampler",
+    "_meta": {
+      "title": "MMAudio Sampler"
+    }
+  },
   "9": {
     "inputs": {
       "frame_rate": 32,
@@ -282,6 +333,10 @@
       "pingpong": false,
       "images": [
         "75",
+        0
+      ],
+      "audio": [
+        "152",
         0
       ]
     },

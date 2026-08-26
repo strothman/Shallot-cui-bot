@@ -678,8 +678,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(wf["76"]["class_type"], "easy cleanGpuUsed")
         self.assertEqual(wf["75"]["class_type"], "RIFE VFI")
         self.assertEqual(wf["75"]["inputs"]["ckpt_name"], "rife49.pth")
+        self.assertEqual(wf["150"]["class_type"], "MMAudioModelLoader")
+        self.assertEqual(wf["151"]["class_type"], "MMAudioFeatureUtilsLoader")
+        self.assertEqual(wf["152"]["class_type"], "MMAudioSampler")
         self.assertEqual(wf["9"]["class_type"], "VHS_VideoCombine")
         self.assertEqual(wf["9"]["inputs"]["frame_rate"], 32)
+        self.assertEqual(wf["9"]["inputs"]["audio"], ["152", 0])
 
     def test_module16_progress_bar(self):
         """Test progress bar rendering formatting."""
