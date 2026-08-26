@@ -1482,8 +1482,21 @@ class TestCUIBotFunctions(unittest.TestCase):
             stats = scan_and_register_comfyui_models(comfy_root)
             self.assertTrue(stats.get("success"))
             self.assertTrue(stats.get("total_registered") > 0)
-        else:
-            self.skipTest("ComfyUI directory not found")
+    def test_readme_and_changelog_synchronization(self):
+        """Validates that README.md documents all bot slash commands and CHANGELOG.md is up to date."""
+        import auto_changelog
+        import re
+        self.assertTrue(os.path.exists(auto_changelog.README_PATH))
+        self.assertTrue(os.path.exists(auto_changelog.CHANGELOG_PATH))
+        
+        with open(auto_changelog.BOT_PATH, "r", encoding="utf-8") as f:
+            bot_code = f.read()
+        with open(auto_changelog.README_PATH, "r", encoding="utf-8") as f:
+            readme_text = f.read()
+
+        commands = set(re.findall(r'@(?:tree|bot\.tree)\.command\(name=[\'"]([^\'"]+)[\'"]', bot_code))
+        missing = [cmd for cmd in commands if f"/{cmd}" not in readme_text and cmd not in readme_text]
+        self.assertEqual(missing, [], f"The following slash commands are missing from README.md: {missing}")
 
 
 if __name__ == "__main__":
