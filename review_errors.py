@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI Error Review & Diagnostic Tool for CUI-Server-Bot.
+CLI Error Review & Diagnostic Tool for Shallot-CUI-Bot.
 
 Reads error_log.json and prints formatted summaries, category breakdowns,
 frequency statistics, and highlights unhandled/failed errors needing IDE attention.
@@ -19,7 +19,7 @@ def format_timestamp(iso_str: str) -> str:
         return iso_str
 
 def main():
-    parser = argparse.ArgumentParser(description="Review CUI-Server-Bot Error Logs")
+    parser = argparse.ArgumentParser(description="Review Shallot-CUI-Bot Error Logs")
     parser.add_argument("--hours", type=int, default=24, help="Filter errors within the last N hours (default: 24)")
     parser.add_argument("--category", type=str, default=None, help="Filter by specific error category")
     parser.add_argument("--recent", type=int, default=10, help="Show last N errors (default: 10)")
@@ -27,7 +27,7 @@ def main():
     args = parser.parse_args()
 
     print("\n" + "="*60)
-    print(" CUI-SERVER-BOT ERROR LOG & DIAGNOSTICS DASHBOARD")
+    print(" SHALLOT-CUI-BOT ERROR LOG & DIAGNOSTICS DASHBOARD")
     print("="*60)
 
     stats = error_handler.get_stats(hours=args.hours)

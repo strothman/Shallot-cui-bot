@@ -1,5 +1,5 @@
 """
-Automated Efficacy & Functionality Test Suite for CUI-Server-Bot.
+Automated Efficacy & Functionality Test Suite for Shallot-CUI-Bot.
 
 Executes unit/integration tests for prompt parsers, workflow builders,
 dimension math, auto-fix recipes, error log persistence, and CLI diagnostics.

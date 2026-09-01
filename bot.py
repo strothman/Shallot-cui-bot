@@ -1303,7 +1303,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
     cref_image = gen_data.get("cref_image")
     cref_weight = gen_data.get("cref_weight", 0.80)
     sref_info = gen_data.get("sref_info")
-    if cref_image:
+    if cref_image and not is_flux:
         workflow = apply_ipadapter_to_workflow(workflow, cref_image, weight=cref_weight, node_prefix="cref")
 
     # Store new generation in cache
@@ -1446,7 +1446,7 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
 
     workflow = apply_loras_to_workflow(workflow, loras)
 
-    if cref_image:
+    if cref_image and not is_com:
         workflow = apply_ipadapter_to_workflow(workflow, cref_image, weight=cref_weight, node_prefix="cref")
 
     try:
@@ -3559,28 +3559,35 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
             save_generations()
 
         last_grid_prog_time = [0.0]
+        total_wfs = len(workflows_list)
 
-        async def on_grid_progress(val, max_val):
-            now = asyncio.get_event_loop().time()
-            if (now - last_grid_prog_time[0] >= 1.5 or val >= max_val) and max_val > 0:
-                last_grid_prog_time[0] = now
-                bar = create_progress_bar(val, max_val, length=10)
-                pct = min(100, int((val / max_val) * 100))
-                prog_content = f"🎨 **Generating Images...**\n`[{bar}]` **{pct}%** (Step {val}/{max_val})\n*Model:* `{selected_model}`"
-                try:
-                    if msg:
-                        await edit_message_fallback(interaction, msg.id, content=prog_content)
-                except Exception:
-                    pass
+        def make_grid_progress_cb(wf_idx: int):
+            async def on_grid_progress(val, max_val):
+                now = asyncio.get_event_loop().time()
+                if (now - last_grid_prog_time[0] >= 1.5 or val >= max_val) and max_val > 0:
+                    last_grid_prog_time[0] = now
+                    total_steps = max_val * total_wfs
+                    current_total_step = (wf_idx * max_val) + val
+                    pct = min(100, int((current_total_step / total_steps) * 100)) if total_steps > 0 else 0
+                    filled = int(round((pct / 100) * 10))
+                    bar = "█" * filled + "░" * (10 - filled)
+                    img_num = wf_idx + 1
+                    prog_content = f"🎨 **Generating Images...**\n`[{bar}] {pct}%` (Image {img_num}/{total_wfs} • Step {val}/{max_val})\n*Model:* `{selected_model}`"
+                    try:
+                        if msg:
+                            await edit_message_fallback(interaction, msg.id, content=prog_content)
+                    except Exception:
+                        pass
+            return on_grid_progress
 
         start_time = time.perf_counter()
         if is_flux:
             results = []
-            for wf in workflows_list:
-                res = await comfy_client.generate(wf, generation_id=generation_id, progress_callback=on_grid_progress)
+            for idx, wf in enumerate(workflows_list):
+                res = await comfy_client.generate(wf, generation_id=generation_id, progress_callback=make_grid_progress_cb(idx))
                 results.append(res)
         else:
-            tasks = [comfy_client.generate(wf, generation_id=generation_id, progress_callback=on_grid_progress) for wf in workflows_list]
+            tasks = [comfy_client.generate(wf, generation_id=generation_id, progress_callback=make_grid_progress_cb(idx)) for idx, wf in enumerate(workflows_list)]
             results = await asyncio.gather(*tasks)
 
         elapsed_time = time.perf_counter() - start_time

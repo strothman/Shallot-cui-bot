@@ -762,10 +762,39 @@ def apply_ipadapter_to_workflow(workflow: dict, image_name: str, weight: float =
     """
     Dynamically injects an IP-Adapter node chain into a workflow dict for a reference image (e.g. --cref or --sref).
     """
-    if "3" not in workflow or "inputs" not in workflow["3"]:
+    # Guard against FLUX workflows where SDXL IPAdapter is not supported and Node 4 doesn't exist
+    is_flux = ("12" in workflow and "1" in workflow and "4" not in workflow) or ("76" in workflow and workflow["76"].get("class_type") == "LoraLoaderModelOnly")
+    if is_flux:
         return workflow
 
-    current_model = workflow["3"]["inputs"].get("model", ["4", 0])
+    # Locate the KSampler node
+    ksampler_node_id = None
+    if "3" in workflow and workflow["3"].get("class_type") in ["KSampler", "KSampler (Efficient)", "KSamplerAdvanced"]:
+        ksampler_node_id = "3"
+    else:
+        for nid, node in workflow.items():
+            if node.get("class_type") in ["KSampler", "KSampler (Efficient)", "KSamplerAdvanced"]:
+                ksampler_node_id = nid
+                break
+
+    if not ksampler_node_id or "inputs" not in workflow[ksampler_node_id]:
+        return workflow
+
+    # Determine current model source safely without blindly pointing to non-existent nodes
+    current_model = workflow[ksampler_node_id]["inputs"].get("model")
+    if not current_model:
+        if "76" in workflow:
+            current_model = ["76", 0]
+        elif "4" in workflow:
+            current_model = ["4", 0]
+        else:
+            for nid, node in workflow.items():
+                if node.get("class_type") in ["CheckpointLoaderSimple", "UNETLoader"]:
+                    current_model = [nid, 0]
+                    break
+
+    if not current_model:
+        return workflow
 
     loader_id = f"{node_prefix}_loader_20"
     load_img_id = f"{node_prefix}_img_21"
@@ -807,7 +836,7 @@ def apply_ipadapter_to_workflow(workflow: dict, image_name: str, weight: float =
         "_meta": {"title": f"IPAdapter ({node_prefix.upper()})"}
     }
 
-    workflow["3"]["inputs"]["model"] = [ip_node_id, 0]
+    workflow[ksampler_node_id]["inputs"]["model"] = [ip_node_id, 0]
     return workflow
 
 def expand_dynamic_prompt(text: str, rng: random.Random = None) -> str:

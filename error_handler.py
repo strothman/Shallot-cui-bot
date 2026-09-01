@@ -1,5 +1,5 @@
 """
-Centralized Error Handling & Auto-Fix System for CUI-Server-Bot.
+Centralized Error Handling & Auto-Fix System for Shallot-CUI-Bot.
 
 Provides:
 - Structured JSON error journal (error_log.json) with rolling history

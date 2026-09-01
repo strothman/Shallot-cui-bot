@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-47%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-49%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art, video, and icon creation studio built directly into Discord, powered by **ComfyUI**.
 
@@ -16,7 +16,7 @@ Whether you want to create beautiful pictures, generate smooth videos, turn phot
 
 1. **Configuration:** Copy [`.env.example`](.env.example) to `.env` and add your `DISCORD_TOKEN`.
 2. **Start ComfyUI:** Make sure ComfyUI is running on your computer (or run `/cui-start` from Discord).
-3. **Start the Bot:** Double-click `run_bot.bat` inside the `cui-server-bot` folder.
+3. **Start the Bot:** Double-click `run_bot.bat` inside the `Shallot-cui-bot` folder.
 4. **Start Creating:** Go to your Discord server and type `/` to see all the commands!
 
 ---
