@@ -16,17 +16,17 @@
 
 | Module / File | Responsibility |
 | :--- | :--- |
-| [`bot.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) | Main Discord bot initialization, application slash commands, event listeners, workflow assembly, and execution pipeline. |
-| [`parsers.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/parsers.py) | Prompt syntax parser: aspect ratios (`--ar`), wildcards (`{a\|b}`), Smart Art Director (`--smart`), Magic Prompt (`--magic`), LoRA triggers (`<lora:...>`), Style Reference (`--sref`), and Character Reference (`--cref`). |
-| [`comfy_client.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/comfy_client.py) | REST API and WebSocket client managing prompt queuing, node execution tracking, image/video binary downloads, and error capture. |
-| [`views.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/views.py) | Discord UI components: dynamic action buttons (U1–U4, V1–V4, Pan, Zoom, Inpaint), modals for custom prompts/seeds, and dropdown selectors. |
-| [`image_utils.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/image_utils.py) | Image manipulation: 2x2 grid stitching and splitting, outpaint canvas expansion, color-matching, metadata injection, and multi-resolution Windows ICO generation. |
-| [`db.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/db.py) | SQLite database layer (`cache.db`) for caching prompt runs, generation histories, user preferences, and usage analytics. |
-| [`error_handler.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/error_handler.py) | Centralized error recovery system categorizing failures, proposing automated recipes, and logging structured diagnostics (`error_log.json`). |
-| [`monitor.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/monitor.py) | System & GPU telemetry: live VRAM usage, queue depth monitoring, and WebSocket generation progress HUD. |
-| [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py) | Environment variables, checkpoint presets, admin/owner permission guards, and VRAM safety thresholds. |
-| [`suite_test.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/suite_test.py) | Comprehensive test suite (47+ unit & integration tests) covering parsers, workflows, dimension math, and error handlers. |
-| [`workflows/`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/workflows) | 19 modular ComfyUI JSON API workflow templates (SDXL, Flux GGUF, Wan 2.2 + MMAudio, Upscalers, Blend, Inpaint/Outpaint). |
+| [`bot.py`](bot.py) | Main Discord bot initialization, application slash commands, event listeners, workflow assembly, and execution pipeline. |
+| [`parsers.py`](parsers.py) | Prompt syntax parser: aspect ratios (`--ar`), wildcards (`{a\|b}`), Smart Art Director (`--smart`), Magic Prompt (`--magic`), LoRA triggers (`<lora:...>`), Style Reference (`--sref`), and Character Reference (`--cref`). |
+| [`comfy_client.py`](comfy_client.py) | REST API and WebSocket client managing prompt queuing, node execution tracking, image/video binary downloads, and error capture. |
+| [`views.py`](views.py) | Discord UI components: dynamic action buttons (U1–U4, V1–V4, Pan, Zoom, Inpaint), modals for custom prompts/seeds, and dropdown selectors. |
+| [`image_utils.py`](image_utils.py) | Image manipulation: 2x2 grid stitching and splitting, outpaint canvas expansion, color-matching, metadata injection, and multi-resolution Windows ICO generation. |
+| [`db.py`](db.py) | SQLite database layer (`cache.db`) for caching prompt runs, generation histories, user preferences, and usage analytics. |
+| [`error_handler.py`](error_handler.py) | Centralized error recovery system categorizing failures, proposing automated recipes, and logging structured diagnostics (`error_log.json`). |
+| [`monitor.py`](monitor.py) | System & GPU telemetry: live VRAM usage, queue depth monitoring, and WebSocket generation progress HUD. |
+| [`config.py`](config.py) | Environment variables, checkpoint presets, admin/owner permission guards, and VRAM safety thresholds. |
+| [`suite_test.py`](suite_test.py) | Comprehensive test suite (47+ unit & integration tests) covering parsers, workflows, dimension math, and error handlers. |
+| [`workflows/`](workflows/) | 19 modular ComfyUI JSON API workflow templates (SDXL, Flux GGUF, Wan 2.2 + MMAudio, Upscalers, Blend, Inpaint/Outpaint). |
 
 ---
 
@@ -69,7 +69,7 @@
 * **`run_bot.bat`**: Runs pre-flight test suite, updates daily changelog, and launches the Discord bot.
 * **`run_monitor.bat`**: Launches the real-time GPU/VRAM hardware monitoring dashboard.
 * **`check_comfy_errors.bat`**: CLI analyzer for inspecting and copying formatted error logs for debugging.
-* **`auto_changelog.py`**: Automated changelog generator maintaining [`CHANGELOG.md`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/CHANGELOG.md).
+* **`auto_changelog.py`**: Automated changelog generator maintaining [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
