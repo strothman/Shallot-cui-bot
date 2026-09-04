@@ -384,7 +384,43 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             if "thin rim glasses" not in prompt.lower():
                 prompt = f"{prompt}, {susa_traits}".strip()
 
-    # 2.7 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
+    # 2.7 Parse --mageill / --mag shorthand with optional epoch (e.g. --mageill, --mag, --mageill3, --mag6, --mageill-e4, --mageill5.75)
+    mag_match = re.search(r'[-—–]{1,2}(?:mageill|mag)(?:[-_]?e?([3-6]))?(?:(?:\s+|\.)([0-9\.]+))?', prompt, flags=re.IGNORECASE)
+    mag_parsed = False
+    if mag_match and (mag_match.group(1) or mag_match.group(2) or mag_match.group(0).startswith('-') or mag_match.group(0).startswith('—') or mag_match.group(0).startswith('–')):
+        try:
+            epoch_str = mag_match.group(1) if mag_match.group(1) else "5"
+            val_str = mag_match.group(2)
+            if val_str:
+                if val_str.startswith('.'):
+                    weight = float(val_str)
+                elif val_str.isdigit():
+                    w_val = float(val_str)
+                    weight = w_val / 100.0 if w_val > 1.0 else w_val
+                else:
+                    weight = float(val_str)
+            else:
+                weight = 0.85
+
+            lora_file = f"mageill_epoch_{epoch_str}.safetensors"
+            lora_name = resolve_lora_for_architecture(lora_file, effective_arch)
+            loras.append((lora_name, weight))
+            mag_parsed = True
+            prompt = re.sub(r'[-—–]{1,2}(?:mageill|mag)(?:[-_]?e?[3-6])?(?:(?:\s+|\.)[0-9\.]+)?', '', prompt, flags=re.IGNORECASE).strip()
+
+            if "mageill" not in prompt.lower():
+                prompt = f"mageill, {prompt}".strip()
+        except Exception as e:
+            logger.error(f"Error parsing --mageill shorthand: {e}")
+
+    # 2.8 Keyword Fallback: Detect 'mageill' in prompt text even if user didn't write '--'
+    if not mag_parsed:
+        if re.search(r'\bmageill\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("mageill_epoch_5.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            mag_parsed = True
+
+    # 2.9 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
     if not sr_parsed and not is_flux:
         if re.search(r'\b(?:semi[- ]realism|semirealism)\b', prompt, flags=re.IGNORECASE):
             loras.append(("Semi-realism_illustrious.safetensors", 0.70))

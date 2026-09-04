@@ -19,6 +19,7 @@ class CharacterProfile:
     shorthands: List[str] = field(default_factory=list)
     description: str = ""
     base_prompt_traits: Optional[str] = None
+    is_private: bool = False
 
 # Registered Characters
 CHARACTERS: Dict[str, CharacterProfile] = {
@@ -30,7 +31,8 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         lora_flux="ogarlaflux_epoch_5.safetensors",
         default_weight=0.85,
         shorthands=["ogarla", "oga"],
-        description="Original Ogarla character LoRA (SDXL & Flux)"
+        description="Original Ogarla character LoRA (SDXL & Flux)",
+        is_private=False
     ),
     "valerie": CharacterProfile(
         id="valerie",
@@ -40,7 +42,8 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         lora_flux=None,
         default_weight=0.85,
         shorthands=["valerie", "val"],
-        description="Valerie character LoRA (SDXL)"
+        description="Valerie character LoRA (SDXL)",
+        is_private=True
     ),
     "sully": CharacterProfile(
         id="sully",
@@ -51,8 +54,49 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         default_weight=0.85,
         shorthands=["sully", "sul"],
         description="Sully character LoRA (SDXL)",
-        base_prompt_traits="black hair, thin rim glasses"
-    )
+        base_prompt_traits="black hair, thin rim glasses",
+        is_private=True
+    ),
+    "mageill": CharacterProfile(
+        id="mageill",
+        display_name="Mageill",
+        trained_trigger="mageill",
+        lora_sdxl="mageill_epoch_5.safetensors",
+        default_weight=0.85,
+        shorthands=["mageill", "mag", "mageill5", "mag5", "mageill_e5", "mag_e5"],
+        description="Original Mageill character LoRA (SDXL) - Epoch 5 (Default)",
+        is_private=False
+    ),
+    "mageill_e3": CharacterProfile(
+        id="mageill_e3",
+        display_name="Mageill (Epoch 3)",
+        trained_trigger="mageill",
+        lora_sdxl="mageill_epoch_3.safetensors",
+        default_weight=0.85,
+        shorthands=["mageill3", "mag3", "mageill_e3", "mag_e3"],
+        description="Mageill character LoRA (SDXL) - Epoch 3",
+        is_private=False
+    ),
+    "mageill_e4": CharacterProfile(
+        id="mageill_e4",
+        display_name="Mageill (Epoch 4)",
+        trained_trigger="mageill",
+        lora_sdxl="mageill_epoch_4.safetensors",
+        default_weight=0.85,
+        shorthands=["mageill4", "mag4", "mageill_e4", "mag_e4"],
+        description="Mageill character LoRA (SDXL) - Epoch 4",
+        is_private=False
+    ),
+    "mageill_e6": CharacterProfile(
+        id="mageill_e6",
+        display_name="Mageill (Epoch 6)",
+        trained_trigger="mageill",
+        lora_sdxl="mageill_epoch_6.safetensors",
+        default_weight=0.85,
+        shorthands=["mageill6", "mag6", "mageill_e6", "mag_e6"],
+        description="Mageill character LoRA (SDXL) - Epoch 6",
+        is_private=False
+    ),
 }
 
 def get_character(key: str) -> Optional[CharacterProfile]:
@@ -84,7 +128,7 @@ def mask_character_in_prompt(prompt: str, character_id: Optional[str] = None) ->
         targets = list(CHARACTERS.values())
 
     for char in targets:
-        if not char or char.id == char.trained_trigger:
+        if not char or not char.is_private:
             continue
         pattern = rf"\b{re.escape(char.trained_trigger)}\b"
         prompt = re.sub(pattern, char.id, prompt, flags=re.IGNORECASE)

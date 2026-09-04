@@ -1577,6 +1577,24 @@ class TestCUIBotFunctions(unittest.TestCase):
         injected_sully = inject_trained_trigger_in_prompt("sully, in a library", "sully")
         self.assertEqual(injected_sully, "susa, black hair, thin rim glasses, in a library")
 
+        # Mageill character checks (original character, not masked)
+        mag = get_character("mageill")
+        self.assertIsNotNone(mag)
+        self.assertEqual(mag.lora_sdxl, "mageill_epoch_5.safetensors")
+        self.assertFalse(mag.is_private)
+
+        mag3 = get_character("mageill3")
+        self.assertIsNotNone(mag3)
+        self.assertEqual(mag3.lora_sdxl, "mageill_epoch_3.safetensors")
+
+        mag6 = get_character("mag6")
+        self.assertIsNotNone(mag6)
+        self.assertEqual(mag6.lora_sdxl, "mageill_epoch_6.safetensors")
+
+        # Unmasked prompt stays unmasked
+        masked_mag = mask_character_in_prompt("mageill casting a spell")
+        self.assertEqual(masked_mag, "mageill casting a spell")
+
     def test_valerie_lora_parsing(self):
         """Test parsing --valerie and bare 'valerie' keywords in prompt with silent trigger substitution."""
         from parsers import parse_loras
@@ -1614,6 +1632,47 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(loras2[0][0], "susa_epoch_6.safetensors")
         self.assertIn("susa", cleaned2)
         self.assertIn("black hair, thin rim glasses", cleaned2)
+
+    def test_mageill_lora_parsing(self):
+        """Test parsing --mageill with multiple epochs (3, 4, 5, 6) and custom weights."""
+        from parsers import parse_loras
+
+        # 1. Default epoch (Epoch 5) with --mageill
+        cleaned, loras = parse_loras("portrait of an enchantress --mageill", is_flux=False)
+        self.assertEqual(len(loras), 1)
+        self.assertEqual(loras[0][0], "mageill_epoch_5.safetensors")
+        self.assertAlmostEqual(loras[0][1], 0.85)
+        self.assertIn("mageill", cleaned)
+        self.assertNotIn("--mageill", cleaned)
+
+        # 2. Shorthand --mag (also defaults to Epoch 5)
+        cleaned_mag, loras_mag = parse_loras("portrait of an enchantress --mag", is_flux=False)
+        self.assertEqual(len(loras_mag), 1)
+        self.assertEqual(loras_mag[0][0], "mageill_epoch_5.safetensors")
+
+        # 3. Explicit Epoch 3: --mageill3
+        c3, l3 = parse_loras("fantasy scene --mageill3", is_flux=False)
+        self.assertEqual(len(l3), 1)
+        self.assertEqual(l3[0][0], "mageill_epoch_3.safetensors")
+        self.assertAlmostEqual(l3[0][1], 0.85)
+
+        # 4. Explicit Epoch 4 with weight: --mag4.80
+        c4, l4 = parse_loras("fantasy scene --mag4.80", is_flux=False)
+        self.assertEqual(len(l4), 1)
+        self.assertEqual(l4[0][0], "mageill_epoch_4.safetensors")
+        self.assertAlmostEqual(l4[0][1], 0.80)
+
+        # 5. Explicit Epoch 6 with hyphen: --mageill-e6.70
+        c6, l6 = parse_loras("fantasy scene --mageill-e6.70", is_flux=False)
+        self.assertEqual(len(l6), 1)
+        self.assertEqual(l6[0][0], "mageill_epoch_6.safetensors")
+        self.assertAlmostEqual(l6[0][1], 0.70)
+
+        # 6. Keyword fallback: bare 'mageill'
+        ck, lk = parse_loras("mageill floating above glowing crystals", is_flux=False)
+        self.assertEqual(len(lk), 1)
+        self.assertEqual(lk[0][0], "mageill_epoch_5.safetensors")
+        self.assertAlmostEqual(lk[0][1], 0.85)
 
     def test_vram_free_memory(self):
         """Test ComfyClient free_memory method handles errors gracefully when offline."""
