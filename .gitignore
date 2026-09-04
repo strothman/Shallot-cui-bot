@@ -82,3 +82,22 @@ deploy/
 *.db-shm
 cache.db*
 *.log
+
+# Temporary & Scratch Files
+*.tmp
+*.temp
+test_run.tmp
+*.dmp
+*.dump
+*.crash
+
+# Secrets, Keys & Certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+id_rsa*
+id_ecdsa*
+id_ed25519*
