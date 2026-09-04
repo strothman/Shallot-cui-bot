@@ -38,7 +38,7 @@ cache.db-shm
 # Error journal
 error_log.json
 # Temporary Dataset Exports & Archives
-datasets/exports/
+datasets/
 *.zip
 *.tar.gz
 *.rar

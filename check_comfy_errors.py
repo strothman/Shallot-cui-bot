@@ -257,6 +257,24 @@ def print_report(analysis):
     markdown_export.append("```")
     print("\n".join(markdown_export))
 
+def check_bot_errors():
+    """Prints a summary of the bot's internal error_log.json if available."""
+    try:
+        from error_handler import error_handler
+        stats = error_handler.get_stats(hours=24)
+        if stats["total"] > 0:
+            print(f"\n{BOLD}{CYAN}────────────────────────────────────────────────────────────────────{RESET}")
+            print(f"{BOLD}{MAGENTA}🤖 Shallot Bot Error Journal (Last 24 Hours):{RESET}")
+            print(f"   * Total Logged Errors : {stats['total']}")
+            print(f"   * Auto-Fixed           : {stats['auto_fixed']} [OK]")
+            print(f"   * Needs Attention      : {stats['needs_attention']}")
+            if stats["by_category"]:
+                print("   * Breakdown:")
+                for cat, cnt in stats["by_category"].items():
+                    print(f"       - {cat}: {cnt}")
+    except Exception:
+        pass
+
 if __name__ == "__main__":
     log_file = find_log_file()
     if log_file:
@@ -264,3 +282,4 @@ if __name__ == "__main__":
         print_report(res)
     else:
         print_report(None)
+    check_bot_errors()
