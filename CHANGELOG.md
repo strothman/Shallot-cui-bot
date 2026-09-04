@@ -4,14 +4,29 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-04]
+
+### Maintenance
+* Working tree modification: `M README.md`
+* Working tree modification: `M bot.py`
+* Working tree modification: `M db.py`
+* Working tree modification: `D lora_dataset.py`
+* Working tree modification: `M suite_test.py`
+* Working tree modification: `M views.py`
+
+---
 ## [2026-09-03]
 
 ### Added
-* Single-instance process lock (`acquire_instance_lock`) using local socket binding on port `48123` to prevent duplicate bot processes from running concurrently and duplicating button/queue interactions.
-* Unit test `test_single_instance_lock` in `suite_test.py` to verify socket binding and collision handling.
+* **feat: add single-instance process lock and remove redundant handler** (`109aebb`)
 
-### Fixed
-* Removed obsolete/shadowed duplicate `on_raw_reaction_add` event handler in `bot.py`.
+### Maintenance
+* Working tree modification: `M README.md`
+* Working tree modification: `M bot.py`
+* Working tree modification: `M db.py`
+* Working tree modification: `D lora_dataset.py`
+* Working tree modification: `M suite_test.py`
+* Working tree modification: `M views.py`
 
 ---
 ## [2026-09-01]

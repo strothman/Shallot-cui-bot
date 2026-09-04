@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Tests](https://img.shields.io/badge/tests-49%20passed-success.svg)](suite_test.py)
 
-Welcome! **Shallot-CUI Bot** is your personal AI art, video, and icon creation studio built directly into Discord, powered by **ComfyUI**.
+Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
 
-Whether you want to create beautiful pictures, generate smooth videos, turn photos into Windows 11 desktop icons, or copy styles from your favorite images, this guide explains how everything works in simple, easy-to-understand terms.
+Whether you want to create beautiful pictures, generate smooth videos, or copy styles from your favorite images, this guide explains how everything works in simple, easy-to-understand terms.
 
 ---
 
@@ -23,12 +23,17 @@ Whether you want to create beautiful pictures, generate smooth videos, turn phot
 
 ## 🎨 1. Creating Images
 
-### 🌸 `/imagine` — Create 4 Pictures at Once
+### 🌸 `/imagine` — Create 4 Pictures at Once (SDXL)
 Type `/imagine` followed by your prompt description. The bot generates a 2x2 grid with 4 different variations!
 * **Example:** `/imagine prompt: a cute ghost drinking boba tea in a neon city --ar 16:9`
-* **Fun Modifiers You Can Add to Any Prompt:**
-  * `--smart` $\rightarrow$ **Smart Art Director**: Automatically figures out the mood/genre (Cyberpunk, Fantasy, Cozy, Retro) and adds matching lighting and details for you.
-  * `--magic` $\rightarrow$ **Magic Prompt**: Auto-expands your prompt with studio lighting and high-definition details.
+* **Checkpoints:** Switch between Illustrious SDXL, RealVisXL, Animagine, and more.
+* **Enhancements:**
+  * `Powerhouse 2-Stage Refiner` (`--refine`): 2-stage generation pipeline adding rich skin textures and micro-details.
+  * `Face Detailer` (`--face`): Automatic face-cleanup pass so character faces and eyes look extra sharp and symmetrical.
+  * `Smart Art Director` (`--smart`): Automatically analyzes the mood/genre (Cyberpunk, Fantasy, Cozy, Retro) and adds matching lighting and details.
+  * `Magic Prompt` (`--magic`): Auto-expands your prompt with studio lighting and high-definition details.
+  * `FreeU V2`: Enhances contrast and high-frequency latents.
+* **Prompt Modifiers:**
   * `{a|b|c}` $\rightarrow$ **Wildcards**: Give each of the 4 pictures a random choice! (e.g. `/imagine prompt: a cute {cat|fox|dragon|panda} wizard`).
   * `--ar 16:9` $\rightarrow$ Widescreen wallpaper shape.
   * `--ar 9:16` $\rightarrow$ Phone screen portrait shape.
@@ -40,44 +45,13 @@ Type `/imagine` followed by your prompt description. The bot generates a 2x2 gri
 
 ---
 
-### 🌟 `/imagine_det` — Clean Faces & Detailed Eyes
-Works just like `/imagine`, but automatically runs a gentle face-cleanup pass so character faces and eyes look extra sharp and symmetrical without slowing down your computer.
-* **Example:** `/imagine_det prompt: portrait of an anime sorceress in a crystal cave --ar 16:9`
-
----
-
-### 🚀 `/com` — Next-Gen Flow-Matching (Flux GGUF)
-Runs the popular 12-billion parameter **Flux** AI model, specially tuned to run smoothly on 8GB graphics cards.
-* **Why use it:** Incredible prompt accuracy, realistic hands, cinematic lighting, and sharp text/signs.
+### ✨ `/flux` — Next-Gen Flow-Matching (Flux.1 GGUF)
+Generate high-fidelity AI imagery using the 12-billion parameter **Flux.1** flow-matching model, quantized for smooth performance on 8GB VRAM!
 * **Model Choices:**
-  * `Flux.1 Dev` *(Default)*: Maximum photorealism and artistic quality.
-  * `Flux.1 Schnell`: Ultra-fast turbo version (creates pictures in just ~8 seconds!).
-* **Example:** `/com prompt: a cozy coffee shop on a rainy afternoon in Tokyo --smart --ar 16:9`
-
----
-
-### ⚡ `/sdxl` — 2-Stage Powerhouse
-Pushes your graphics card to the limit with a 2-stage generation pipeline that adds rich skin textures, fabric weaves, and micro-details.
-* **Example:** `/sdxl prompt: majestic phoenix rising from glowing embers --smart --ar 16:9`
-
----
-
-### ✨ `/flux` — High-Definition Flux1-Dev
-Directly creates an ultra-detailed single Flux artwork saved straight to your computer.
+  * `flux1-dev-Q4_K_S.gguf` *(Default)*: Maximum photorealism, accurate anatomy, sharp text, and artistic quality.
+  * `flux1-schnell-Q4_K_S.gguf`: Ultra-fast turbo version (creates pictures in just ~8 seconds!).
+* **Guidance:** Control prompt adherence and style fidelity (default: 3.5).
 * **Example:** `/flux prompt: futuristic cyber warrior standing on a rooftop at sunset --ar 16:9`
-
----
-
-### 🖼️ `/ico` — Make Windows 11 Desktop Icons
-Create custom `.ico` icon files for your desktop shortcuts and folders:
-* **Option A (Make from scratch):** `/ico prompt: pixel art treasure chest` $\rightarrow$ Makes 4 icon designs.
-* **Option B (Convert an existing photo):** `/ico image: [upload picture]` $\rightarrow$ Instantly turns your uploaded picture into a ready-to-use Windows `.ico` file!
-
----
-
-### 🗡️ `/junji` — Horror Manga & Stylized Art
-Generates specialized dark fantasy, pure line-art manga (Junji Ito style), pastel chromatic art (Martine Johanna style), and cyber landscapes.
-* **Example:** `/junji prompt: ancient overgrown shrine under a dark moon style: Junji Ito Manga (Pure Line Art)`
 
 ---
 
@@ -89,7 +63,6 @@ Turn any still image into a smooth, animated video:
   * **Example:** `/video image: [upload picture] prompt: gentle wind blowing hair, blinking eyes, smiling duration: 5`
 * **`/ltx` (LTX-Video)**: Super-fast video generator that renders animations in ~35 seconds.
   * **Example:** `/ltx image: [upload picture] prompt: camera slowly zooms in duration: 4`
-* **`/hunyuan` (HunyuanVideo)**: Video animations with custom camera motion.
 
 ---
 
@@ -136,28 +109,17 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 
 ## 📌 6. Managing Prompts, Styles & Negatives
 
-* **`/save_prompt name: Neon Dragon prompt:...`**: Save a prompt with a nickname.
-* **`/my_prompts`**: Browse, copy, edit, or launch your saved prompts with simple interactive buttons.
-* **`/edit_prompt`**: Edit an existing saved prompt.
-* **`/delete_prompt`**: Remove a prompt from your favorites.
+* **`/prompt list`**: Browse, copy, edit, or launch your saved prompts with interactive buttons.
+* **`/prompt save name: Neon Dragon prompt:...`**: Save a prompt with a nickname.
+* **`/prompt edit prompt_id: 1`**: Edit an existing saved prompt.
+* **`/prompt delete prompt_id: 1`**: Remove a prompt from your favorites.
 * **`/style list`**: Browse your saved `--sref` style codes.
 * **`/style batch prompt:... count: 5`**: Queue 5, 10, or 15 generations at once, testing different random or favorite styles!
-* **`/negative_show`**: View your active negative prompt in an embed with edit and reset buttons.
-* **`/set_negative`**: Change your default negative prompt.
+* **`/negative`**: View, edit, or reset your default negative prompt.
 
 ---
 
-## 🧬 7. Custom Character Training (`/lora-build`)
-
-Want to create your own custom character LoRA? The bot provides a full built-in studio:
-1. **`/lora-build start`**: Start a new character session with a reference image and a trigger name.
-2. **`/lora-build generate`**: Generate poses and angles locked to your character's identity. Click **`➕ Add`** under any image to include it.
-3. **`/lora-build describe`**: Auto-captions all your training pictures using AI vision.
-4. **`/lora-build export`**: Packages all pictures and captions into a clean ZIP archive ready for training!
-
----
-
-## ⚙️ 8. Server Controls & Management
+## ⚙️ 7. Server Controls & Management
 
 * **`/cui-start`**: Start your local ComfyUI server from Discord.
 * **`/cui-stop`**: Safely stop ComfyUI and free your graphics card memory.
@@ -176,8 +138,6 @@ Want to create your own custom character LoRA? The bot provides a full built-in 
 All high-resolution outputs are saved directly to your computer:
 * 🖼️ **High-Res Images:** `C:\ComfyUI\ComfyUI\output\Discord Bot\highres`
 * ✨ **Flux Images:** `C:\ComfyUI\ComfyUI\output\Discord Bot\flux`
-* 🎯 **Windows Icons (`.ico`):** `C:\ComfyUI\ComfyUI\output\Discord Bot\ico`
-* 🧬 **LoRA Datasets:** `datasets/<session_id>/`
 
 ---
 
@@ -186,9 +146,9 @@ All high-resolution outputs are saved directly to your computer:
 | What I want to do | Command Example |
 | :--- | :--- |
 | Generate 4 ideas for a wallpaper | `/imagine prompt: cyberpunk city in the rain --smart --ar 16:9` |
-| Make an ultra-realistic picture | `/com prompt: portrait of an astronaut on Mars --smart --ar 16:9` |
+| Make an ultra-realistic picture | `/flux prompt: portrait of an astronaut on Mars --smart --ar 16:9` |
 | Make a video from an image | `/video image: [upload] prompt: camera slowly zooms in duration: 5` |
-| Turn a photo into a desktop icon | `/ico image: [upload]` |
+| Fast 35-second animation | `/ltx image: [upload] prompt: camera slowly zooms in duration: 4` |
 | Find out what prompt made a photo | `/study image: [upload]` |
 | Try 4 outfits in 1 prompt | `/imagine prompt: a character wearing a {hoodie\|suit\|armor\|kimono}` |
 | Copy style from another image | `/imagine prompt: knight on a hill style_reference: [upload]` |

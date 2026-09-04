@@ -939,10 +939,9 @@ class TestCUIBotFunctions(unittest.TestCase):
 
     def test_module28_consolidated_enhancements(self):
         """Test that consolidated enhancement choices correctly decode and configure workflow flags."""
-        from bot import SDXL_ENHANCEMENT_CHOICES, FLUX_ENHANCEMENT_CHOICES, ICO_ENHANCEMENT_CHOICES
+        from bot import SDXL_ENHANCEMENT_CHOICES, FLUX_ENHANCEMENT_CHOICES
         self.assertTrue(len(SDXL_ENHANCEMENT_CHOICES) > 0)
         self.assertTrue(len(FLUX_ENHANCEMENT_CHOICES) > 0)
-        self.assertTrue(len(ICO_ENHANCEMENT_CHOICES) > 0)
 
         # Verify values
         sdxl_vals = [c.value for c in SDXL_ENHANCEMENT_CHOICES]
@@ -952,16 +951,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("magic", sdxl_vals)
         self.assertIn("smart+magic", sdxl_vals)
         self.assertIn("no_freeu", sdxl_vals)
+        self.assertIn("powerhouse", sdxl_vals)
 
         flux_vals = [c.value for c in FLUX_ENHANCEMENT_CHOICES]
         self.assertIn("smart", flux_vals)
         self.assertIn("magic", flux_vals)
         self.assertIn("smart+magic", flux_vals)
-
-        ico_vals = [c.value for c in ICO_ENHANCEMENT_CHOICES]
-        self.assertNotIn("lightning", ico_vals)
-        self.assertIn("square", ico_vals)
-        self.assertIn("magic", ico_vals)
 
     def test_module29_reroll_lora_preservation(self):
         """Test that re-rolled generations properly preserve and wire Ogarla & Semi-Realism LoRAs."""
@@ -1017,21 +1012,24 @@ class TestCUIBotFunctions(unittest.TestCase):
         # 3. Check Preview node connects to FaceDetailer output
         self.assertEqual(det_wf["9"]["inputs"]["images"], ["85", 0])
 
-    def test_module31_imagine_det_command_parity(self):
-        """Test that /imagine_det is registered and has command parity with /imagine."""
+    def test_module31_core_commands_registration(self):
+        """Test that core generation commands are registered and pruned commands are absent."""
         from bot import bot
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("imagine", commands)
-        self.assertIn("imagine_det", commands)
+        self.assertIn("flux", commands)
+        self.assertIn("video", commands)
+        self.assertIn("ltx", commands)
+        self.assertIn("prompt", commands)
+        self.assertIn("negative", commands)
 
-        imagine_cmd = commands["imagine"]
-        imagine_det_cmd = commands["imagine_det"]
-
-        # Verify parameters match
-        imagine_params = set(imagine_cmd.parameters) if hasattr(imagine_cmd, "parameters") else set()
-        imagine_det_params = set(imagine_det_cmd.parameters) if hasattr(imagine_det_cmd, "parameters") else set()
-        if imagine_params and imagine_det_params:
-            self.assertEqual({p.name for p in imagine_params}, {p.name for p in imagine_det_params})
+        # Verify pruned commands are not present
+        self.assertNotIn("imagine_det", commands)
+        self.assertNotIn("junji", commands)
+        self.assertNotIn("ico", commands)
+        self.assertNotIn("hunyuan", commands)
+        self.assertNotIn("sdxl", commands)
+        self.assertNotIn("com", commands)
 
     def test_module32_helper_functions_defined(self):
         """Ensure all message sending helpers in bot.py exist and are callable."""
@@ -1471,12 +1469,6 @@ class TestCUIBotFunctions(unittest.TestCase):
                     os.remove(p)
 
         asyncio.run(run_async_test())
-
-    def test_dataset_export_retention_cleanup(self):
-        """Test dataset export zip cleanup with age threshold."""
-        import lora_dataset
-        cleaned = lora_dataset.cleanup_old_dataset_exports(days_threshold=14)
-        self.assertIsInstance(cleaned, int)
 
     def test_model_auto_discovery_scanner(self):
         """Test scanning ComfyUI model directories and auto-registering models."""

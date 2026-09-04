@@ -59,10 +59,6 @@ from image_utils import (
     crop_quadrant_from_grid_bytes,
     format_image_filename,
     get_dated_save_prefix,
-    create_windows_ico_bytes,
-    save_ico_file,
-    apply_rounded_corners_to_bytes,
-    convert_image_to_ico,
     upscale_isolated_image,
     boost_image_vibrancy_and_contrast,
     get_checkpoint_abbrev,
@@ -87,11 +83,8 @@ from views import (
     PromptPaginationView,
     AdoptButtons,
     EditAdoptPromptModal,
-    LoraBuildGridButtons,
-    LoraBuildStatusView,
     VideoPromptModal,
 )
-import lora_dataset
 import model_architecture
 
 
@@ -138,6 +131,7 @@ SDXL_ENHANCEMENT_CHOICES = [
     app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
     app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
     app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
+    app_commands.Choice(name="⚡ 2-Stage Powerhouse (FreeU + 1.35x Refiner)", value="powerhouse"),
     app_commands.Choice(name="🚫 Disable FreeU (Pure Checkpoint Sampling)", value="no_freeu"),
 ]
 
@@ -147,9 +141,10 @@ FLUX_ENHANCEMENT_CHOICES = [
     app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
 ]
 
-ICO_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🔳 Square Corners (Disable Curved Edges)", value="square"),
-    app_commands.Choice(name="✨ Magic Prompt Enhancer", value="magic"),
+FLUX_CHECKPOINT_CHOICES = [
+    app_commands.Choice(name="Flux.1 Dev GGUF Q4 (General Masterpiece - Recommended)", value="flux1-dev-Q4_K_S.gguf"),
+    app_commands.Choice(name="Flux.1 Schnell GGUF Q4 (4-Step Turbo / Instant)", value="flux1-schnell-Q4_K_S.gguf"),
+    app_commands.Choice(name="FluxedUp NSFW GGUF Q4 (Community Fine-Tune)", value="fluxedUpFluxNSFW_71Q4GGUF.gguf"),
 ]
 
 # Checkpoint-specific configurations & optimal generation parameters for photorealism and LoRA compatibility
@@ -626,15 +621,9 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
 
     sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
     grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, seed, width, height)
-    is_ico = gen_data.get("is_ico", False)
     is_flux = gen_data.get("is_flux", False)
-    is_junji = gen_data.get("is_junji", False)
     ckpt_abbrev = get_checkpoint_abbrev(selected_model)
-    if is_ico:
-        grid_prefix = f"icon_{ckpt_abbrev}_grid"
-    elif is_junji:
-        grid_prefix = f"junji_{ckpt_abbrev}_grid"
-    elif is_flux:
+    if is_flux:
         grid_prefix = f"flux_{ckpt_abbrev}_grid"
     else:
         grid_prefix = f"grid_{ckpt_abbrev}"
@@ -669,14 +658,9 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
     user_name = interaction.user.name if (interaction and interaction.user) else "User"
     user_id = interaction.user.id if (interaction and interaction.user) else 0
 
-    if gen_data.get("is_lora_build"):
-        title_txt = "🎨 LoRA Dataset Grid Complete"
-        session_id = gen_data.get("lora_session_id", "")
-        view = LoraBuildGridButtons(generation_id, session_id)
-    else:
-        title_txt = "Flux Grid Complete" if gen_data.get("is_flux") else ("Windows 11 Icon Grid Complete" if gen_data.get("is_ico") else "Image Generation Complete")
-        has_sref = sref_info is not None and "code" in sref_info
-        view = GridButtons(generation_id, has_sref=has_sref)
+    title_txt = "Flux Grid Complete" if gen_data.get("is_flux") else "Image Generation Complete"
+    has_sref = sref_info is not None and "code" in sref_info
+    view = GridButtons(generation_id, has_sref=has_sref)
 
     embed = discord.Embed(
         title=title_txt, 
@@ -868,16 +852,10 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
                 workflow["10"]["inputs"]["scale_by"] = upscale_factor
 
             is_blend = gen_data.get("is_blend", False) or "caption" in gen_data or "uploaded_image_name" in gen_data
-            is_ico = gen_data.get("is_ico", False)
-            is_junji = gen_data.get("is_junji", False)
             is_flux = gen_data.get("is_flux", False)
 
             if is_blend:
                 subfolder = "blend"
-            elif is_ico:
-                subfolder = "ico"
-            elif is_junji:
-                subfolder = "junji"
             elif is_flux:
                 subfolder = "flux"
             else:
@@ -927,10 +905,6 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         ckpt_abbrev = get_checkpoint_abbrev(checkpoint)
         if is_blend:
             upscale_prefix = f"blend_{ckpt_abbrev}_upscale_{index}"
-        elif is_ico:
-            upscale_prefix = f"icon_{ckpt_abbrev}_upscale_{index}"
-        elif is_junji:
-            upscale_prefix = f"junji_{ckpt_abbrev}_upscale_{index}"
         elif is_flux:
             upscale_prefix = f"flux_{ckpt_abbrev}_upscale_{index}"
         else:
@@ -1055,14 +1029,8 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
             dd = now.strftime("%d")
             time_str = now.strftime("%Y%m%d_%H%M%S")
             is_blend = gen_data.get("is_blend", False) or "caption" in gen_data or "uploaded_image_name" in gen_data
-            is_ico = gen_data.get("is_ico", False)
-            is_junji = gen_data.get("is_junji", False)
             if is_blend:
                 sub = "blend"
-            elif is_ico:
-                sub = "ico"
-            elif is_junji:
-                sub = "junji"
             elif gen_data.get("is_flux") or "flux" in str(gen_data.get("checkpoint", "")).lower():
                 sub = "flux"
             else:
@@ -1076,10 +1044,6 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
 
             if is_blend:
                 filename = f"blend_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
-            elif is_ico:
-                filename = f"icon_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
-            elif is_junji:
-                filename = f"junji_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
             elif gen_data.get('is_flux') or "flux" in str(checkpoint).lower():
                 filename = f"flux_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
             else:
@@ -1097,32 +1061,13 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         if is_blend:
             iso_prefix = f"blend_{ckpt_abbrev}_{index}"
-        elif is_ico:
-            iso_prefix = f"icon_{ckpt_abbrev}_{index}"
-        elif is_junji:
-            iso_prefix = f"junji_{ckpt_abbrev}_{index}"
         elif gen_data.get('is_flux') or "flux" in str(checkpoint).lower():
             iso_prefix = f"flux_{ckpt_abbrev}_{index}"
         else:
             iso_prefix = f"imagine_{ckpt_abbrev}_{index}"
         file = discord.File(fp=metadata_io, filename=format_image_filename(iso_prefix, target_seed, "png", sref=sref_code))
 
-        files_to_send = []
-        rounded_corners = gen_data.get("rounded_corners", True)
-        if is_ico and rounded_corners:
-            iso_png_bytes = apply_rounded_corners_to_bytes(png_bytes)
-            iso_png_file = discord.File(fp=io.BytesIO(iso_png_bytes), filename=format_image_filename(iso_prefix, target_seed, "png", sref=sref_code))
-            files_to_send.append(iso_png_file)
-        else:
-            files_to_send.append(file)
-
-        if is_ico:
-            ico_bytes = create_windows_ico_bytes(png_bytes, rounded_corners=rounded_corners)
-            if ico_bytes:
-                ico_filename = format_image_filename(f"icon_{ckpt_abbrev}_{index}", target_seed, "ico", sref=sref_code)
-                save_ico_file(ico_bytes, ico_filename)
-                ico_file = discord.File(fp=io.BytesIO(ico_bytes), filename=ico_filename)
-                files_to_send.append(ico_file)
+        files_to_send = [file]
 
         desc_lines = [
             f"**Prompt:** {truncate_prompt(original_prompt, 250)}",
@@ -1136,11 +1081,9 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
         if is_blend:
             title_txt = f"Blended Image {index}"
             content_txt = f"**Blended Image {index}:** {truncate_prompt(original_prompt, 100)}"
-        elif gen_data.get("is_ico"):
-            title_txt = f"Isolated Windows Icon {index}"
-            content_txt = f"**Isolated Icon {index}:** {truncate_prompt(original_prompt, 100)}"
         else:
             title_txt = f"Isolated Image {index}"
+            content_txt = f"**Isolated Image {index}:** {truncate_prompt(original_prompt, 100)}"
             content_txt = f"**Isolate Image {index}:** {truncate_prompt(original_prompt, 100)}"
 
         embed = discord.Embed(
@@ -1327,8 +1270,6 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
         "sref_info": sref_info,
         "cref_image": cref_image,
         "cref_weight": cref_weight,
-        "is_ico": gen_data.get("is_ico", False),
-        "is_junji": gen_data.get("is_junji", False),
         "is_blend": gen_data.get("is_blend", False)
     }
     save_generations()
@@ -1533,14 +1474,12 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
         "sref_info": sref_info,
         "cref_image": cref_image,
         "cref_weight": cref_weight,
-        "is_ico": gen_data.get("is_ico", False),
         "is_flux": is_flux,
         "is_com": is_com,
         "is_sdxl_powerhouse": is_sdxl_powerhouse,
         "guidance": gen_data.get("guidance", 3.5),
         "freeu": gen_data.get("freeu", True),
         "is_face_detailer": gen_data.get("is_face_detailer", False),
-        "is_junji": gen_data.get("is_junji", False),
         "is_blend": gen_data.get("is_blend", False)
     }
     save_generations()
@@ -1598,7 +1537,7 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
                     clean_ep = clean_ep[:117] + "..."
                 desc_parts.append(f"* **Q{idx+1}:** {clean_ep}")
 
-        reroll_title = "Re-rolled Windows 11 Icon Grid" if gen_data.get("is_ico") else "Re-rolled Generation"
+        reroll_title = "Re-rolled Generation"
         embed = discord.Embed(
             title=reroll_title,
             description="\n".join(desc_parts)
@@ -2753,162 +2692,6 @@ async def on_interaction(interaction: discord.Interaction):
                     await interaction.response.send_message(f"⭐ Saved prompt to your favorites (`/my_prompts`)!", ephemeral=True)
                 else:
                     await interaction.response.send_message("⚠️ Prompt not found.", ephemeral=True)
-        elif custom_id.startswith("lora_add:"):
-            parts = custom_id.split(":")
-            if len(parts) >= 3:
-                gen_id = parts[1]
-                quadrant = int(parts[2])
-                q_bytes = get_quadrant_bytes(gen_id, quadrant)
-                if not q_bytes:
-                    await interaction.response.send_message("❌ Could not retrieve quadrant image.", ephemeral=True)
-                    return
-                session = db.get_active_dataset_session(interaction.user.id)
-                if not session:
-                    await interaction.response.send_message("❌ No active LoRA dataset session found! Start one with `/lora-build start`.", ephemeral=True)
-                    return
-                session_id = session["session_id"]
-                img_id, img_path = lora_dataset.save_image_to_dataset(session_id, q_bytes)
-                all_imgs = db.get_dataset_images(session_id)
-                await interaction.response.send_message(
-                    f"✅ **Added Q{quadrant} to dataset session `{session['name']}`!**\n"
-                    f"📁 **Image #{img_id}** saved (1024x1024 PNG).\n"
-                    f"📊 Total images in session: **{len(all_imgs)}**\n"
-                    f"💡 *Tip: Run `/lora-build status` or click `📊 Dataset Status` to view.*",
-                    ephemeral=True
-                )
-        elif custom_id.startswith("lora_desc_add:"):
-            parts = custom_id.split(":")
-            if len(parts) >= 3:
-                gen_id = parts[1]
-                quadrant = int(parts[2])
-                q_bytes = get_quadrant_bytes(gen_id, quadrant)
-                if not q_bytes:
-                    await interaction.response.send_message("❌ Could not retrieve quadrant image.", ephemeral=True)
-                    return
-                session = db.get_active_dataset_session(interaction.user.id)
-                if not session:
-                    await interaction.response.send_message("❌ No active LoRA dataset session found! Start one with `/lora-build start`.", ephemeral=True)
-                    return
-                await interaction.response.defer(ephemeral=True)
-                session_id = session["session_id"]
-                img_id, img_path = lora_dataset.save_image_to_dataset(session_id, q_bytes)
-                caption = await lora_dataset.auto_caption_dataset_image(comfy_client, img_path, session["trigger_word"])
-                if caption:
-                    db.update_image_caption(img_id, caption)
-                    txt_path = os.path.splitext(img_path)[0] + ".txt"
-                    with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(caption)
-                all_imgs = db.get_dataset_images(session_id)
-                await interaction.followup.send(
-                    f"🏷️ **Described & Added Q{quadrant} to `{session['name']}`!**\n"
-                    f"📁 **Image #{img_id}** (Total: **{len(all_imgs)}** images)\n"
-                    f"📝 **Caption:**\n```{caption or 'No caption generated'}```",
-                    ephemeral=True
-                )
-        elif custom_id.startswith("lora_idea:"):
-            parts = custom_id.split(":")
-            session_id = parts[1] if len(parts) >= 2 else None
-            session = db.get_dataset_session(session_id) if session_id else db.get_active_dataset_session(interaction.user.id)
-            tw = session.get("trigger_word", "character") if session else "character"
-            random_shot = random.choice(lora_dataset.LORA_SHOT_MATRIX)
-            shot_name = random_shot["name"]
-            shot_prompt = random_shot["template"].format(trigger_word=tw)
-            await interaction.response.send_message(
-                f"💡 **Suggested Next Shot: {shot_name}**\n"
-                f"```{shot_prompt}```\n"
-                f"Copy this into `/lora-build generate prompt:` or `/imagine`!",
-                ephemeral=True
-            )
-        elif custom_id.startswith("lora_status:"):
-            parts = custom_id.split(":")
-            session_id = parts[1] if len(parts) >= 2 else None
-            session = db.get_dataset_session(session_id) if session_id else db.get_active_dataset_session(interaction.user.id)
-            if not session:
-                await interaction.response.send_message("❌ No active dataset session found. Start one with `/lora-build start`!", ephemeral=True)
-                return
-            images = db.get_dataset_images(session["session_id"])
-            captioned_count = sum(1 for img in images if img.get("caption"))
-            embed = discord.Embed(
-                title=f"🎨 LoRA Dataset Session: {session['name']}",
-                description=(
-                    f"**Session ID:** `{session['session_id']}`\n"
-                    f"**Trigger Word:** `{session['trigger_word']}`\n"
-                    f"**Total Images:** `{len(images)}` (Recommended: 15–30)\n"
-                    f"**Captions Generated:** `{captioned_count} / {len(images)}`\n"
-                    f"**Target Size:** `1024x1024` (SDXL Native)"
-                ),
-                color=discord.Color.blue()
-            )
-            view = LoraBuildStatusView(session["session_id"])
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        elif custom_id.startswith("lora_suggest:"):
-            parts = custom_id.split(":")
-            session_id = parts[1] if len(parts) >= 2 else None
-            session = db.get_dataset_session(session_id) if session_id else db.get_active_dataset_session(interaction.user.id)
-            if not session:
-                await interaction.response.send_message("❌ No active dataset session found.", ephemeral=True)
-                return
-            suggestions = lora_dataset.generate_suggested_prompts(session["session_id"], session["trigger_word"], count=5)
-            lines = []
-            for idx, s in enumerate(suggestions, 1):
-                lines.append(f"**Option {idx}:**\n```{s}```")
-            embed = discord.Embed(
-                title=f"💡 LoRA Shot Suggestions for `{session['name']}`",
-                description="\n".join(lines),
-                color=discord.Color.gold()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        elif custom_id.startswith("lora_describe_all:"):
-            parts = custom_id.split(":")
-            session_id = parts[1] if len(parts) >= 2 else None
-            session = db.get_dataset_session(session_id) if session_id else db.get_active_dataset_session(interaction.user.id)
-            if not session:
-                await interaction.response.send_message("❌ No active dataset session found.", ephemeral=True)
-                return
-            images = db.get_dataset_images(session["session_id"])
-            if not images:
-                await interaction.response.send_message("❌ No images in this dataset session to describe.", ephemeral=True)
-                return
-            await interaction.response.defer(ephemeral=False)
-            status_msg = await interaction.followup.send(f"⏳ Running Florence-2 auto-captioning on **{len(images)}** images in session `{session['name']}`... Please wait.")
-            
-            async def progress_cb(current, total):
-                try:
-                    await status_msg.edit(content=f"⏳ Running Florence-2: Captioning image **{current}/{total}**...")
-                except Exception:
-                    pass
-
-            stats = await lora_dataset.batch_caption_session(comfy_client, session["session_id"], session["trigger_word"], progress_callback=progress_cb)
-            await status_msg.edit(content=f"✅ **Florence-2 Captioning Complete!**\nDescribed **{stats['processed']}** images (Failed: {stats['failed']}). Trigger word `{session['trigger_word']}` injected into all `.txt` caption files.")
-        elif custom_id.startswith("lora_export:"):
-            parts = custom_id.split(":")
-            session_id = parts[1] if len(parts) >= 2 else None
-            session = db.get_dataset_session(session_id) if session_id else db.get_active_dataset_session(interaction.user.id)
-            if not session:
-                await interaction.response.send_message("❌ No active dataset session found.", ephemeral=True)
-                return
-            images = db.get_dataset_images(session["session_id"])
-            if not images:
-                await interaction.response.send_message("❌ No images in this dataset to export.", ephemeral=True)
-                return
-            await interaction.response.defer(ephemeral=False)
-            try:
-                zip_path, img_count = lora_dataset.export_dataset_zip(session["session_id"])
-                file = discord.File(zip_path, filename=os.path.basename(zip_path))
-                await interaction.followup.send(
-                    content=(
-                        f"📦 **SDXL Character LoRA Dataset Exported!**\n"
-                        f"👤 **Character:** `{session['name']}`\n"
-                        f"🏷️ **Trigger Word:** `{session['trigger_word']}`\n"
-                        f"🖼️ **Images Included:** `{img_count}` (1024x1024 PNG + TXT captions)\n"
-                        f"📁 **Folder Format:** `10_{session['trigger_word'].replace(' ', '_')}`\n\n"
-                        f"✨ Ready to train directly in Kohya_ss, OneTrainer, or Civitai!"
-                    ),
-                    file=file
-                )
-            except Exception as exp_err:
-                logger.error(f"Error exporting dataset: {exp_err}")
-                await interaction.followup.send(f"❌ Failed to export dataset ZIP: {exp_err}")
 
 
 @bot.event
@@ -2971,17 +2754,17 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 async def on_close():
     await comfy_client.stop()
 
-async def execute_imagine(interaction: discord.Interaction, prompt: str, negative_prompt: str = None, checkpoint: str = None, style_reference: discord.Attachment = None, magic_prompt: bool = False, favorite_style: str = None, semi_realism: str = None, aspect_ratio: str = None, ogarla: str = None, is_ico: bool = False, rounded_corners: bool = True, is_flux: bool = False, is_com: bool = False, is_sdxl_powerhouse: bool = False, guidance: float = 3.5, freeu: bool = True, smart: bool = False, enhancements: str = None, reference_image_url: str = None, reference_image_weight: float = None, original_post_url: str = None, is_lora_build: bool = False, lora_session_id: str = None, cref_image_name_override: str = None, is_face_detailer: bool = False, is_junji: bool = False):
+async def execute_imagine(interaction: discord.Interaction, prompt: str, negative_prompt: str = None, checkpoint: str = None, style_reference: discord.Attachment = None, magic_prompt: bool = False, favorite_style: str = None, semi_realism: str = None, aspect_ratio: str = None, ogarla: str = None, is_flux: bool = False, is_com: bool = False, is_sdxl_powerhouse: bool = False, guidance: float = 3.5, freeu: bool = True, smart: bool = False, enhancements: str = None, reference_image_url: str = None, reference_image_weight: float = None, original_post_url: str = None, cref_image_name_override: str = None, is_face_detailer: bool = False):
     if enhancements:
         enh_val = str(enhancements).lower()
         if "smart" in enh_val or enh_val == "all":
             smart = True
         if "magic" in enh_val or enh_val == "all":
             magic_prompt = True
+        if "powerhouse" in enh_val:
+            is_sdxl_powerhouse = True
         if "no_freeu" in enh_val or "disable_freeu" in enh_val:
             freeu = False
-        if "square" in enh_val or "no_curved" in enh_val:
-            rounded_corners = False
 
     if semi_realism:
         prompt = re.sub(r'\bSemi-realism(?:,\s*masterpiece,\s*best quality,\s*absurdres\.?)?,?\s*', '', prompt, flags=re.IGNORECASE).strip()
@@ -3457,18 +3240,13 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
             "cfg": cfg,
             "status": "pending",
             "timestamp": datetime.now().isoformat(),
-            "is_ico": is_ico,
-            "rounded_corners": rounded_corners,
             "is_flux": is_flux,
             "is_com": is_com,
             "is_sdxl_powerhouse": is_sdxl_powerhouse,
             "guidance": guidance,
             "freeu": freeu,
             "jump_url": original_post_url,
-            "is_lora_build": is_lora_build,
-            "lora_session_id": lora_session_id,
-            "is_face_detailer": is_face_detailer,
-            "is_junji": is_junji
+            "is_face_detailer": is_face_detailer
     }
     save_generations()
 
@@ -3532,19 +3310,8 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         sample_sec = t_breakdown.get("sampling_duration", 0.0)
         post_sec = t_breakdown.get("post_duration", 0.0)
 
-        # Detect command label (com vs sdxl vs junji vs ico vs flux vs imagine)
-        if is_ico:
-            cmd_label = "ico"
-        elif is_com:
-            cmd_label = "com"
-        elif is_sdxl_powerhouse:
-            cmd_label = "sdxl"
-        elif "junji" in str(prompt).lower() or "ito" in str(prompt).lower() or "scapes" in str(prompt).lower():
-            cmd_label = "junji"
-        elif is_flux:
+        if is_flux:
             cmd_label = "flux"
-        elif is_face_detailer:
-            cmd_label = "imagine_det"
         else:
             cmd_label = "imagine"
 
@@ -3559,7 +3326,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
             resolution=f"{width}x{height} (4x)",
             status="success",
             user_id=interaction.user.id if interaction and interaction.user else None,
-            metadata={"cfg": cfg, "is_flux": is_flux, "is_ico": is_ico, "is_com": is_com, "is_sdxl_powerhouse": is_sdxl_powerhouse, "is_face_detailer": is_face_detailer}
+            metadata={"cfg": cfg, "is_flux": is_flux, "is_com": is_com, "is_sdxl_powerhouse": is_sdxl_powerhouse, "is_face_detailer": is_face_detailer}
         )
 
         timing_data = {
@@ -3721,347 +3488,20 @@ async def imagine_favorite_prompt_autocomplete(interaction: discord.Interaction,
     return choices[:25]
 
 
-@bot.tree.command(name="imagine_det", description="✨ Generate a 2x2 grid of images with Face Detailer enabled (SDXL).")
+@bot.tree.command(name="flux", description="✨ Generate high quality AI images with Flux.1 (GGUF Flow-Matching)!")
 @app_commands.describe(
-    prompt="The prompt to generate images from (supports --smart, --magic, --ar, --seed, --s, --raw, --sref, --sr)", 
-    checkpoint="The checkpoint model to use",
-    enhancements="⚡ Enhancements preset (Turbo, Smart Art Director, Magic Prompt)",
-    aspect_ratio="Aspect ratio for generated images (--ar)",
-    semi_realism="Select Semi-realism LoRA strength (--sr weight)",
-    ogarla="Select Ogarla LoRA strength (--ogarla weight)",
-    favorite_style="Apply one of your saved favorite styles",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    style_reference="An image to use as style reference (--sref)"
-)
-@app_commands.choices(
-    checkpoint=SDXL_CHECKPOINT_CHOICES,
-    enhancements=SDXL_ENHANCEMENT_CHOICES,
-    semi_realism=[
-        app_commands.Choice(name="--sr.50", value="--sr.50"),
-        app_commands.Choice(name="--sr.60", value="--sr.60"),
-        app_commands.Choice(name="--sr.70", value="--sr.70"),
-        app_commands.Choice(name="--sr.80", value="--sr.80"),
-        app_commands.Choice(name="--sr.90", value="--sr.90"),
-    ],
-    aspect_ratio=[
-        app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
-        app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
-        app_commands.Choice(name="16:9.3 (Taskbar Fit - 1920x1032)", value="1920:1032"),
-        app_commands.Choice(name="10:7 (iPad)", value="10:7"),
-        app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
-        app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
-    ],
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-    ]
-)
-async def imagine_det(
-    interaction: discord.Interaction, 
-    prompt: str, 
-    checkpoint: str = None, 
-    enhancements: str = None,
-    aspect_ratio: str = None,
-    semi_realism: str = None,
-    ogarla: str = None,
-    favorite_style: str = None,
-    favorite_prompt: str = None,
-    style_reference: discord.Attachment = None
-):
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
-
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    # Defer response since generation takes time
-    await safe_defer(interaction, thinking=True)
-    await execute_imagine(
-        interaction, 
-        prompt, 
-        None, 
-        checkpoint, 
-        style_reference, 
-        favorite_style=favorite_style, 
-        semi_realism=semi_realism, 
-        aspect_ratio=aspect_ratio, 
-        ogarla=ogarla, 
-        enhancements=enhancements,
-        is_face_detailer=True
-    )
-
-imagine_det.autocomplete('favorite_style')(imagine_favorite_style_autocomplete)
-imagine_det.autocomplete('favorite_prompt')(imagine_favorite_prompt_autocomplete)
-
-
-@bot.tree.command(name="junji", description="🖤 Generate Junji Ito / Martine Johanna style horror art & dark fantasy landscapes!")
-@app_commands.describe(
-    prompt="Your scene, subjects, or concepts (prompt builder will weave into selected style)",
-    style="Curated master aesthetic preset",
-    checkpoint="The checkpoint model to use",
-    enhancements="⚡ Enhancements preset (Turbo, Smart Art Director, Magic Prompt)",
-    aspect_ratio="Canvas framing (--ar)",
-    semi_realism="Select Semi-realism LoRA strength (--sr weight)",
-    subject_type="Balance composition toward figures or surrounding scenery",
-    ogarla="Select Ogarla LoRA strength (--ogarla weight)",
-    favorite_style="Apply one of your saved favorite styles",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    style_reference="An image to use as style reference (--sref)"
-)
-@app_commands.choices(
-    checkpoint=SDXL_CHECKPOINT_CHOICES,
-    enhancements=SDXL_ENHANCEMENT_CHOICES,
-    style=[
-        app_commands.Choice(name="Junji Ito Manga (Pure Line Art)", value="junji_manga_pure"),
-        app_commands.Choice(name="Junji Ito Dark Horror (Deep Shadows)", value="junji_dark_horror"),
-        app_commands.Choice(name="Martine Johanna Vibrant (Chromatic)", value="martine_vibrant"),
-        app_commands.Choice(name="Martine Johanna Pastel (Melancholic)", value="martine_pastel"),
-        app_commands.Choice(name="Junji Ito + Martine Johanna Hybrid Blend", value="ito_johanna_fusion"),
-        app_commands.Choice(name="Dark Fantasy Landscape", value="dark_fantasy_landscape"),
-        app_commands.Choice(name="Cyberpunk Cityscape", value="cyberpunk_cityscape"),
-        app_commands.Choice(name="Ethereal Fine Art Portrait", value="ethereal_portrait"),
-    ],
-    aspect_ratio=[
-        app_commands.Choice(name="Ultrawide (21:9)", value="ultrawide"),
-        app_commands.Choice(name="Landscape (16:9)", value="landscape"),
-        app_commands.Choice(name="Taskbar Fit (16:9.3)", value="taskbar"),
-        app_commands.Choice(name="iPad (10:7)", value="ipad"),
-        app_commands.Choice(name="Portrait (3:5)", value="portrait_3_5"),
-        app_commands.Choice(name="Tall Portrait (9:16)", value="portrait"),
-    ],
-    semi_realism=[
-        app_commands.Choice(name="--sr.50", value="--sr.50"),
-        app_commands.Choice(name="--sr.60", value="--sr.60"),
-        app_commands.Choice(name="--sr.70", value="--sr.70"),
-        app_commands.Choice(name="--sr.80", value="--sr.80"),
-        app_commands.Choice(name="--sr.90", value="--sr.90"),
-    ],
-    subject_type=[
-        app_commands.Choice(name="Scenery / Environment Focus", value="scenery"),
-        app_commands.Choice(name="Character / Figure Focus", value="character"),
-    ],
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-        app_commands.Choice(name="--ogarla.90", value="--ogarla.90"),
-    ]
-)
-async def junji(
-    interaction: discord.Interaction,
-    prompt: str,
-    style: str,
-    checkpoint: str = None,
-    enhancements: str = None,
-    aspect_ratio: str = "landscape",
-    semi_realism: str = None,
-    subject_type: str = "scenery",
-    ogarla: str = None,
-    favorite_style: str = None,
-    favorite_prompt: str = None,
-    style_reference: discord.Attachment = None
-):
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
-
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    await safe_defer(interaction, thinking=True)
-    
-    sref_url = style_reference.url if style_reference else None
-    
-    scapes_info = build_scapes_prompt(
-        user_prompt=prompt,
-        style=style,
-        secondary_style=None,
-        mode=aspect_ratio,
-        subject_type=subject_type,
-        sref_url=sref_url
-    )
-    
-    enriched_prompt = scapes_info["final_prompt"]
-    logger.info(f"/junji command triggered by {interaction.user.name}: style='{scapes_info['style_name']}' prompt='{enriched_prompt}'")
-    
-    await execute_imagine(
-        interaction,
-        prompt=enriched_prompt,
-        negative_prompt=scapes_info["negative_additions"],
-        checkpoint=checkpoint,
-        style_reference=style_reference,
-        favorite_style=favorite_style,
-        semi_realism=semi_realism,
-        aspect_ratio=None,
-        ogarla=ogarla,
-        enhancements=enhancements,
-        is_junji=True
-    )
-
-junji.autocomplete('favorite_style')(imagine_favorite_style_autocomplete)
-junji.autocomplete('favorite_prompt')(imagine_favorite_prompt_autocomplete)
-
-
-
-@bot.tree.command(name="ico", description="🎨 Generate a 2x2 grid of Windows 11 icons (.ico) or convert an image to .ico")
-@app_commands.describe(
-    prompt="Prompt to generate icons from (optional if image attached)",
-    image="Upload an existing image file to convert directly to .ico",
-    checkpoint="The checkpoint model to use",
-    enhancements="⚡ Icon enhancements preset (Turbo, Square Corners, Magic Prompt)",
-    semi_realism="Select Semi-realism LoRA strength (--sr weight)",
-    ogarla="Select Ogarla LoRA strength (--ogarla weight)",
-    favorite_style="Apply one of your saved favorite styles",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    style_reference="An image to use as style reference (--sref)",
-    negative_prompt="Negative prompt parameters"
-)
-@app_commands.choices(
-    checkpoint=SDXL_CHECKPOINT_CHOICES,
-    enhancements=ICO_ENHANCEMENT_CHOICES,
-    semi_realism=[
-        app_commands.Choice(name="--sr.50", value="--sr.50"),
-        app_commands.Choice(name="--sr.60", value="--sr.60"),
-        app_commands.Choice(name="--sr.70", value="--sr.70"),
-        app_commands.Choice(name="--sr.80", value="--sr.80"),
-        app_commands.Choice(name="--sr.90", value="--sr.90"),
-    ],
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-    ]
-)
-async def ico_command(
-    interaction: discord.Interaction, 
-    prompt: str = None, 
-    image: discord.Attachment = None,
-    checkpoint: str = None, 
-    enhancements: str = None,
-    semi_realism: str = None,
-    ogarla: str = None,
-    favorite_style: str = None,
-    favorite_prompt: str = None,
-    style_reference: discord.Attachment = None, 
-    negative_prompt: str = None
-):
-    if image is not None:
-        await safe_defer(interaction, thinking=True)
-        try:
-            raw_bytes = await image.read()
-            rounded = not (enhancements and "square" in str(enhancements).lower())
-            png_bytes, ico_bytes = convert_image_to_ico(raw_bytes, rounded_corners=rounded)
-            if not png_bytes or not ico_bytes:
-                await send_error_fallback(interaction, "Failed to process attached image into an icon.")
-                return
-
-            seed = random.randint(100000, 999999)
-            ico_filename = format_image_filename("converted_icon", seed, "ico")
-            png_filename = format_image_filename("converted_icon", seed, "png")
-            save_ico_file(ico_bytes, ico_filename)
-
-            png_file = discord.File(fp=io.BytesIO(png_bytes), filename=png_filename)
-            ico_file = discord.File(fp=io.BytesIO(ico_bytes), filename=ico_filename)
-
-            embed = discord.Embed(
-                title="Windows 11 Icon Conversion Complete",
-                description=f"**Source File:** `{image.filename}`\n**Resolution:** 1024x1024 (7 ICO Layers: 16x16 → 256x256)\n**Curved Edges:** {'✅ Enabled' if rounded else '❌ Square'}"
-            )
-            embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id})")
-            await send_followup_fallback(interaction, content=f"**Converted Icon:** `{image.filename}`", embed=embed, files=[png_file, ico_file])
-            return
-        except Exception as e:
-            logger.error(f"Error converting attached image to ICO: {e}")
-            await send_error_fallback(interaction, f"An error occurred while converting the image to ICO: {e}")
-            return
-
-    if not prompt:
-        await safe_defer(interaction, ephemeral=True)
-        await interaction.followup.send("Please provide either a `prompt` to generate a new icon grid or attach an `image` to convert!", ephemeral=True)
-        return
-
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
-
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    await safe_defer(interaction, thinking=True)
-    await execute_imagine(
-        interaction,
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        checkpoint=checkpoint,
-        style_reference=style_reference,
-        favorite_style=favorite_style,
-        semi_realism=semi_realism,
-        aspect_ratio="1:1",
-        ogarla=ogarla,
-        is_ico=True,
-        enhancements=enhancements
-    )
-
-@bot.tree.command(name="flux", description="✨ Generate high quality AI images with Flux1-Dev!")
-@app_commands.describe(
-    prompt="The prompt to generate Flux images from",
+    prompt="The prompt to generate Flux images from (supports wildcards {a|b|c}, --smart, --magic, etc.)",
+    model_type="Community Flow-Matching UNET (GGUF Quantized for 8GB VRAM)",
+    guidance="Flux Guidance scale (1.0 - 10.0, default 3.5)",
     ogarla="Select Ogarla Flux LoRA strength (--ogarla weight)",
     aspect_ratio="Aspect ratio for generated images (--ar)",
     favorite_prompt="Apply one of your saved favorite prompts",
     magic_prompt="Enable Magic Prompt enhancer (--magic / --mp)",
-    smart="Enable Smart Art Director (Subject-harmonized 12B Magic Prompt)"
+    smart="Enable Smart Art Director (Subject-harmonized 12B Magic Prompt)",
+    seed="Optional fixed seed for reproducibility"
 )
 @app_commands.choices(
+    model_type=FLUX_CHECKPOINT_CHOICES,
     ogarla=[
         app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
         app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
@@ -4080,95 +3520,13 @@ async def ico_command(
 async def flux_command(
     interaction: discord.Interaction, 
     prompt: str, 
+    model_type: str = "flux1-dev-Q4_K_S.gguf",
+    guidance: float = 3.5,
     ogarla: str = None,
     aspect_ratio: str = None,
     favorite_prompt: str = None,
     magic_prompt: bool = False,
-    smart: bool = False
-):
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
-
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    await safe_defer(interaction, thinking=True)
-    await execute_imagine(
-        interaction,
-        prompt=prompt,
-        negative_prompt=None,
-        checkpoint="flux1-dev-Q4_K_S.gguf",
-        style_reference=None,
-        magic_prompt=magic_prompt,
-        favorite_style=None,
-        semi_realism=None,
-        aspect_ratio=aspect_ratio,
-        ogarla=ogarla,
-        is_flux=True,
-        smart=smart
-    )
-
-flux_command.autocomplete('favorite_prompt')(imagine_favorite_prompt_autocomplete)
-
-@bot.tree.command(name="com", description="🚀 Community Popular: 12B Flow-Matching (Flux.1 GGUF) with Guidance control on 8GB VRAM!")
-@app_commands.describe(
-    prompt="Text prompt to generate (supports wildcards {a|b|c}, --smart, --magic, etc.)",
-    model_type="Community Flow-Matching UNET (GGUF Quantized for 8GB VRAM)",
-    guidance="Flux Guidance scale (1.0 - 10.0, default 3.5)",
-    ogarla="Select Ogarla Flux LoRA strength (--ogarla weight)",
-    enhancements="🧠 Enhancements preset (Smart Art Director, Magic Prompt)",
-    aspect_ratio="Image canvas shape (--ar)",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    seed="Optional fixed seed for reproducibility"
-)
-@app_commands.choices(
-    model_type=[
-        app_commands.Choice(name="Flux.1 Dev GGUF Q4 (General Masterpiece - Recommended)", value="flux1-dev-Q4_K_S.gguf"),
-        app_commands.Choice(name="Flux.1 Schnell GGUF Q4 (4-Step Turbo / Instant)", value="flux1-schnell-Q4_K_S.gguf"),
-        app_commands.Choice(name="FluxedUp NSFW GGUF Q4 (Community Fine-Tune)", value="fluxedUpFluxNSFW_71Q4GGUF.gguf"),
-    ],
-    enhancements=FLUX_ENHANCEMENT_CHOICES,
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-        app_commands.Choice(name="--ogarla.90", value="--ogarla.90"),
-    ],
-    aspect_ratio=[
-        app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
-        app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
-        app_commands.Choice(name="16:9.3 (Taskbar Fit - 1920x1032)", value="1920:1032"),
-        app_commands.Choice(name="10:7 (iPad)", value="10:7"),
-        app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
-        app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
-    ]
-)
-async def com_command(
-    interaction: discord.Interaction, 
-    prompt: str, 
-    model_type: str = "flux1-dev-Q4_K_S.gguf",
-    guidance: float = 3.5,
-    ogarla: str = None,
-    enhancements: str = None,
-    aspect_ratio: str = None,
-    favorite_prompt: str = None,
+    smart: bool = False,
     seed: int = None
 ):
     if favorite_prompt:
@@ -4204,124 +3562,29 @@ async def com_command(
         negative_prompt=None,
         checkpoint=model_type,
         style_reference=None,
+        magic_prompt=magic_prompt,
+        favorite_style=None,
+        semi_realism=None,
         aspect_ratio=aspect_ratio,
         ogarla=ogarla,
         is_flux=True,
         is_com=True,
         guidance=guidance,
-        enhancements=enhancements
+        smart=smart
     )
 
-com_command.autocomplete('favorite_prompt')(imagine_favorite_prompt_autocomplete)
 
+# =========================================================================
+# /prompt Command Group (Favorite Saved Prompts)
+# =========================================================================
 
-@bot.tree.command(name="sdxl", description="⚡ 2-Stage Powerhouse SDXL: FreeU V2 + Base Latent + 1.35x Latent Upscale Refiner for 8GB VRAM!")
-@app_commands.describe(
-    prompt="Text prompt to generate (supports wildcards {a|b|c}, --smart, --magic, etc.)",
-    checkpoint="SDXL Checkpoint model (default: Wai Illustrious SDXL v1.70)",
-    enhancements="⚡ Enhancements preset (Turbo, Smart Art Director, Magic Prompt, FreeU)",
-    aspect_ratio="Image canvas shape (--ar)",
-    semi_realism="Semi-Realism LoRA weight preset",
-    ogarla="Ogarla Character LoRA weight preset",
-    favorite_style="Saved --sref style code from your library",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    seed="Optional fixed seed for reproducibility"
-)
-@app_commands.choices(
-    checkpoint=SDXL_CHECKPOINT_CHOICES,
-    enhancements=SDXL_ENHANCEMENT_CHOICES,
-    semi_realism=[
-        app_commands.Choice(name="✨ Semi-Realism (.60 - Light)", value="sr.60"),
-        app_commands.Choice(name="✨ Semi-Realism (.70 - Medium)", value="sr.70"),
-        app_commands.Choice(name="✨ Semi-Realism (.80 - High)", value="sr.80"),
-        app_commands.Choice(name="✨ Semi-Realism (.90 - Maximum)", value="sr.90"),
-    ],
-    ogarla=[
-        app_commands.Choice(name="🌿 Ogarla (.60 - Light)", value="ogarla.60"),
-        app_commands.Choice(name="🌿 Ogarla (.70 - Medium)", value="ogarla.70"),
-        app_commands.Choice(name="🌿 Ogarla (.80 - High)", value="ogarla.80"),
-        app_commands.Choice(name="🌿 Ogarla (.90 - Maximum)", value="ogarla.90"),
-    ],
-    aspect_ratio=[
-        app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
-        app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
-        app_commands.Choice(name="16:9.3 (Taskbar Fit - 1920x1032)", value="1920:1032"),
-        app_commands.Choice(name="10:7 (iPad)", value="10:7"),
-        app_commands.Choice(name="1:1 (Square)", value="1:1"),
-        app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
-        app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
-    ]
-)
-async def sdxl_command(
-    interaction: discord.Interaction, 
-    prompt: str, 
-    checkpoint: str = "waiIllustriousSDXL_v170.safetensors",
-    enhancements: str = None,
-    aspect_ratio: str = None,
-    semi_realism: str = None,
-    ogarla: str = None,
-    favorite_style: str = None,
-    favorite_prompt: str = None,
-    seed: int = None
-):
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
+prompt_group = app_commands.Group(name="prompt", description="Manage your saved favorite prompts")
 
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    if seed is not None:
-        prompt = f"{prompt} --seed {seed}"
-
-    await safe_defer(interaction, thinking=True)
-    await execute_imagine(
-        interaction,
-        prompt=prompt,
-        negative_prompt=None,
-        checkpoint=checkpoint,
-        style_reference=None,
-        favorite_style=favorite_style,
-        semi_realism=semi_realism,
-        aspect_ratio=aspect_ratio,
-        ogarla=ogarla,
-        is_sdxl_powerhouse=True,
-        enhancements=enhancements
-    )
-
-sdxl_command.autocomplete('favorite_prompt')(imagine_favorite_prompt_autocomplete)
-sdxl_command.autocomplete('favorite_style')(imagine_favorite_style_autocomplete)
-
-@bot.tree.command(name="save_prompt", description="Save a custom prompt to your favorite prompts.")
-@app_commands.describe(
-    name="Short nickname/label for this prompt",
-    prompt="The prompt text to save"
-)
-async def save_prompt_command(interaction: discord.Interaction, name: str, prompt: str):
-    db.add_favorite_prompt(interaction.user.id, name, prompt)
-    await interaction.response.send_message(f"⭐ Saved prompt **\"{name}\"** to your favorites!", ephemeral=True)
-
-@bot.tree.command(name="my_prompts", description="View and manage your saved favorite prompts.")
-async def my_prompts_command(interaction: discord.Interaction):
+@prompt_group.command(name="list", description="View and manage your saved favorite prompts.")
+async def prompt_list(interaction: discord.Interaction):
     prompts = db.get_favorite_prompts(interaction.user.id)
     if not prompts:
-        await interaction.response.send_message("You have no saved favorite prompts yet! Click **⭐ Favorite Prompt** on any generation or use `/save_prompt`.", ephemeral=True)
+        await interaction.response.send_message("You have no saved favorite prompts yet! Click **⭐ Favorite Prompt** on any generation or use `/prompt save`.", ephemeral=True)
         return
         
     async def prompt_imagine_callback(inter: discord.Interaction, prompt_text: str):
@@ -4330,9 +3593,18 @@ async def my_prompts_command(interaction: discord.Interaction):
     view = PromptPaginationView(interaction.user.id, prompts, per_page=5, imagine_callback=prompt_imagine_callback)
     await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
 
-@bot.tree.command(name="edit_prompt", description="Edit a saved favorite prompt's name or text.")
-@app_commands.describe(prompt_id="The ID of the prompt to edit (check /my_prompts)")
-async def edit_prompt_command(interaction: discord.Interaction, prompt_id: int):
+@prompt_group.command(name="save", description="Save a custom prompt to your favorite prompts.")
+@app_commands.describe(
+    name="Short nickname/label for this prompt",
+    prompt="The prompt text to save"
+)
+async def prompt_save(interaction: discord.Interaction, name: str, prompt: str):
+    db.add_favorite_prompt(interaction.user.id, name, prompt)
+    await interaction.response.send_message(f"⭐ Saved prompt **\"{name}\"** to your favorites (`/prompt list`)!", ephemeral=True)
+
+@prompt_group.command(name="edit", description="Edit a saved favorite prompt's name or text.")
+@app_commands.describe(prompt_id="The ID of the prompt to edit (check /prompt list)")
+async def prompt_edit(interaction: discord.Interaction, prompt_id: int):
     prompts = db.get_favorite_prompts(interaction.user.id)
     selected = next((p for p in prompts if p["id"] == prompt_id), None)
     if not selected:
@@ -4342,8 +3614,8 @@ async def edit_prompt_command(interaction: discord.Interaction, prompt_id: int):
     modal = EditPromptModal(interaction.user.id, selected)
     await interaction.response.send_modal(modal)
 
-@edit_prompt_command.autocomplete('prompt_id')
-async def edit_prompt_autocomplete(interaction: discord.Interaction, current: str):
+@prompt_edit.autocomplete('prompt_id')
+async def prompt_edit_autocomplete(interaction: discord.Interaction, current: str):
     prompts = db.get_favorite_prompts(interaction.user.id)
     choices = []
     for p in prompts:
@@ -4352,14 +3624,14 @@ async def edit_prompt_autocomplete(interaction: discord.Interaction, current: st
             choices.append(app_commands.Choice(name=label[:100], value=p['id']))
     return choices[:25]
 
-@bot.tree.command(name="delete_prompt", description="Delete a saved prompt from your favorites.")
-@app_commands.describe(prompt_id="The ID of the prompt to delete (check /my_prompts)")
-async def delete_prompt_command(interaction: discord.Interaction, prompt_id: int):
+@prompt_group.command(name="delete", description="Delete a saved prompt from your favorites.")
+@app_commands.describe(prompt_id="The ID of the prompt to delete (check /prompt list)")
+async def prompt_delete(interaction: discord.Interaction, prompt_id: int):
     db.remove_favorite_prompt(interaction.user.id, prompt_id)
     await interaction.response.send_message(f"🗑️ Deleted prompt ID **{prompt_id}** from your favorites.", ephemeral=True)
 
-@delete_prompt_command.autocomplete('prompt_id')
-async def delete_prompt_autocomplete(interaction: discord.Interaction, current: str):
+@prompt_delete.autocomplete('prompt_id')
+async def prompt_delete_autocomplete(interaction: discord.Interaction, current: str):
     prompts = db.get_favorite_prompts(interaction.user.id)
     choices = []
     for p in prompts:
@@ -4367,6 +3639,9 @@ async def delete_prompt_autocomplete(interaction: discord.Interaction, current: 
         if current.lower() in label.lower():
             choices.append(app_commands.Choice(name=label[:100], value=p['id']))
     return choices[:25]
+
+bot.tree.add_command(prompt_group)
+
 
 
 @bot.tree.command(name="upscale", description="Upscale an uploaded image to 1920px (long side).")
@@ -5131,158 +4406,6 @@ async def ltx_command(interaction: discord.Interaction, image: discord.Attachmen
         await send_error_fallback(interaction, f"An error occurred during LTX video generation: {e}")
 
 
-@bot.tree.command(name="hunyuan", description="Generate high-fidelity video animation using HunyuanVideo (optimized for 8GB VRAM).")
-@app_commands.describe(
-    image="The source image file you want to animate",
-    prompt="Text prompt describing the desired video motion or action",
-    motion_strength="Motion intensity (1 to 10, default 7)",
-    seed="Optional seed for generation reproducibility"
-)
-async def hunyuan_command(interaction: discord.Interaction, image: discord.Attachment, prompt: str, motion_strength: int = 7, seed: int = None):
-    """Generate video animation using HunyuanVideo GGUF."""
-    await safe_defer(interaction, thinking=True)
-
-    if not image.content_type or not image.content_type.startswith("image/"):
-        await interaction.followup.send("Please upload a valid image file (PNG/JPG/WEBP).")
-        return
-
-    try:
-        image_bytes = await image.read()
-        with Image.open(io.BytesIO(image_bytes)) as img:
-            orig_w, orig_h = img.size
-
-        width, height = calculate_wan_dimensions(orig_w, orig_h, target_area=393216)
-
-        upload_result = await comfy_client.upload_image(image_bytes, image.filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            await interaction.followup.send("Failed to upload the image to ComfyUI server.")
-            return
-
-        workflow_path = "workflows/hunyuan_i2v.json"
-        try:
-            with open(workflow_path, "r", encoding="utf-8") as f:
-                workflow = json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading Hunyuan workflow template: {e}")
-            await interaction.followup.send("Failed to load HunyuanVideo workflow template.")
-            return
-
-        video_seed = seed if seed is not None else random.randint(1, 1125899906842624)
-        denoise_val = max(0.5, min(1.0, motion_strength / 10.0))
-
-        if "1" in workflow:
-            workflow["1"]["inputs"]["image"] = uploaded_name
-        if "6" in workflow:
-            workflow["6"]["inputs"]["text"] = prompt
-        if "7" in workflow:
-            workflow["7"]["inputs"]["text"] = DEFAULT_NEGATIVE_PROMPT
-        if "3" in workflow:
-            workflow["3"]["inputs"]["seed"] = video_seed
-            workflow["3"]["inputs"]["denoise"] = denoise_val
-
-        last_update_time = [0]
-        status_msg = [None]
-
-        async def on_hunyuan_progress(val, max_val):
-            percent = min(100, int((val / max_val) * 100)) if max_val > 0 else 0
-            presence_str = f"🎥 Hunyuan: {percent}% (Step {val}/{max_val})"
-            asyncio.create_task(update_bot_presence(presence_str))
-
-            now = asyncio.get_event_loop().time()
-            if now - last_update_time[0] >= 1.2 or val == max_val:
-                last_update_time[0] = now
-                bar = create_progress_bar(val, max_val)
-                prog_embed = discord.Embed(
-                    title="🎥 Generating HunyuanVideo...",
-                    description=(
-                        f"**Motion Prompt:** {prompt}\n"
-                        f"**Progress:** {bar}\n"
-                        f"**Motion Strength:** {motion_strength}/10\n"
-                        f"**Resolution:** {width}x{height}"
-                    ),
-                    color=discord.Color.purple()
-                )
-                try:
-                    if status_msg[0] is None:
-                        status_msg[0] = await send_followup_fallback(interaction, embed=prog_embed)
-                    else:
-                        await status_msg[0].edit(embed=prog_embed)
-                except Exception:
-                    pass
-
-        start_time = time.perf_counter()
-        try:
-            outputs = await comfy_client.generate(workflow, timeout=3600, progress_callback=on_hunyuan_progress)
-            elapsed_time = time.perf_counter() - start_time
-            t_breakdown = comfy_client.get_execution_timing()
-            init_sec = t_breakdown.get("init_duration", 0.0)
-            sample_sec = t_breakdown.get("sampling_duration", 0.0)
-            post_sec = t_breakdown.get("post_duration", 0.0)
-
-            db.record_generation_metric(
-                command="hunyuan",
-                duration_seconds=elapsed_time,
-                init_seconds=init_sec,
-                sampling_seconds=sample_sec,
-                post_seconds=post_sec,
-                model_name="hunyuanvideo_Q3_K_M",
-                steps=20,
-                resolution=f"{width}x{height}",
-                status="success",
-                user_id=interaction.user.id if interaction.user else None,
-                metadata={"motion_strength": motion_strength}
-            )
-        except Exception as e:
-            elapsed_time = time.perf_counter() - start_time
-            t_breakdown = comfy_client.get_execution_timing()
-            db.record_generation_metric(
-                command="hunyuan",
-                duration_seconds=elapsed_time,
-                init_seconds=t_breakdown.get("init_duration", 0.0),
-                sampling_seconds=t_breakdown.get("sampling_duration", 0.0),
-                post_seconds=t_breakdown.get("post_duration", 0.0),
-                model_name="hunyuanvideo_Q3_K_M",
-                steps=20,
-                resolution=f"{width}x{height}",
-                status="error",
-                error_message=str(e),
-                user_id=interaction.user.id if interaction.user else None
-            )
-            raise
-        finally:
-            await update_bot_presence(None)
-            if status_msg[0]:
-                try:
-                    await status_msg[0].delete()
-                except Exception:
-                    pass
-
-        if not outputs or not isinstance(outputs, list):
-            await send_followup_fallback(interaction, content="ComfyUI did not return any video output.")
-            return
-
-        video_bytes = outputs[0]
-        video_file_io = io.BytesIO(video_bytes)
-        file = discord.File(fp=video_file_io, filename=format_image_filename("hunyuan_video", video_seed, "mp4"))
-
-        embed = discord.Embed(
-            title="🎥 HunyuanVideo Generation Complete",
-            description=(
-                f"**Motion Prompt:** {prompt}\n"
-                f"**Render Time:** `{elapsed_time:.1f}s` (Init: `{init_sec:.1f}s` | Sample: `{sample_sec:.1f}s` | Post: `{post_sec:.1f}s`)\n"
-                f"**Motion Strength:** {motion_strength}/10 (Denoise: {denoise_val:.2f})\n"
-                f"**Scaled Size:** {width}x{height}\n"
-                f"**Seed:** {video_seed}"
-            ),
-            color=discord.Color.purple()
-        )
-        embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id}) • Rendered in {elapsed_time:.1f}s")
-        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-        await send_followup_fallback(interaction, content=tag, embed=embed, file=file)
-    except Exception as e:
-        logger.error(f"Error executing Hunyuan video command: {e}")
-        await send_error_fallback(interaction, f"An error occurred during Hunyuan video generation: {e}")
 
 
 @bot.tree.command(name="diagnostics", description="View bot generation metrics, speed benchmarks, and troubleshooting data.")
@@ -6891,330 +6014,6 @@ async def style_batch(interaction: discord.Interaction, prompt: str, count: int 
 bot.tree.add_command(style_group)
 
 
-# =========================================================================
-# /lora-build Slash Command Suite (SDXL Character LoRA Dataset Creator)
-# =========================================================================
-
-lora_build_group = app_commands.Group(name="lora-build", description="🎨 Build SDXL Character LoRA datasets from reference images")
-
-@lora_build_group.command(name="start", description="Start a new character LoRA dataset session with a seed image.")
-@app_commands.describe(
-    image="Initial reference image (e.g. your Palworld character screenshot)",
-    character_name="Name of your character (e.g. 'Palworld Adventurer')",
-    trigger_word="Unique trigger token for LoRA training (e.g. 'ohwx palchar', 'sks character')"
-)
-async def lora_start(interaction: discord.Interaction, image: discord.Attachment, character_name: str, trigger_word: str):
-    await safe_defer(interaction, thinking=True)
-    if not image.content_type or not image.content_type.startswith("image/"):
-        await interaction.followup.send("❌ Please upload a valid image file (PNG/JPG).", ephemeral=True)
-        return
-
-    session_id = f"lora_{interaction.user.id}_{int(datetime.now().timestamp())}"
-    clean_tw = trigger_word.strip()
-    clean_name = character_name.strip()
-
-    # Create session in DB
-    db.create_dataset_session(session_id, interaction.user.id, clean_name, clean_tw)
-
-    # Download & save seed image as image #1
-    img_bytes = await image.read()
-    img_id, img_path = lora_dataset.save_image_to_dataset(session_id, img_bytes, caption=f"{clean_tw}, seed reference image")
-
-    embed = discord.Embed(
-        title="🚀 Character LoRA Dataset Session Started!",
-        description=(
-            f"👤 **Character:** `{clean_name}`\n"
-            f"🏷️ **Trigger Word:** `{clean_tw}`\n"
-            f"🆔 **Session ID:** `{session_id}`\n\n"
-            f"✅ **Seed Image #1 Added** (Cropped to 1024x1024).\n\n"
-            f"**Next Steps:**\n"
-            f"1. Use `/lora-build generate` or click **`💡 Suggest Prompts`** to build diverse variations.\n"
-            f"2. Use **`➕ Add Q1..Q4`** buttons on generated grids to add good shots to your dataset.\n"
-            f"3. Run `/lora-build describe` with Florence-2 to auto-caption all images.\n"
-            f"4. Run `/lora-build export` when you have 15–30 images to download your training ZIP!"
-        ),
-        color=discord.Color.green()
-    )
-    view = LoraBuildStatusView(session_id)
-    await interaction.followup.send(embed=embed, view=view)
-
-
-@lora_build_group.command(name="generate", description="Generate 4 new variations using session references & shot matrix ideas.")
-@app_commands.describe(
-    prompt="Custom prompt (leave blank to use preset shot idea)",
-    preset="Choose a curated LoRA shot matrix preset (e.g. Studio Close-Up, Combat Action, Golden Hour)",
-    reference_weight="Identity reference strength (default: 0.60 Medium Reference)",
-    checkpoint="SDXL Checkpoint model (default: Wai Illustrious SDXL v1.70)"
-)
-@app_commands.choices(
-    preset=[
-        app_commands.Choice(name="📸 Studio Face Portrait", value="📸 Studio Face Portrait"),
-        app_commands.Choice(name="😊 Cheerful Smiling Bust", value="😊 Cheerful Smiling Bust"),
-        app_commands.Choice(name="⚔️ Dynamic Combat Action", value="⚔️ Dynamic Combat Action"),
-        app_commands.Choice(name="🌲 Palworld Lush Wilderness", value="🌲 Palworld Lush Wilderness"),
-        app_commands.Choice(name="🌅 Golden Hour Side Profile", value="🌅 Golden Hour Side Profile"),
-        app_commands.Choice(name="⛺ Night Campfire Glow", value="⛺ Night Campfire Glow"),
-        app_commands.Choice(name="👑 Heroic 3/4 Turn", value="👑 Heroic 3/4 Turn"),
-        app_commands.Choice(name="🌧️ Moody Rain & Fog", value="🌧️ Moody Rain & Fog"),
-        app_commands.Choice(name="👀 Over-The-Shoulder View", value="👀 Over-The-Shoulder View"),
-        app_commands.Choice(name="🏛️ Ancient Stone Ruins", value="🏛️ Ancient Stone Ruins"),
-        app_commands.Choice(name="✨ Cozy Indoor Room", value="✨ Cozy Indoor Room"),
-        app_commands.Choice(name="⚡ Low-Angle Power Stance", value="⚡ Low-Angle Power Stance"),
-    ],
-    reference_weight=[
-        app_commands.Choice(name="0.20 (Subtle Reference)", value=0.20),
-        app_commands.Choice(name="0.40 (Light Reference)", value=0.40),
-        app_commands.Choice(name="0.60 (Medium Reference)", value=0.60),
-        app_commands.Choice(name="0.80 (Strong Reference)", value=0.80),
-    ],
-    checkpoint=SDXL_CHECKPOINT_CHOICES
-)
-async def lora_generate(
-    interaction: discord.Interaction,
-    prompt: str = None,
-    preset: str = None,
-    reference_weight: float = 0.60,
-    checkpoint: str = "waiIllustriousSDXL_v170.safetensors"
-):
-    await safe_defer(interaction, thinking=True)
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    tw = session["trigger_word"]
-    selected_ckpt = checkpoint or COMFYUI_CHECKPOINT or "waiIllustriousSDXL_v170.safetensors"
-
-    # Determine prompt (automatically anime Danbooru-tailored for Wai Illustrious vs photo for realistic models)
-    presets_map = lora_dataset.get_preset_shot_prompts(tw, selected_ckpt)
-    if preset and preset in presets_map:
-        base_prompt = presets_map[preset]
-        if prompt:
-            final_prompt = f"{prompt.strip()}, {base_prompt}"
-        else:
-            final_prompt = base_prompt
-    elif prompt:
-        p_clean = prompt.strip()
-        if tw.lower() not in p_clean.lower():
-            final_prompt = f"{tw}, {p_clean}"
-        else:
-            final_prompt = p_clean
-    else:
-        is_anime = lora_dataset.is_anime_checkpoint(selected_ckpt)
-        matrix = lora_dataset.LORA_SHOT_MATRIX_ANIME if is_anime else lora_dataset.LORA_SHOT_MATRIX_REALISTIC
-        rand_shot = random.choice(matrix)
-        final_prompt = rand_shot["template"].format(trigger_word=tw)
-
-    # Get latest reference image from session
-    images = db.get_dataset_images(session_id)
-    if not images:
-        await interaction.followup.send("❌ Your dataset session has no reference images. Add one using `/lora-build add`.", ephemeral=True)
-        return
-
-    ref_img_path = images[-1]["image_path"]
-    if not os.path.exists(ref_img_path) and len(images) > 1:
-        ref_img_path = images[0]["image_path"]
-
-    # Upload reference image to ComfyUI
-    try:
-        with open(ref_img_path, "rb") as f:
-            ref_bytes = f.read()
-        upload_res = await comfy_client.upload_image(ref_bytes, f"lora_ref_{os.path.basename(ref_img_path)}")
-        uploaded_ref_name = upload_res.get("name")
-    except Exception as e:
-        logger.error(f"Error uploading LoRA reference image: {e}")
-        uploaded_ref_name = None
-
-    # Trigger generation
-    rw = max(0.2, min(1.0, reference_weight))
-    selected_ckpt = checkpoint or COMFYUI_CHECKPOINT or "waiIllustriousSDXL_v170.safetensors"
-    
-    await execute_imagine(
-        interaction,
-        prompt=f"{final_prompt} --cref-weight {rw}",
-        checkpoint=selected_ckpt,
-        aspect_ratio="1:1",
-        reference_image_url=None,
-        is_lora_build=True,
-        lora_session_id=session_id,
-        cref_image_name_override=uploaded_ref_name
-    )
-
-
-@lora_build_group.command(name="add", description="Add an additional reference image to your active dataset session.")
-@app_commands.describe(
-    image="Image file to add (will be center-cropped to 1024x1024)",
-    caption="Optional initial caption for this image"
-)
-async def lora_add(interaction: discord.Interaction, image: discord.Attachment, caption: str = None):
-    await safe_defer(interaction, thinking=True)
-    if not image.content_type or not image.content_type.startswith("image/"):
-        await interaction.followup.send("❌ Please upload a valid image file (PNG/JPG).", ephemeral=True)
-        return
-
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    tw = session["trigger_word"]
-    img_bytes = await image.read()
-    
-    cap = caption.strip() if caption else f"{tw}, character photo"
-    img_id, img_path = lora_dataset.save_image_to_dataset(session_id, img_bytes, caption=cap)
-    all_imgs = db.get_dataset_images(session_id)
-
-    await interaction.followup.send(
-        f"✅ **Added image to dataset session `{session['name']}`!**\n"
-        f"📁 **Image #{img_id}** saved (1024x1024 PNG).\n"
-        f"📊 Total images in session: **{len(all_imgs)}**"
-    )
-
-
-@lora_build_group.command(name="suggest", description="Get 5 tailored prompt & shot ideas for character LoRA dataset building.")
-@app_commands.describe(count="Number of suggestions to generate (default 5)")
-async def lora_suggest(interaction: discord.Interaction, count: int = 5):
-    await safe_defer(interaction, thinking=True, ephemeral=True)
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    tw = session["trigger_word"]
-    num = max(1, min(10, count))
-
-    suggestions = lora_dataset.generate_suggested_prompts(session_id, tw, count=num)
-    lines = []
-    for idx, s in enumerate(suggestions, 1):
-        lines.append(f"**Shot {idx}:**\n```{s}```")
-
-    embed = discord.Embed(
-        title=f"💡 LoRA Shot Suggestions for `{session['name']}`",
-        description="\n".join(lines),
-        color=discord.Color.gold()
-    )
-    embed.set_footer(text="Use these prompts in /lora-build generate or /imagine")
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-@lora_build_group.command(name="describe", description="Auto-describe all images in your dataset session using Florence-2.")
-async def lora_describe(interaction: discord.Interaction):
-    await safe_defer(interaction, thinking=True)
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    images = db.get_dataset_images(session_id)
-    if not images:
-        await interaction.followup.send("❌ No images in this dataset session to describe.", ephemeral=True)
-        return
-
-    status_msg = await interaction.followup.send(f"⏳ Running Florence-2 auto-captioning on **{len(images)}** images in session `{session['name']}`... Please wait.")
-
-    async def progress_cb(current, total):
-        try:
-            await status_msg.edit(content=f"⏳ Running Florence-2: Captioning image **{current}/{total}** in `{session['name']}`...")
-        except Exception:
-            pass
-
-    stats = await lora_dataset.batch_caption_session(comfy_client, session_id, session["trigger_word"], progress_callback=progress_cb)
-    await status_msg.edit(content=f"✅ **Florence-2 Captioning Complete!**\nDescribed **{stats['processed']}** images (Failed: {stats['failed']}). Trigger word `{session['trigger_word']}` injected into all `.txt` caption files.")
-
-
-@lora_build_group.command(name="status", description="View active LoRA dataset session status, image count, and captions.")
-async def lora_status(interaction: discord.Interaction):
-    await safe_defer(interaction, thinking=True)
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    images = db.get_dataset_images(session_id)
-    captioned_count = sum(1 for img in images if img.get("caption"))
-
-    embed = discord.Embed(
-        title=f"🎨 LoRA Dataset Session: {session['name']}",
-        description=(
-            f"**Session ID:** `{session['session_id']}`\n"
-            f"**Trigger Word:** `{session['trigger_word']}`\n"
-            f"**Total Images:** `{len(images)}` (Recommended: 15–30)\n"
-            f"**Captions Generated:** `{captioned_count} / {len(images)}`\n"
-            f"**Target Resolution:** `1024x1024` (SDXL Native)\n"
-            f"**Folder:** `datasets/{session_id}/`"
-        ),
-        color=discord.Color.blue()
-    )
-    view = LoraBuildStatusView(session_id)
-    await interaction.followup.send(embed=embed, view=view)
-
-
-@lora_build_group.command(name="export", description="Package dataset images and .txt captions into a ZIP for Kohya_ss / Civitai.")
-@app_commands.describe(repeats="Number of dataset repeats per epoch (default 10 for Kohya_ss)")
-async def lora_export(interaction: discord.Interaction, repeats: int = 10):
-    await safe_defer(interaction, thinking=True)
-    session = db.get_active_dataset_session(interaction.user.id)
-    if not session:
-        await interaction.followup.send("❌ No active dataset session found! Start one first with `/lora-build start`.", ephemeral=True)
-        return
-
-    session_id = session["session_id"]
-    images = db.get_dataset_images(session_id)
-    if not images:
-        await interaction.followup.send("❌ No images in this dataset to export.", ephemeral=True)
-        return
-
-    rep = max(1, min(100, repeats))
-    try:
-        zip_path, img_count = lora_dataset.export_dataset_zip(session_id, repeats=rep)
-        file = discord.File(zip_path, filename=os.path.basename(zip_path))
-        await interaction.followup.send(
-            content=(
-                f"📦 **SDXL Character LoRA Dataset Exported!**\n"
-                f"👤 **Character:** `{session['name']}`\n"
-                f"🏷️ **Trigger Word:** `{session['trigger_word']}`\n"
-                f"🖼️ **Images Included:** `{img_count}` (1024x1024 PNG + TXT captions)\n"
-                f"📁 **Folder Format:** `{rep}_{session['trigger_word'].replace(' ', '_')}`\n\n"
-                f"✨ Ready to train directly in Kohya_ss, OneTrainer, or Civitai!"
-            ),
-            file=file
-        )
-    except Exception as exp_err:
-        logger.error(f"Error exporting dataset: {exp_err}")
-        await interaction.followup.send(f"❌ Failed to export dataset ZIP: {exp_err}")
-
-
-@lora_build_group.command(name="list", description="List all your saved LoRA dataset sessions.")
-async def lora_list(interaction: discord.Interaction):
-    await safe_defer(interaction, thinking=True, ephemeral=True)
-    sessions = db.get_user_dataset_sessions(interaction.user.id)
-    if not sessions:
-        await interaction.followup.send("You have no dataset sessions yet. Start one with `/lora-build start`!", ephemeral=True)
-        return
-
-    lines = []
-    for s in sessions:
-        active_tag = "🟢 **[ACTIVE]**" if s["is_active"] else "⚪"
-        imgs = db.get_dataset_images(s["session_id"])
-        lines.append(f"{active_tag} **{s['name']}** (Trigger: `{s['trigger_word']}`) — `{len(imgs)}` images\n`ID: {s['session_id']}`")
-
-    embed = discord.Embed(
-        title="📚 Your Character LoRA Dataset Sessions",
-        description="\n\n".join(lines),
-        color=discord.Color.purple()
-    )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# Register /lora-build group
-bot.tree.add_command(lora_build_group)
-
-
 
 def terminate_existing_comfyui() -> bool:
     """Terminates any active ComfyUI processes (tracked PID or listening on port 8188)."""
@@ -7458,8 +6257,19 @@ async def cui_status_command(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="negative_show", description="🚫 View and manage your active negative prompt for /imagine.")
-async def negative_show_command(interaction: discord.Interaction):
+@bot.tree.command(name="negative", description="🚫 View and manage your active negative prompt for /imagine.")
+@app_commands.describe(prompt="Optional new negative prompt text to set immediately")
+async def negative_command(interaction: discord.Interaction, prompt: str = None):
+    if prompt:
+        db.set_negative_prompt(interaction.user.id, prompt)
+        embed = discord.Embed(
+            title="✅ Negative Prompt Updated",
+            description=f"All future `/imagine` generations will use:\n```text\n{prompt}\n```",
+            color=discord.Color.green()
+        )
+        await interaction.response.send_message(embed=embed)
+        return
+
     current_neg = db.get_negative_prompt(interaction.user.id)
     is_default = (current_neg == db.DEFAULT_NEGATIVE_PROMPT)
     
@@ -7469,7 +6279,7 @@ async def negative_show_command(interaction: discord.Interaction):
         color=discord.Color.blue() if is_default else discord.Color.gold()
     )
     embed.add_field(name="Status", value="⚙️ Default System Prompt" if is_default else "🎨 Custom User Prompt", inline=True)
-    embed.set_footer(text="Use /set_negative to customize or click Reset below to restore default.")
+    embed.set_footer(text="Use /negative prompt: to customize or click Edit/Reset below.")
 
     # Interactive buttons: Edit Modal & Reset
     class NegativePromptView(discord.ui.View):
@@ -7514,17 +6324,6 @@ async def negative_show_command(interaction: discord.Interaction):
             await btn_interaction.response.send_message(embed=reset_embed, ephemeral=True)
 
     await interaction.response.send_message(embed=embed, view=NegativePromptView())
-
-@bot.tree.command(name="set_negative", description="✍️ Set a custom negative prompt for your /imagine generations.")
-@app_commands.describe(prompt="The new negative prompt text to use")
-async def set_negative_command(interaction: discord.Interaction, prompt: str):
-    db.set_negative_prompt(interaction.user.id, prompt)
-    embed = discord.Embed(
-        title="✅ Negative Prompt Updated",
-        description=f"All future `/imagine` generations will use:\n```text\n{prompt}\n```",
-        color=discord.Color.green()
-    )
-    await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="models", description="📦 View all registered checkpoints, LoRAs, and their suited architectures.")
