@@ -373,12 +373,24 @@ def save_settings():
         logger.error(f"Error saving settings file: {e}")
 
 async def safe_defer(interaction: discord.Interaction, thinking: bool = False, ephemeral: bool = False):
-    """Safely defers an interaction response without raising 404 Unknown Interaction errors if token expired."""
+    """Safely defers an interaction response without crashing if connection drops, socket resets, or token expired."""
     if not interaction.response.is_done():
-        try:
-            await interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
-        except (discord.NotFound, discord.HTTPException) as e:
-            logger.debug(f"Interaction defer skipped or expired: {e}")
+        for attempt in range(3):
+            try:
+                await interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
+                return
+            except (discord.NotFound, discord.HTTPException) as e:
+                logger.debug(f"Interaction defer skipped or expired: {e}")
+                return
+            except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:
+                logger.warning(f"Transient network glitch during interaction.defer (attempt {attempt+1}): {e}")
+                if attempt < 2:
+                    await asyncio.sleep(0.35)
+                else:
+                    break
+            except Exception as e:
+                logger.warning(f"Unexpected defer error: {e}")
+                break
 
 
 async def _update_button_state(interaction, custom_id, style, disabled=True):
@@ -477,32 +489,33 @@ async def send_followup_fallback(interaction, content=None, embed=None, file=Non
         kwargs["view"] = view
     try:
         return await interaction.followup.send(**kwargs, ephemeral=ephemeral)
-    except (discord.HTTPException, discord.NotFound) as hex:
-        if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
-            logger.info(f"Interaction token expired ({getattr(hex, 'code', '404')}). Falling back to channel.send.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if not channel:
-                return None
-            if file:
-                file.fp.seek(0)
-            if files:
-                for f in files:
-                    f.fp.seek(0)
-            tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-            if tag:
-                if "content" in kwargs and kwargs["content"]:
-                    if interaction.user.mention not in kwargs["content"]:
-                        kwargs["content"] = f"{tag}{kwargs['content']}"
-                else:
-                    kwargs["content"] = tag.strip()
+    except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
+        logger.info(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}). Falling back to channel.send.")
+        channel = interaction.channel
+        if not channel and interaction.channel_id:
+            try:
+                channel = await bot.fetch_channel(interaction.channel_id)
+            except Exception:
+                pass
+        if not channel:
+            return None
+        if file:
+            file.fp.seek(0)
+        if files:
+            for f in files:
+                f.fp.seek(0)
+        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+        if tag:
+            if "content" in kwargs and kwargs["content"]:
+                if interaction.user.mention not in kwargs["content"]:
+                    kwargs["content"] = f"{tag}{kwargs['content']}"
+            else:
+                kwargs["content"] = tag.strip()
+        try:
             return await channel.send(**kwargs)
-        else:
-            raise hex
+        except Exception as ce:
+            logger.warning(f"Channel send fallback failed: {ce}")
+            return None
 
 async def send_error_fallback(interaction, message):
     """Sends an error message using interaction, with fallback to channel.send if expired."""
@@ -511,8 +524,8 @@ async def send_error_fallback(interaction, message):
         message = message[:1977] + "..."
     try:
         await interaction.followup.send(message, ephemeral=True)
-    except (discord.HTTPException, discord.NotFound) as hex:
-        logger.info(f"Interaction token expired ({getattr(hex, 'code', '404')}) during error report. Falling back to channel.send.")
+    except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
+        logger.info(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}) during error report. Falling back to channel.send.")
         try:
             channel = interaction.channel
             if not channel and interaction.channel_id:
