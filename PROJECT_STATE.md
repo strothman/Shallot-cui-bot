@@ -3,7 +3,7 @@
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
 > **Current Version:** `v2.4.0`  
 > **Last Updated:** September 4, 2026  
-> **Status:** 🟢 Stable & Healthy (55/55 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (56/56 Automated Tests Passing)  
 
 ---
 
@@ -28,14 +28,14 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, handles slash commands (`/imagine`, `/flux`, `/video`), and coordinates tasks. |
-| [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers and protects real-person privacy. |
+| [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
 | [`parsers.py`](parsers.py) | **Prompt Translator:** Reads flags like `--ar 16:9` (widescreen), `--smart` (auto-lighting), `--sref` (style copy), and wildcards `{a\|b\|c}`. |
 | [`views.py`](views.py) | **Interactive Buttons:** Creates all clickable buttons in Discord (U1–U4, V1–V4, `🛑 Cancel`, and `✏️ Remix` popup windows). |
 | [`comfy_client.py`](comfy_client.py) | **The Messenger:** Talks to ComfyUI on your computer, tracks render progress, and automatically frees GPU memory when needed. |
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) that remembers your favorite prompts, style codes, and past creations. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 55 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 56 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 
@@ -49,6 +49,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 * **`/blend`**: Blends 2 to 5 different images together into a brand new creation.
 
 ### 🎭 Character Presets (Consistent Faces)
+* **Cheri (`--cheri`)**: Character preset (Epoch 6 default, supports `--cheri4`). Automatically injects signature blonde hair!
 * **Mageill (`--mageill`)**: Original character preset (Epoch 5 default). Easily switch training checkpoints with `--mageill3`, `--mageill4`, `--mageill5`, or `--mageill6`.
 * **Valerie (`--valerie.85`)**: Keeps the Valerie character look consistent across prompts.
 * **Sully (`--sully.85`)**: Automatically adds Sully's signature black hair and thin-rim glasses.

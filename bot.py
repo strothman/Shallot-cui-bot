@@ -153,6 +153,9 @@ FLUX_CHECKPOINT_CHOICES = [
 ]
 
 CHARACTER_CHOICES_SDXL = [
+    app_commands.Choice(name="🎀 Cheri (Epoch 6 - Default)", value="cheri.85"),
+    app_commands.Choice(name="🎀 Cheri (Epoch 4)", value="cheri4.85"),
+    app_commands.Choice(name="🎀 Cheri (.70 - Light)", value="cheri.70"),
     app_commands.Choice(name="🔮 Mageill (Epoch 5 - Default)", value="mageill.85"),
     app_commands.Choice(name="🔮 Mageill (Epoch 6)", value="mageill6.85"),
     app_commands.Choice(name="🔮 Mageill (Epoch 4)", value="mageill4.85"),

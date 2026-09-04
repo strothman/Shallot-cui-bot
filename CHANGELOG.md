@@ -7,6 +7,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-04]
 
 ### Added
+* 🎀 **Cheri Character Preset with Blonde Hair Trait (`--cheri`)**: Added character preset for Cheri. Defaults to Epoch 6 (`cheri_epoch_6.safetensors`) with automatic injection of her signature `"blonde hair"`, and supports choosing Epoch 4 via `--cheri4` or from the Discord `/imagine` dropdown.
 * 🔮 **Mageill Character Preset with Multi-Epoch Support (`--mageill`)**: Added original character preset for Mageill. Defaults to Epoch 5 (`mageill_epoch_5.safetensors`), and makes it easy to pick any training epoch via `--mageill3`, `--mageill4`, `--mageill5`, `--mageill6`, or directly from the Discord `/imagine` dropdown.
 * 👓 **Sully Character Preset (`--sully`)**: Added the "Sully" character model (`susa_epoch_6.safetensors`). When you type `--sully` or pick Sully in the dropdown, the bot automatically adds her signature black hair and thin-rim glasses while keeping private trigger names hidden from Discord.
 * ✨ **Valerie Character Preset (`--valerie`)**: Added the "Valerie" character model (`jen_epoch_5.safetensors`) with automatic trigger management and privacy protection.
@@ -18,7 +19,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * 🚀 **Streamlined Command Menu**: Removed cluttered and rarely-used commands (like the experimental LoRA builder and icon creator) to make the bot faster, cleaner, and much easier to navigate.
 
 ### Maintenance
-* 🧪 **55 Automated Tests**: Expanded our automated test suite to 55 passing checks to guarantee prompt formatting, character presets, and buttons work reliably.
+* 🧪 **56 Automated Tests**: Expanded our automated test suite to 56 passing checks to guarantee prompt formatting, character presets, and buttons work reliably.
 * 📖 **Novice-Friendly Documentation**: Refreshed user guides and project summaries to make all concepts easy for beginners to understand.
 
 ---

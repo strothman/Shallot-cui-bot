@@ -420,7 +420,49 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             loras.append((lora_name, 0.85))
             mag_parsed = True
 
-    # 2.9 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
+    # 2.9 Parse --cheri / --che shorthand with optional epoch (e.g. --cheri, --che, --cheri4, --che6, --cheri-e4, --cheri.80, --cheri4.75)
+    che_match = re.search(r'[-—–]{1,2}(?:cheri|che)(?:[-_]?e?([46]))?(?:(?:\s+|\.)([0-9\.]+))?', prompt, flags=re.IGNORECASE)
+    che_parsed = False
+    if che_match and (che_match.group(1) or che_match.group(2) or che_match.group(0).startswith('-') or che_match.group(0).startswith('—') or che_match.group(0).startswith('–')):
+        try:
+            epoch_str = che_match.group(1) if che_match.group(1) else "6"
+            val_str = che_match.group(2)
+            if val_str:
+                if val_str.startswith('.'):
+                    weight = float(val_str)
+                elif val_str.isdigit():
+                    w_val = float(val_str)
+                    weight = w_val / 100.0 if w_val > 1.0 else w_val
+                else:
+                    weight = float(val_str)
+            else:
+                weight = 0.85
+
+            lora_file = f"cheri_epoch_{epoch_str}.safetensors"
+            lora_name = resolve_lora_for_architecture(lora_file, effective_arch)
+            loras.append((lora_name, weight))
+            che_parsed = True
+            prompt = re.sub(r'[-—–]{1,2}(?:cheri|che)(?:[-_]?e?[46])?(?:(?:\s+|\.)[0-9\.]+)?', '', prompt, flags=re.IGNORECASE).strip()
+
+            # Ensure trigger 'cheri' and required trait 'blonde hair'
+            cheri_traits = "blonde hair"
+            if "cheri" not in prompt.lower():
+                prompt = f"cheri, {cheri_traits}, {prompt}".strip()
+            elif "blonde hair" not in prompt.lower():
+                prompt = f"{prompt}, {cheri_traits}".strip()
+        except Exception as e:
+            logger.error(f"Error parsing --cheri shorthand: {e}")
+
+    # 2.10 Keyword Fallback: Detect 'cheri' in prompt text even if user didn't write '--'
+    if not che_parsed:
+        if re.search(r'\bcheri\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("cheri_epoch_6.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            che_parsed = True
+            if "blonde hair" not in prompt.lower():
+                prompt = f"{prompt}, blonde hair".strip()
+
+    # 2.11 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
     if not sr_parsed and not is_flux:
         if re.search(r'\b(?:semi[- ]realism|semirealism)\b', prompt, flags=re.IGNORECASE):
             loras.append(("Semi-realism_illustrious.safetensors", 0.70))

@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-55%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-56%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
 
@@ -40,6 +40,7 @@ Type `/imagine` followed by what you want to see. The bot will create a 2x2 grid
   * `--ar 1920:1032` $\rightarrow$ Taskbar Fit (fits perfectly on your monitor right above the Windows taskbar).
   * `--sref <code|url>` $\rightarrow$ Style Reference: Copies the color palette and artistic vibe from an image or style code.
   * `--cref <url>` $\rightarrow$ Character Reference: Copies a character's face/identity from an uploaded photo.
+  * `--cheri` $\rightarrow$ **Cheri**: Character preset (Epoch 6 default). Automatically adds signature blonde hair! Supports `--cheri4` for Epoch 4.
   * `--mageill` $\rightarrow$ **Mageill**: Original character preset (Epoch 5 default). Specify any training epoch with `--mageill3`, `--mageill4`, `--mageill5`, or `--mageill6`!
   * `--valerie.85` $\rightarrow$ **Valerie**: Keeps the Valerie character look consistent across all your pictures.
   * `--sully.85` $\rightarrow$ **Sully**: Keeps the Sully character look consistent (black hair & thin-rim glasses).
@@ -155,6 +156,8 @@ All high-resolution outputs are saved directly to your computer:
 | :--- | :--- |
 | Generate 4 ideas for a wallpaper | `/imagine prompt: cyberpunk city in the rain --smart --ar 16:9` |
 | Make an ultra-realistic picture | `/flux prompt: portrait of an astronaut on Mars --smart --ar 16:9` |
+| Make an image with Cheri (Blonde hair - Epoch 6) | `/imagine prompt: enjoying the afternoon in Paris --cheri` |
+| Pick Cheri Epoch 4 | `/imagine prompt: enjoying the afternoon in Paris --cheri4` |
 | Make an image with Mageill (Default Epoch 5) | `/imagine prompt: casting a spell in a forest --mageill` |
 | Pick a specific Mageill Epoch (3, 4, 5, or 6) | `/imagine prompt: casting a spell in a forest --mageill4` |
 | Make an image with Sully | `/imagine prompt: drinking coffee in a cafe --sully` |

@@ -97,6 +97,28 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         description="Mageill character LoRA (SDXL) - Epoch 6",
         is_private=False
     ),
+    "cheri": CharacterProfile(
+        id="cheri",
+        display_name="Cheri",
+        trained_trigger="cheri",
+        lora_sdxl="cheri_epoch_6.safetensors",
+        default_weight=0.85,
+        shorthands=["cheri", "che", "cheri6", "che6", "cheri_e6"],
+        description="Original Cheri character LoRA (SDXL) - Epoch 6 (Default)",
+        base_prompt_traits="blonde hair",
+        is_private=False
+    ),
+    "cheri_e4": CharacterProfile(
+        id="cheri_e4",
+        display_name="Cheri (Epoch 4)",
+        trained_trigger="cheri",
+        lora_sdxl="cheri_epoch_4.safetensors",
+        default_weight=0.85,
+        shorthands=["cheri4", "che4", "cheri_e4"],
+        description="Cheri character LoRA (SDXL) - Epoch 4",
+        base_prompt_traits="blonde hair",
+        is_private=False
+    ),
 }
 
 def get_character(key: str) -> Optional[CharacterProfile]:

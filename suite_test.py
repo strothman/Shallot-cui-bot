@@ -1595,6 +1595,20 @@ class TestCUIBotFunctions(unittest.TestCase):
         masked_mag = mask_character_in_prompt("mageill casting a spell")
         self.assertEqual(masked_mag, "mageill casting a spell")
 
+        # Cheri character checks (original character with blonde hair trait)
+        che = get_character("cheri")
+        self.assertIsNotNone(che)
+        self.assertEqual(che.lora_sdxl, "cheri_epoch_6.safetensors")
+        self.assertEqual(che.base_prompt_traits, "blonde hair")
+        self.assertFalse(che.is_private)
+
+        che4 = get_character("che4")
+        self.assertIsNotNone(che4)
+        self.assertEqual(che4.lora_sdxl, "cheri_epoch_4.safetensors")
+
+        masked_che = mask_character_in_prompt("cheri smiling in the sunlight")
+        self.assertEqual(masked_che, "cheri smiling in the sunlight")
+
     def test_valerie_lora_parsing(self):
         """Test parsing --valerie and bare 'valerie' keywords in prompt with silent trigger substitution."""
         from parsers import parse_loras
@@ -1673,6 +1687,51 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(len(lk), 1)
         self.assertEqual(lk[0][0], "mageill_epoch_5.safetensors")
         self.assertAlmostEqual(lk[0][1], 0.85)
+
+    def test_cheri_lora_parsing(self):
+        """Test parsing --cheri with multiple epochs (4, 6), custom weights, and blonde hair injection."""
+        from parsers import parse_loras
+
+        # 1. Default epoch (Epoch 6) with --cheri
+        cleaned, loras = parse_loras("portrait of a woman in garden --cheri", is_flux=False)
+        self.assertEqual(len(loras), 1)
+        self.assertEqual(loras[0][0], "cheri_epoch_6.safetensors")
+        self.assertAlmostEqual(loras[0][1], 0.85)
+        self.assertIn("cheri", cleaned)
+        self.assertIn("blonde hair", cleaned)
+        self.assertNotIn("--cheri", cleaned)
+
+        # 2. Shorthand --che
+        c_che, l_che = parse_loras("portrait of a woman --che", is_flux=False)
+        self.assertEqual(len(l_che), 1)
+        self.assertEqual(l_che[0][0], "cheri_epoch_6.safetensors")
+        self.assertIn("blonde hair", c_che)
+
+        # 3. Explicit Epoch 4: --cheri4
+        c4, l4 = parse_loras("fashion model --cheri4", is_flux=False)
+        self.assertEqual(len(l4), 1)
+        self.assertEqual(l4[0][0], "cheri_epoch_4.safetensors")
+        self.assertAlmostEqual(l4[0][1], 0.85)
+        self.assertIn("blonde hair", c4)
+
+        # 4. Explicit Epoch 4 with custom weight: --che4.80
+        c4w, l4w = parse_loras("fashion model --che4.80", is_flux=False)
+        self.assertEqual(len(l4w), 1)
+        self.assertEqual(l4w[0][0], "cheri_epoch_4.safetensors")
+        self.assertAlmostEqual(l4w[0][1], 0.80)
+
+        # 5. Explicit Epoch 6 with custom weight: --cheri6.70
+        c6w, l6w = parse_loras("fashion model --cheri6.70", is_flux=False)
+        self.assertEqual(len(l6w), 1)
+        self.assertEqual(l6w[0][0], "cheri_epoch_6.safetensors")
+        self.assertAlmostEqual(l6w[0][1], 0.70)
+
+        # 6. Keyword fallback: bare 'cheri'
+        ck, lk = parse_loras("cheri enjoying ice cream at the beach", is_flux=False)
+        self.assertEqual(len(lk), 1)
+        self.assertEqual(lk[0][0], "cheri_epoch_6.safetensors")
+        self.assertAlmostEqual(lk[0][1], 0.85)
+        self.assertIn("blonde hair", ck)
 
     def test_vram_free_memory(self):
         """Test ComfyClient free_memory method handles errors gracefully when offline."""
