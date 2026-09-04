@@ -1,4 +1,6 @@
 import os
+import sys
+import socket
 import io
 import json
 import random
@@ -2241,72 +2243,6 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 await interaction.followup.send("❌ An unexpected error occurred.", ephemeral=True)
             except Exception:
                 pass
-
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Deletes a bot message when any user reacts with an 'X' or trash emoji."""
-    # Ignore reactions added by the bot itself
-    if payload.user_id == bot.user.id:
-        return
-
-    # Normalize emoji string representation and name
-    emoji_name = payload.emoji.name if payload.emoji.name else str(payload.emoji)
-    emoji_str = str(payload.emoji)
-
-    # Match any variations of X / Delete / Trash emojis
-    delete_emojis = {"❌", "✖️", "❎", "❌", "🗑️", "🗑", "x", "X"}
-    if emoji_name not in delete_emojis and emoji_str not in delete_emojis:
-        return
-
-    try:
-        channel = bot.get_channel(payload.channel_id)
-        if channel is None:
-            try:
-                channel = await bot.fetch_channel(payload.channel_id)
-            except Exception:
-                return
-
-        if channel is None:
-            return
-
-        message = await channel.fetch_message(payload.message_id)
-        if message is None or message.author.id != bot.user.id:
-            return
-
-        # Check authorization: allow deletion if:
-        # 1. User is BOT_OWNER_ID
-        # 2. User has manage_messages or administrator permissions
-        # 3. User is the requester (user ID present in embed footer or message content)
-        is_auth = False
-        if BOT_OWNER_ID > 0 and payload.user_id == BOT_OWNER_ID:
-            is_auth = True
-        elif payload.member and (payload.member.guild_permissions.manage_messages or payload.member.guild_permissions.administrator):
-            is_auth = True
-        else:
-            user_id_str = str(payload.user_id)
-            if user_id_str in message.content:
-                is_auth = True
-            elif message.embeds:
-                for emb in message.embeds:
-                    if emb.footer and emb.footer.text and user_id_str in emb.footer.text:
-                        is_auth = True
-                        break
-
-        if not is_auth:
-            logger.info(f"Unauthorized reaction delete attempt by user {payload.user_id} on message {payload.message_id}.")
-            return
-
-        # Delete the bot's message
-        await message.delete()
-        logger.info(f"Deleted bot message {payload.message_id} in channel {payload.channel_id} triggered by reaction '{emoji_name}' from authorized user {payload.user_id}.")
-
-    except discord.NotFound:
-        pass
-    except discord.Forbidden:
-        logger.warning(f"Bot lacks 'Manage Messages' permission to delete message {payload.message_id}.")
-    except Exception as e:
-        logger.error(f"Error deleting message on reaction: {e}")
 
 
 @bot.event
@@ -7682,7 +7618,41 @@ async def scan_models_command(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+_instance_lock_socket = None
+
+def acquire_instance_lock(port: int = 48123) -> bool:
+    """
+    Ensures only a single instance of the bot process can run on the machine at a time.
+    Binds a localhost TCP socket on a dedicated lock port.
+    If another instance is already active, binding fails and startup is aborted,
+    preventing duplicate command queueing and double button interaction events (e.g. U1-U4).
+    """
+    global _instance_lock_socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+        sock.listen(1)
+        _instance_lock_socket = sock
+        return True
+    except OSError:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        logger.error(f"[!] Another instance of Shallot-CUI Bot is already running (port {port} in use). Startup aborted.")
+        print("\n" + "=" * 72)
+        print("[!] CRITICAL ERROR: Shallot-CUI Bot is ALREADY RUNNING!")
+        print("Running multiple bot instances causes all prompts and button clicks (like U1)")
+        print("to execute twice (duplicate generations/upscales).")
+        print("Please close any existing bot console windows before launching a new one.")
+        print("=" * 72 + "\n")
+        return False
+
+
 if __name__ == "__main__":
+    if not acquire_instance_lock():
+        sys.exit(1)
+
     if not DISCORD_TOKEN or DISCORD_TOKEN == "YOUR_DISCORD_BOT_TOKEN_HERE":
         logger.error("Please configure the DISCORD_TOKEN in the .env file before running.")
     else:

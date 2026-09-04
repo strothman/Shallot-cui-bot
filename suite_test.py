@@ -1529,6 +1529,21 @@ class TestCUIBotFunctions(unittest.TestCase):
             clean_desc = desc.replace('\n', ' ').strip()
             self.assertLessEqual(len(clean_desc), 100, f"Command description exceeds Discord 100 char limit ({len(clean_desc)}): '{clean_desc}'")
 
+    def test_single_instance_lock(self):
+        """Test that acquire_instance_lock successfully binds and prevents secondary bindings on the same port."""
+        from bot import acquire_instance_lock
+        import bot
+        test_port = 48199
+        try:
+            # First acquire on test port succeeds
+            self.assertTrue(acquire_instance_lock(port=test_port))
+            # Second acquire on the same port fails
+            self.assertFalse(acquire_instance_lock(port=test_port))
+        finally:
+            if bot._instance_lock_socket:
+                bot._instance_lock_socket.close()
+                bot._instance_lock_socket = None
+
 
 if __name__ == "__main__":
     unittest.main()
