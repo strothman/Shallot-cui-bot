@@ -82,7 +82,6 @@ FRIENDLY_FILE_DESCRIPTIONS = {
     "PROJECT_STATE.md": "Project status, features, and architecture documentation",
     "image_utils.py": "Image processing (grid stitching, splitting, and scaling)",
     "db.py": "Database storage for favorite prompts, styles, and history",
-    "monitor.py": "GPU telemetry and generation progress tracking",
     "config.py": "Bot settings, models, and safety thresholds",
 }
 

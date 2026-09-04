@@ -35,7 +35,6 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) that remembers your favorite prompts, style codes, and past creations. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`monitor.py`](monitor.py) | **Hardware Health Watcher:** Checks your graphics card temperature and VRAM usage so your PC never overheats or runs out of memory. |
 | [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 54 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
