@@ -26,6 +26,50 @@ class CustomSrefModal(discord.ui.Modal, title="Change Style Reference (--sref)")
         except Exception as e:
             logger.error(f"Error in CustomSrefModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to apply style reference: {e}")
+class CancelGenerationView(discord.ui.View):
+    """Temporary view attached to generation status messages allowing users to cancel execution."""
+    def __init__(self, generation_id: str):
+        super().__init__(timeout=600)
+        self.generation_id = generation_id
+
+        self.add_item(discord.ui.Button(
+            label="🛑 Cancel",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"cancel_gen:{self.generation_id}"
+        ))
+
+
+class RemixModal(discord.ui.Modal, title="✏️ Remix / Tweak Prompt"):
+    prompt_input = discord.ui.TextInput(
+        label="Edit Prompt",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=2000
+    )
+    seed_input = discord.ui.TextInput(
+        label="Seed (leave blank for random)",
+        required=False,
+        max_length=20
+    )
+
+    def __init__(self, generation_id: str, initial_prompt: str = "", initial_seed: int = None, on_submit_callback=None):
+        super().__init__()
+        self.generation_id = generation_id
+        self.on_submit_callback = on_submit_callback
+        self.prompt_input.default = initial_prompt
+        if initial_seed is not None:
+            self.seed_input.default = str(initial_seed)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            p = self.prompt_input.value.strip()
+            s = self.seed_input.value.strip()
+            seed_val = int(s) if s.isdigit() else None
+            if self.on_submit_callback:
+                await self.on_submit_callback(interaction, self.generation_id, p, seed_val)
+        except Exception as e:
+            logger.error(f"Error in RemixModal submit: {e}")
+            await send_error_fallback(interaction, f"Failed to submit remix: {e}")
 
 
 
@@ -262,6 +306,12 @@ class GridButtons(discord.ui.View):
             label="📋 Copy Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"copy_prompt:{self.generation_id}",
+            row=2
+        ))
+        self.add_item(discord.ui.Button(
+            label="✏️ Remix",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"remix:{self.generation_id}",
             row=2
         ))
 

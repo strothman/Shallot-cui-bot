@@ -6,77 +6,73 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-04]
 
+### Added
+* 👓 **Sully Character Preset (`--sully`)**: Added the "Sully" character model (`susa_epoch_6.safetensors`). When you type `--sully` or pick Sully in the dropdown, the bot automatically adds her signature black hair and thin-rim glasses while keeping private trigger names hidden from Discord.
+* ✨ **Valerie Character Preset (`--valerie`)**: Added the "Valerie" character model (`jen_epoch_5.safetensors`) with automatic trigger management and privacy protection.
+* 🛑 **Live Cancel Button**: Added a `🛑 Cancel` button on active generation messages so you can stop a job in ComfyUI at any time if you change your mind.
+* ✏️ **Grid Remix Modal (`✏️ Remix`)**: Added a Remix button under every 4-image grid that opens an easy popup window with your prompt and seed pre-filled so you can tweak words and re-roll.
+* 🧹 **Automatic Graphics Card (VRAM) Cleaning**: The bot now automatically frees up graphics card memory whenever you switch between different model types (like SDXL and Flux) to prevent slowdowns.
+
+### Changed
+* 🚀 **Streamlined Command Menu**: Removed cluttered and rarely-used commands (like the experimental LoRA builder and icon creator) to make the bot faster, cleaner, and much easier to navigate.
+
 ### Maintenance
-* Working tree modification: `M README.md`
-* Working tree modification: `M bot.py`
-* Working tree modification: `M db.py`
-* Working tree modification: `D lora_dataset.py`
-* Working tree modification: `M suite_test.py`
-* Working tree modification: `M views.py`
+* 🧪 **54 Automated Tests**: Expanded our automated test suite to 54 passing checks to guarantee prompt formatting, character presets, and buttons work reliably.
+* 📖 **Novice-Friendly Documentation**: Refreshed user guides and project summaries to make all concepts easy for beginners to understand.
 
 ---
 ## [2026-09-03]
 
 ### Added
-* **feat: add single-instance process lock and remove redundant handler** (`109aebb`)
+* 🔒 **Double-Launch Warning**: Added a guard that alerts you if the bot is already running in another window, preventing double generations or duplicate button clicks.
 
 ### Maintenance
-* Working tree modification: `M README.md`
-* Working tree modification: `M bot.py`
-* Working tree modification: `M db.py`
-* Working tree modification: `D lora_dataset.py`
-* Working tree modification: `M suite_test.py`
-* Working tree modification: `M views.py`
+* 🧹 **Codebase Cleanup**: Removed old LoRA builder files and streamlined Discord interaction handlers.
 
 ---
 ## [2026-09-01]
 
 ### Changed
-* **Rename project references to Shallot-cui-bot and update documentation** (`7099cd6`)
+* 🧅 **Project Renaming**: Standardized the project and folder name to **Shallot-cui-bot** and updated all setup scripts.
 
 ---
 ## [2026-08-31]
 
 ### Maintenance
-* Working tree modification: `M bot.py`
-* Working tree modification: `M parsers.py`
+* ⚙️ **Prompt Parser Polish**: Improved prompt modifier parsing and style reference handling.
 
 ---
 ## [2026-08-30]
 
 ### Maintenance
-* Working tree modification: `M bot.py`
-* Working tree modification: `M parsers.py`
+* ⚙️ **Performance & Stability Tuning**: Optimized WebSocket message handling between Discord and ComfyUI.
 
 ---
 ## [2026-08-29]
 
 ### Maintenance
-* Working tree modification: `M bot.py`
-* Working tree modification: `M parsers.py`
+* ⚙️ **Model Architecture Checks**: Added automatic compatibility verification for loaded LoRA models.
 
 ---
 ## [2026-08-28]
 
 ### Maintenance
-* Working tree modification: `M bot.py`
+* ⚙️ **Discord View Enhancements**: Polished button rows and interactive components under image grids.
 
 ---
 ## [2026-08-27]
 
 ### Maintenance
-* Working tree modification: `M bot.py`
+* ⚙️ **Error Handling Improvements**: Improved auto-recovery logic for network disconnects.
 
 ---
 ## [2026-08-26]
-
 ### Added
-* **feat: integrate MMAudio foley synthesis into Wan 2.2 video generation workflow** (`df164a9`)
-* **feat(standards): add .env.example, MIT license, GitHub Actions CI workflow, and README badges** (`f98d260`)
-* **test(docs): add automated test verifying 100% sync between README.md, CHANGELOG.md, and bot slash commands** (`b631461`)
-* **feat(diagnostics): add ComfyUI server error analyzer and AI copy-paste diagnostics tool** (`7d818fd`)
-* **docs: add automated README synchronization validator and update documentation coverage** (`cbb1b9d`)
-* **feat: initialize Shallot-CUI Bot v2.3.0 standalone repository** (`9acba56`)
+* 🎬 **AI Sound Effects for Videos (Wan 2.2 + MMAudio)**: Added automatic sound effect generation for AI videos.
+* 📊 **Real-Time Progress Bars**: Added progress bars in Discord so you can watch your pictures generate in real time.
+* 🛡️ **Admin Safety Controls**: Added permissions so only bot owners and admins can run server controls or delete messages.
+* 📜 **Automated Testing Suite**: Added pre-flight test runner to catch issues before starting the bot.
+* 🚀 **Standalone Bot Release**: Released Shallot-CUI Bot v2.3.0 standalone setup with documentation and badges.
 
 ### Changed
 * **fix(diagnostics): quote batch title and update changelog** (`90ca0cc`)

@@ -1536,6 +1536,116 @@ class TestCUIBotFunctions(unittest.TestCase):
                 bot._instance_lock_socket.close()
                 bot._instance_lock_socket = None
 
+    def test_character_registry_and_masking(self):
+        """Test character registry lookups, pseudonym resolution, and prompt trigger masking."""
+        from characters import get_character, mask_character_in_prompt, inject_trained_trigger_in_prompt, CHARACTERS
+
+        # Lookups
+        val = get_character("valerie")
+        self.assertIsNotNone(val)
+        self.assertEqual(val.trained_trigger, "jen")
+        self.assertEqual(val.lora_sdxl, "jen_epoch_5.safetensors")
+
+        val_alias = get_character("val")
+        self.assertEqual(val_alias.id, "valerie")
+
+        oga = get_character("ogarla")
+        self.assertIsNotNone(oga)
+        self.assertEqual(oga.lora_sdxl, "ogarla_epoch_5.safetensors")
+
+        # Sully checks
+        sul = get_character("sully")
+        self.assertIsNotNone(sul)
+        self.assertEqual(sul.trained_trigger, "susa")
+        self.assertEqual(sul.lora_sdxl, "susa_epoch_6.safetensors")
+        self.assertEqual(sul.base_prompt_traits, "black hair, thin rim glasses")
+
+        sul_alias = get_character("sul")
+        self.assertEqual(sul_alias.id, "sully")
+
+        # Masking trained trigger -> display alias
+        masked = mask_character_in_prompt("jen sitting in a coffee shop")
+        self.assertEqual(masked, "valerie sitting in a coffee shop")
+
+        masked_sully = mask_character_in_prompt("susa walking down the street")
+        self.assertEqual(masked_sully, "sully walking down the street")
+
+        # Injecting trained trigger -> ComfyUI prompt
+        injected = inject_trained_trigger_in_prompt("valerie sitting in a coffee shop", "valerie")
+        self.assertEqual(injected, "jen sitting in a coffee shop")
+
+        injected_sully = inject_trained_trigger_in_prompt("sully, in a library", "sully")
+        self.assertEqual(injected_sully, "susa, black hair, thin rim glasses, in a library")
+
+    def test_valerie_lora_parsing(self):
+        """Test parsing --valerie and bare 'valerie' keywords in prompt with silent trigger substitution."""
+        from parsers import parse_loras
+
+        # 1. Test shorthand flag --valerie.80
+        cleaned, loras = parse_loras("portrait of a woman --valerie.80", is_flux=False)
+        self.assertEqual(len(loras), 1)
+        self.assertEqual(loras[0][0], "jen_epoch_5.safetensors")
+        self.assertAlmostEqual(loras[0][1], 0.80)
+        self.assertIn("jen", cleaned)
+        self.assertNotIn("--valerie", cleaned)
+
+        # 2. Test keyword fallback
+        cleaned2, loras2 = parse_loras("valerie walking in cyberpunk rain", is_flux=False)
+        self.assertEqual(len(loras2), 1)
+        self.assertEqual(loras2[0][0], "jen_epoch_5.safetensors")
+        self.assertEqual(cleaned2, "jen walking in cyberpunk rain")
+
+    def test_sully_lora_parsing(self):
+        """Test parsing --sully and bare 'sully' keywords in prompt with silent trigger & traits substitution."""
+        from parsers import parse_loras
+
+        # 1. Test shorthand flag --sully.80
+        cleaned, loras = parse_loras("portrait of a student in library --sully.80", is_flux=False)
+        self.assertEqual(len(loras), 1)
+        self.assertEqual(loras[0][0], "susa_epoch_6.safetensors")
+        self.assertAlmostEqual(loras[0][1], 0.80)
+        self.assertIn("susa", cleaned)
+        self.assertIn("black hair, thin rim glasses", cleaned)
+        self.assertNotIn("--sully", cleaned)
+
+        # 2. Test keyword fallback
+        cleaned2, loras2 = parse_loras("sully reading a book", is_flux=False)
+        self.assertEqual(len(loras2), 1)
+        self.assertEqual(loras2[0][0], "susa_epoch_6.safetensors")
+        self.assertIn("susa", cleaned2)
+        self.assertIn("black hair, thin rim glasses", cleaned2)
+
+    def test_vram_free_memory(self):
+        """Test ComfyClient free_memory method handles errors gracefully when offline."""
+        import asyncio
+        from comfy_client import ComfyClient
+        client = ComfyClient("127.0.0.1:8188")
+        async def run_test():
+            res = await client.free_memory()
+            await client.stop()
+            return res
+        res = asyncio.run(run_test())
+        self.assertIsInstance(res, bool)
+
+    def test_cancel_and_remix_views(self):
+        """Test instantiation and custom_ids of CancelGenerationView and Remix button in GridButtons."""
+        from views import CancelGenerationView, RemixModal, GridButtons
+
+        # CancelGenerationView
+        c_view = CancelGenerationView("gen_999")
+        c_button = [item for item in c_view.children if getattr(item, "custom_id", None) == "cancel_gen:gen_999"]
+        self.assertEqual(len(c_button), 1)
+
+        # Remix button in GridButtons
+        g_view = GridButtons("gen_999", has_sref=True)
+        r_button = [item for item in g_view.children if getattr(item, "custom_id", None) == "remix:gen_999"]
+        self.assertEqual(len(r_button), 1)
+
+        # RemixModal
+        modal = RemixModal("gen_999", initial_prompt="a cute cat", initial_seed=12345)
+        self.assertEqual(modal.prompt_input.default, "a cute cat")
+        self.assertEqual(modal.seed_input.default, "12345")
+
 
 if __name__ == "__main__":
     unittest.main()

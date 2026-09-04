@@ -297,7 +297,94 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             loras.append(("ogarla_epoch_5.safetensors", 0.85))
             oga_parsed = True
 
-    # 2.3 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
+    # 2.3 Parse --valerie/--val shorthand (e.g., --valerie.75, --val.85, --valerie)
+    val_match = re.search(r'[-—–]{1,2}(?:valerie|val)(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
+    val_parsed = False
+    if val_match and (val_match.group(1) or val_match.group(0).startswith('-') or val_match.group(0).startswith('—') or val_match.group(0).startswith('–')):
+        try:
+            val_str = val_match.group(1)
+            if val_str:
+                if val_str.startswith('.'):
+                    weight = float(val_str)
+                elif val_str.isdigit():
+                    w_val = float(val_str)
+                    weight = w_val / 100.0 if w_val > 1.0 else w_val
+                else:
+                    weight = float(val_str)
+            else:
+                weight = 0.85
+
+            lora_name = resolve_lora_for_architecture("jen_epoch_5.safetensors", effective_arch)
+            loras.append((lora_name, weight))
+            val_parsed = True
+            prompt = re.sub(r'[-—–]{1,2}(?:valerie|val)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
+
+            # Silently inject trained trigger 'jen'
+            if "jen" not in prompt.lower():
+                prompt = f"jen, {prompt}".strip()
+        except Exception as e:
+            logger.error(f"Error parsing --valerie shorthand: {e}")
+
+    # 2.4 Keyword Fallback: Detect 'valerie' / 'jen' in prompt text even if user didn't write '--'
+    if not val_parsed:
+        if re.search(r'\bvalerie\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("jen_epoch_5.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            val_parsed = True
+            # Silently substitute pseudonym with trained trigger for ComfyUI
+            prompt = re.sub(r'\bvalerie\b', 'jen', prompt, flags=re.IGNORECASE)
+        elif re.search(r'\bjen\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("jen_epoch_5.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            val_parsed = True
+
+    # 2.5 Parse --sully/--sul shorthand (e.g., --sully.80, --sul.85, --sully)
+    sul_match = re.search(r'[-—–]{1,2}(?:sully|sul)(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
+    sul_parsed = False
+    if sul_match and (sul_match.group(1) or sul_match.group(0).startswith('-') or sul_match.group(0).startswith('—') or sul_match.group(0).startswith('–')):
+        try:
+            val_str = sul_match.group(1)
+            if val_str:
+                if val_str.startswith('.'):
+                    weight = float(val_str)
+                elif val_str.isdigit():
+                    w_val = float(val_str)
+                    weight = w_val / 100.0 if w_val > 1.0 else w_val
+                else:
+                    weight = float(val_str)
+            else:
+                weight = 0.85
+
+            lora_name = resolve_lora_for_architecture("susa_epoch_6.safetensors", effective_arch)
+            loras.append((lora_name, weight))
+            sul_parsed = True
+            prompt = re.sub(r'[-—–]{1,2}(?:sully|sul)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
+
+            # Silently inject trained trigger 'susa' and target traits
+            susa_traits = "black hair, thin rim glasses"
+            if "susa" not in prompt.lower():
+                prompt = f"susa, {susa_traits}, {prompt}".strip()
+            elif "thin rim glasses" not in prompt.lower():
+                prompt = f"{prompt}, {susa_traits}".strip()
+        except Exception as e:
+            logger.error(f"Error parsing --sully shorthand: {e}")
+
+    # 2.6 Keyword Fallback: Detect 'sully' / 'susa' in prompt text even if user didn't write '--'
+    if not sul_parsed:
+        susa_traits = "black hair, thin rim glasses"
+        if re.search(r'\bsully\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("susa_epoch_6.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            sul_parsed = True
+            prompt = re.sub(r'\bsully\b', f'susa, {susa_traits}', prompt, flags=re.IGNORECASE)
+        elif re.search(r'\bsusa\b', prompt, flags=re.IGNORECASE):
+            lora_name = resolve_lora_for_architecture("susa_epoch_6.safetensors", effective_arch)
+            loras.append((lora_name, 0.85))
+            sul_parsed = True
+            if "thin rim glasses" not in prompt.lower():
+                prompt = f"{prompt}, {susa_traits}".strip()
+
+    # 2.7 Keyword Fallback: Detect 'semi-realism' in prompt text even if user didn't write '--'
     if not sr_parsed and not is_flux:
         if re.search(r'\b(?:semi[- ]realism|semirealism)\b', prompt, flags=re.IGNORECASE):
             loras.append(("Semi-realism_illustrious.safetensors", 0.70))

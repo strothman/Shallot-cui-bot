@@ -84,8 +84,13 @@ from views import (
     AdoptButtons,
     EditAdoptPromptModal,
     VideoPromptModal,
+    CancelGenerationView,
+    RemixModal,
 )
 import model_architecture
+from characters import get_character, mask_character_in_prompt, inject_trained_trigger_in_prompt, CHARACTERS
+
+_active_architecture = None
 
 
 # Load environment variables
@@ -145,6 +150,20 @@ FLUX_CHECKPOINT_CHOICES = [
     app_commands.Choice(name="Flux.1 Dev GGUF Q4 (General Masterpiece - Recommended)", value="flux1-dev-Q4_K_S.gguf"),
     app_commands.Choice(name="Flux.1 Schnell GGUF Q4 (4-Step Turbo / Instant)", value="flux1-schnell-Q4_K_S.gguf"),
     app_commands.Choice(name="FluxedUp NSFW GGUF Q4 (Community Fine-Tune)", value="fluxedUpFluxNSFW_71Q4GGUF.gguf"),
+]
+
+CHARACTER_CHOICES_SDXL = [
+    app_commands.Choice(name="🌿 Ogarla (.85 - Default)", value="ogarla.85"),
+    app_commands.Choice(name="🌿 Ogarla (.70 - Light)", value="ogarla.70"),
+    app_commands.Choice(name="✨ Valerie (.85 - Default)", value="valerie.85"),
+    app_commands.Choice(name="✨ Valerie (.70 - Light)", value="valerie.70"),
+    app_commands.Choice(name="👓 Sully (.85 - Default)", value="sully.85"),
+    app_commands.Choice(name="👓 Sully (.70 - Light)", value="sully.70"),
+]
+
+CHARACTER_CHOICES_FLUX = [
+    app_commands.Choice(name="🌿 Ogarla Flux (.85 - Default)", value="ogarla.85"),
+    app_commands.Choice(name="🌿 Ogarla Flux (.70 - Light)", value="ogarla.70"),
 ]
 
 # Checkpoint-specific configurations & optimal generation parameters for photorealism and LoRA compatibility
@@ -1591,6 +1610,49 @@ async def handle_favorite_prompt(interaction: discord.Interaction, generation_id
     db.add_favorite_prompt(interaction.user.id, name_preview, prompt)
     
     await interaction.followup.send(f"⭐ Saved prompt **\"{name_preview}\"** to your favorite prompts!", ephemeral=True)
+
+async def handle_cancel_generation(interaction: discord.Interaction, generation_id: str):
+    """Cancels/interrupts an active generation in ComfyUI and updates the status message."""
+    try:
+        success = await comfy_client.pause_generation(generation_id)
+        if success:
+            await edit_original_fallback(interaction, content="🛑 **Generation cancelled by user.**", view=None)
+        else:
+            await interaction.response.send_message("⚠️ Job is no longer active or already completed.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error handling cancel generation {generation_id}: {e}")
+        await send_error_fallback(interaction, f"Failed to cancel generation: {e}")
+
+async def handle_remix(interaction: discord.Interaction, generation_id: str):
+    """Opens a modal pre-filled with the generation prompt and seed for tweaking."""
+    gen_data = get_generation(generation_id)
+    if not gen_data:
+        await interaction.response.send_message("❌ Generation session data expired.", ephemeral=True)
+        return
+
+    orig_p = gen_data.get("original_prompt") or gen_data.get("prompt") or ""
+    orig_seed = gen_data.get("seed")
+
+    async def remix_callback(inter: discord.Interaction, g_id: str, new_prompt: str, new_seed: int):
+        await safe_defer(inter, thinking=True)
+        p = new_prompt
+        if new_seed is not None and "--seed" not in p:
+            p = f"{p} --seed {new_seed}"
+        await execute_imagine(
+            inter,
+            prompt=p,
+            negative_prompt=gen_data.get("negative_prompt"),
+            checkpoint=gen_data.get("checkpoint"),
+            magic_prompt=False,
+            is_flux=gen_data.get("is_flux", False),
+            is_sdxl_powerhouse=gen_data.get("is_sdxl_powerhouse", False),
+            guidance=gen_data.get("guidance", 3.5),
+            freeu=gen_data.get("freeu", True),
+            is_face_detailer=gen_data.get("is_face_detailer", False)
+        )
+
+    modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
+    await interaction.response.send_modal(modal)
 async def handle_outpaint(interaction: discord.Interaction, generation_id: str, index: int, target_ratio: str):
     """Outpaint an image to expanding aspect ratio (16:9, 21:9) or Zoom Out (1.5x, 2.0x)."""
     await safe_defer(interaction, thinking=True)
@@ -2207,6 +2269,16 @@ async def on_interaction(interaction: discord.Interaction):
                     await handle_stasis_resume(interaction, generation_id, user_id)
                 except ValueError:
                     pass
+        elif custom_id.startswith("cancel_gen:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                generation_id = parts[1]
+                await handle_cancel_generation(interaction, generation_id)
+        elif custom_id.startswith("remix:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                generation_id = parts[1]
+                await handle_remix(interaction, generation_id)
         elif custom_id.startswith("upscale:"):
             parts = custom_id.split(":")
             if len(parts) >= 3:
@@ -2754,7 +2826,15 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 async def on_close():
     await comfy_client.stop()
 
-async def execute_imagine(interaction: discord.Interaction, prompt: str, negative_prompt: str = None, checkpoint: str = None, style_reference: discord.Attachment = None, magic_prompt: bool = False, favorite_style: str = None, semi_realism: str = None, aspect_ratio: str = None, ogarla: str = None, is_flux: bool = False, is_com: bool = False, is_sdxl_powerhouse: bool = False, guidance: float = 3.5, freeu: bool = True, smart: bool = False, enhancements: str = None, reference_image_url: str = None, reference_image_weight: float = None, original_post_url: str = None, cref_image_name_override: str = None, is_face_detailer: bool = False):
+async def execute_imagine(interaction: discord.Interaction, prompt: str, negative_prompt: str = None, checkpoint: str = None, style_reference: discord.Attachment = None, magic_prompt: bool = False, favorite_style: str = None, semi_realism: str = None, aspect_ratio: str = None, ogarla: str = None, is_flux: bool = False, is_com: bool = False, is_sdxl_powerhouse: bool = False, guidance: float = 3.5, freeu: bool = True, smart: bool = False, enhancements: str = None, reference_image_url: str = None, reference_image_weight: float = None, original_post_url: str = None, cref_image_name_override: str = None, is_face_detailer: bool = False, character: str = None):
+    # VRAM Auto-Purge when switching architectures
+    global _active_architecture
+    target_arch = model_architecture.Architecture.FLUX if (is_flux or is_com) else model_architecture.Architecture.SDXL
+    if _active_architecture is not None and _active_architecture != target_arch:
+        logger.info(f"Switching architecture from {_active_architecture} to {target_arch}. Purging ComfyUI VRAM via /free...")
+        await comfy_client.free_memory()
+    _active_architecture = target_arch
+
     if enhancements:
         enh_val = str(enhancements).lower()
         if "smart" in enh_val or enh_val == "all":
@@ -2766,17 +2846,18 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         if "no_freeu" in enh_val or "disable_freeu" in enh_val:
             freeu = False
 
+    char_choice = character or ogarla
+    if char_choice:
+        c_flag = char_choice if char_choice.startswith("--") else f"--{char_choice}"
+        prompt = f"{prompt} {c_flag}"
+
     if semi_realism:
         prompt = re.sub(r'\bSemi-realism(?:,\s*masterpiece,\s*best quality,\s*absurdres\.?)?,?\s*', '', prompt, flags=re.IGNORECASE).strip()
-    if ogarla:
-        prompt = re.sub(r'\bogarla,?\s*', '', prompt, flags=re.IGNORECASE).strip()
     prompt = re.sub(r'^[,\s]+', '', prompt).strip()
 
     prefixes = []
     if semi_realism:
         prefixes.append("Semi-realism, masterpiece, best quality, absurdres.")
-    if ogarla:
-        prefixes.append("ogarla")
 
     if prefixes:
         prefix_str = " ".join(p if p.endswith(".") else f"{p}," for p in prefixes)
@@ -2785,10 +2866,6 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
     if semi_realism:
         sr_val = semi_realism if semi_realism.startswith("--") else f"--{semi_realism}"
         prompt = f"{prompt} {sr_val}"
-
-    if ogarla:
-        oga_val = ogarla if ogarla.startswith("--") else f"--{ogarla}"
-        prompt = f"{prompt} {oga_val}"
 
     if aspect_ratio:
         prompt = f"{prompt} --ar {aspect_ratio}"
@@ -3190,9 +3267,9 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
             guide_size=512
         )
 
-    display_prompt = prompt
+    display_prompt = mask_character_in_prompt(prompt)
     if sref_info and "code" in sref_info:
-        display_prompt = re.sub(r'[-\u2014\u2013]{1,2}sref\s+random', f"--sref {sref_info['code']}", prompt, flags=re.IGNORECASE)
+        display_prompt = re.sub(r'[-\u2014\u2013]{1,2}sref\s+random', f"--sref {sref_info['code']}", display_prompt, flags=re.IGNORECASE)
 
     generation_id = str(random.randint(100000, 999999))
     
@@ -3259,10 +3336,11 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         flags_info += ", Face Detailer: Enabled"
 
     try:
-        # Send initial status message
+        # Send initial status message with responsive Cancel button
         msg = await send_followup_fallback(
             interaction,
-            content=f"Job submitted (Seed: {seed}) — Queuing: '{truncate_prompt(display_prompt, 80)}'..."
+            content=f"Job submitted (Seed: {seed}) — Queuing: '{truncate_prompt(display_prompt, 80)}'...",
+            view=CancelGenerationView(generation_id)
         )
         
         # Save message ID
@@ -3388,14 +3466,14 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         logger.error(f"Error executing imagine command: {e}")
         await send_error_fallback(interaction, f"An error occurred while generating images: {e}")
 
-@bot.tree.command(name="imagine", description="Generate a 2x2 grid of images with ComfyUI.")
+@bot.tree.command(name="imagine", description="🌸 Create 4 pictures at once with SDXL, Face Detailer, Powerhouse refiner, or LoRAs!")
 @app_commands.describe(
-    prompt="The prompt to generate images from (supports --smart, --magic, --ar, --seed, --s, --raw, --sref, --sr)", 
+    prompt="The prompt to generate images from (supports wildcards {a|b|c}, --smart, --magic, etc.)", 
     checkpoint="The checkpoint model to use",
     enhancements="⚡ Enhancements preset (Turbo, Smart Art Director, Magic Prompt)",
     aspect_ratio="Aspect ratio for generated images (--ar)",
     semi_realism="Select Semi-realism LoRA strength (--sr weight)",
-    ogarla="Select Ogarla LoRA strength (--ogarla weight)",
+    character="Select Character LoRA preset (Ogarla or Valerie)",
     favorite_style="Apply one of your saved favorite styles",
     favorite_prompt="Apply one of your saved favorite prompts",
     style_reference="An image to use as style reference (--sref)"
@@ -3404,11 +3482,10 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
     checkpoint=SDXL_CHECKPOINT_CHOICES,
     enhancements=SDXL_ENHANCEMENT_CHOICES,
     semi_realism=[
-        app_commands.Choice(name="--sr.50", value="--sr.50"),
-        app_commands.Choice(name="--sr.60", value="--sr.60"),
-        app_commands.Choice(name="--sr.70", value="--sr.70"),
-        app_commands.Choice(name="--sr.80", value="--sr.80"),
-        app_commands.Choice(name="--sr.90", value="--sr.90"),
+        app_commands.Choice(name="✨ Semi-Realism (.60 - Light)", value="sr.60"),
+        app_commands.Choice(name="✨ Semi-Realism (.70 - Medium)", value="sr.70"),
+        app_commands.Choice(name="✨ Semi-Realism (.80 - High)", value="sr.80"),
+        app_commands.Choice(name="✨ Semi-Realism (.90 - Maximum)", value="sr.90"),
     ],
     aspect_ratio=[
         app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
@@ -3418,11 +3495,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
         app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
     ],
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-    ]
+    character=CHARACTER_CHOICES_SDXL
 )
 async def imagine(
     interaction: discord.Interaction, 
@@ -3431,7 +3504,7 @@ async def imagine(
     enhancements: str = None,
     aspect_ratio: str = None,
     semi_realism: str = None,
-    ogarla: str = None,
+    character: str = None,
     favorite_style: str = None,
     favorite_prompt: str = None,
     style_reference: discord.Attachment = None
@@ -3461,7 +3534,7 @@ async def imagine(
 
     # Defer response since generation takes time
     await safe_defer(interaction, thinking=True)
-    await execute_imagine(interaction, prompt, None, checkpoint, style_reference, favorite_style=favorite_style, semi_realism=semi_realism, aspect_ratio=aspect_ratio, ogarla=ogarla, enhancements=enhancements)
+    await execute_imagine(interaction, prompt, None, checkpoint, style_reference, favorite_style=favorite_style, semi_realism=semi_realism, aspect_ratio=aspect_ratio, character=character, enhancements=enhancements)
 
 @imagine.autocomplete('favorite_style')
 async def imagine_favorite_style_autocomplete(interaction: discord.Interaction, current: str):
@@ -3493,7 +3566,7 @@ async def imagine_favorite_prompt_autocomplete(interaction: discord.Interaction,
     prompt="The prompt to generate Flux images from (supports wildcards {a|b|c}, --smart, --magic, etc.)",
     model_type="Community Flow-Matching UNET (GGUF Quantized for 8GB VRAM)",
     guidance="Flux Guidance scale (1.0 - 10.0, default 3.5)",
-    ogarla="Select Ogarla Flux LoRA strength (--ogarla weight)",
+    character="Select Character LoRA preset (Ogarla Flux)",
     aspect_ratio="Aspect ratio for generated images (--ar)",
     favorite_prompt="Apply one of your saved favorite prompts",
     magic_prompt="Enable Magic Prompt enhancer (--magic / --mp)",
@@ -3502,12 +3575,7 @@ async def imagine_favorite_prompt_autocomplete(interaction: discord.Interaction,
 )
 @app_commands.choices(
     model_type=FLUX_CHECKPOINT_CHOICES,
-    ogarla=[
-        app_commands.Choice(name="--ogarla.60", value="--ogarla.60"),
-        app_commands.Choice(name="--ogarla.70", value="--ogarla.70"),
-        app_commands.Choice(name="--ogarla.80", value="--ogarla.80"),
-        app_commands.Choice(name="--ogarla.90", value="--ogarla.90"),
-    ],
+    character=CHARACTER_CHOICES_FLUX,
     aspect_ratio=[
         app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
         app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
@@ -3522,7 +3590,7 @@ async def flux_command(
     prompt: str, 
     model_type: str = "flux1-dev-Q4_K_S.gguf",
     guidance: float = 3.5,
-    ogarla: str = None,
+    character: str = None,
     aspect_ratio: str = None,
     favorite_prompt: str = None,
     magic_prompt: bool = False,
@@ -3724,6 +3792,12 @@ async def execute_video_core(
     seed: int = None
 ):
     """Core logic to generate a Wan 2.2 video from raw image bytes and user settings."""
+    global _active_architecture
+    if _active_architecture is not None and _active_architecture != model_architecture.Architecture.WAN:
+        logger.info(f"Switching architecture from {_active_architecture} to {model_architecture.Architecture.WAN}. Purging ComfyUI VRAM via /free...")
+        await comfy_client.free_memory()
+    _active_architecture = model_architecture.Architecture.WAN
+
     try:
         # Open image with Pillow to auto-detect original width & height (aspect ratio)
         with Image.open(io.BytesIO(image_bytes)) as img:
@@ -4219,6 +4293,12 @@ async def animate_to_video_context(interaction: discord.Interaction, message: di
 )
 async def ltx_command(interaction: discord.Interaction, image: discord.Attachment, prompt: str, duration: int = 4, motion_strength: int = 7, seed: int = None):
     """Generate rapid video animation using LTX-Video."""
+    global _active_architecture
+    if _active_architecture is not None and _active_architecture != model_architecture.Architecture.LTX:
+        logger.info(f"Switching architecture from {_active_architecture} to {model_architecture.Architecture.LTX}. Purging ComfyUI VRAM via /free...")
+        await comfy_client.free_memory()
+    _active_architecture = model_architecture.Architecture.LTX
+
     await safe_defer(interaction, thinking=True)
 
     if not image.content_type or not image.content_type.startswith("image/"):

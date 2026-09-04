@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-49%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-54%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
 
@@ -24,33 +24,36 @@ Whether you want to create beautiful pictures, generate smooth videos, or copy s
 ## 🎨 1. Creating Images
 
 ### 🌸 `/imagine` — Create 4 Pictures at Once (SDXL)
-Type `/imagine` followed by your prompt description. The bot generates a 2x2 grid with 4 different variations!
+Type `/imagine` followed by what you want to see. The bot will create a 2x2 grid with 4 different picture ideas!
 * **Example:** `/imagine prompt: a cute ghost drinking boba tea in a neon city --ar 16:9`
-* **Checkpoints:** Switch between Illustrious SDXL, RealVisXL, Animagine, and more.
-* **Enhancements:**
-  * `Powerhouse 2-Stage Refiner` (`--refine`): 2-stage generation pipeline adding rich skin textures and micro-details.
-  * `Face Detailer` (`--face`): Automatic face-cleanup pass so character faces and eyes look extra sharp and symmetrical.
-  * `Smart Art Director` (`--smart`): Automatically analyzes the mood/genre (Cyberpunk, Fantasy, Cozy, Retro) and adds matching lighting and details.
-  * `Magic Prompt` (`--magic`): Auto-expands your prompt with studio lighting and high-definition details.
-  * `FreeU V2`: Enhances contrast and high-frequency latents.
-* **Prompt Modifiers:**
-  * `{a|b|c}` $\rightarrow$ **Wildcards**: Give each of the 4 pictures a random choice! (e.g. `/imagine prompt: a cute {cat|fox|dragon|panda} wizard`).
+* **Art Styles (Checkpoints):** Pick the overall look you want (like Anime, Photorealistic, or Semi-Realism).
+* **Optional Magic Enhancements:**
+  * `Powerhouse 2-Stage Refiner` (`--refine`): Runs a second cleanup pass to give characters smooth skin textures and rich micro-details.
+  * `Face Detailer` (`--face`): Automatic face-cleanup pass so character eyes and faces are always sharp and symmetrical.
+  * `Smart Art Director` (`--smart`): Analyzes your prompt's mood (Cyberpunk, Fantasy, Cozy, Retro) and automatically adds beautiful cinematic lighting.
+  * `Magic Prompt` (`--magic`): Expands simple prompts with studio lighting and high-definition detail keywords.
+  * `FreeU V2`: Enhances picture contrast and vivid colors.
+* **Prompt Modifiers (Shortcuts):**
+  * `{a|b|c}` $\rightarrow$ **Wildcards**: Give each of the 4 pictures a different choice! (e.g. `/imagine prompt: a cute {cat|fox|dragon|panda} wizard`).
   * `--ar 16:9` $\rightarrow$ Widescreen wallpaper shape.
   * `--ar 9:16` $\rightarrow$ Phone screen portrait shape.
-  * `--ar 1920:1032` $\rightarrow$ Taskbar Fit (fits your monitor right above the Windows taskbar).
+  * `--ar 1920:1032` $\rightarrow$ Taskbar Fit (fits perfectly on your monitor right above the Windows taskbar).
   * `--sref <code|url>` $\rightarrow$ Style Reference: Copies the color palette and artistic vibe from an image or style code.
-  * `--cref <url>` $\rightarrow$ Character Reference: Copies a character's face/identity from an image.
-  * `--sr.85` $\rightarrow$ Semi-Realism mode for rich shading and lighting.
-  * `--raw` $\rightarrow$ Clean, natural photo look without extra artistic styling.
+  * `--cref <url>` $\rightarrow$ Character Reference: Copies a character's face/identity from an uploaded photo.
+  * `--valerie.85` $\rightarrow$ **Valerie**: Keeps the Valerie character look consistent across all your pictures.
+  * `--sully.85` $\rightarrow$ **Sully**: Keeps the Sully character look consistent (black hair & thin-rim glasses).
+  * `--ogarla.85` $\rightarrow$ **Ogarla**: Fantasy character preset.
+  * `--sr.85` $\rightarrow$ Semi-Realism mode for rich 3D shading and lighting.
+  * `--raw` $\rightarrow$ Clean, natural photo look without artistic filters.
 
 ---
 
-### ✨ `/flux` — Next-Gen Flow-Matching (Flux.1 GGUF)
-Generate high-fidelity AI imagery using the 12-billion parameter **Flux.1** flow-matching model, quantized for smooth performance on 8GB VRAM!
+### ✨ `/flux` — Ultra-Realistic Pictures (Flux.1)
+Generate photorealistic pictures with incredible hands, natural skin, and clear, readable text on signs or clothes!
 * **Model Choices:**
-  * `flux1-dev-Q4_K_S.gguf` *(Default)*: Maximum photorealism, accurate anatomy, sharp text, and artistic quality.
-  * `flux1-schnell-Q4_K_S.gguf`: Ultra-fast turbo version (creates pictures in just ~8 seconds!).
-* **Guidance:** Control prompt adherence and style fidelity (default: 3.5).
+  * `flux1-dev` *(Default)*: Highest quality, realism, and accurate text.
+  * `flux1-schnell`: Ultra-fast turbo version (creates pictures in just ~8 seconds!).
+* **Characters:** Select `🌿 Ogarla Flux` directly from the `character` dropdown or use `--ogarla`.
 * **Example:** `/flux prompt: futuristic cyber warrior standing on a rooftop at sunset --ar 16:9`
 
 ---
@@ -93,14 +96,17 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 ```text
 [ U1 ]  [ U2 ]  [ U3 ]  [ U4 ]
 [ V1 ]  [ V2 ]  [ V3 ]  [ V4 ]  [ 🔄 ]
-[ ⭐ Favorite Style ]  [ ⭐ Favorite Prompt ]  [ 📋 Copy Prompt ]
+[ ⭐ Favorite Style ]  [ ⭐ Favorite Prompt ]  [ 📋 Copy Prompt ]  [ ✏️ Remix ]
 ```
+
+* 🛑 **Live Cancel Button**: Whenever a job is queued or running, click `🛑 Cancel` on the status message to immediately halt ComfyUI generation and clear pending tasks.
 
 | Button | What It Does |
 | :--- | :--- |
 | **U1, U2, U3, U4** | **Isolate & AI Upscale**: Extracts that picture, makes it full size, and enhances all fine details. |
 | **V1, V2, V3, V4** | **Variations**: Generates 4 new ideas based on that specific picture. |
 | **🔄 (Re-roll)** | **Try Again**: Re-runs the exact same prompt with new random seeds for 4 fresh ideas. |
+| **✏️ Remix** | **Tweak & Re-generate**: Opens a popup modal with your prompt and seed pre-filled so you can easily edit wording and try again. |
 | **⭐ Favorite Style** | Saves the image's style code to your personal favorites library. |
 | **⭐ Favorite Prompt** | Saves the prompt text to your personal favorites library. |
 | **📋 Copy Prompt** | Pops up a private message with the full prompt text so you can easily copy and edit it. |
@@ -123,7 +129,8 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 
 * **`/cui-start`**: Start your local ComfyUI server from Discord.
 * **`/cui-stop`**: Safely stop ComfyUI and free your graphics card memory.
-* **`/cui-status`**: Check if ComfyUI is online, view active jobs, and check your GPU VRAM.
+* **`/cui-status`**: Check if ComfyUI is online, view active jobs, and check your graphics card memory (VRAM).
+* **🧹 Automatic Memory Cleaner**: The bot automatically frees up GPU memory whenever you switch between different model types (like SDXL and Flux).
 * **`/queue`**: View active rendering jobs with visual progress bars.
 * **`/models`**: View all registered Checkpoints and LoRAs grouped by architecture (SDXL, Flux, Wan, LTX).
 * **`/scan_models`**: One-click scanner that scans your ComfyUI models folder and adds newly downloaded checkpoints and LoRAs to the bot.
@@ -147,6 +154,10 @@ All high-resolution outputs are saved directly to your computer:
 | :--- | :--- |
 | Generate 4 ideas for a wallpaper | `/imagine prompt: cyberpunk city in the rain --smart --ar 16:9` |
 | Make an ultra-realistic picture | `/flux prompt: portrait of an astronaut on Mars --smart --ar 16:9` |
+| Make an image with Sully | `/imagine prompt: drinking coffee in a cafe --sully` |
+| Make an image with Valerie | `/imagine prompt: walking in the park --valerie` |
+| Stop a running render | Click the `🛑 Cancel` button on the status message |
+| Tweak words from a picture grid | Click the `✏️ Remix` button below the pictures |
 | Make a video from an image | `/video image: [upload] prompt: camera slowly zooms in duration: 5` |
 | Fast 35-second animation | `/ltx image: [upload] prompt: camera slowly zooms in duration: 4` |
 | Find out what prompt made a photo | `/study image: [upload]` |

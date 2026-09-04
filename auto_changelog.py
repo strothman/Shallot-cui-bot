@@ -71,8 +71,36 @@ def get_working_tree_changes() -> List[str]:
     except Exception:
         return []
 
+FRIENDLY_FILE_DESCRIPTIONS = {
+    "characters.py": "Character system & presets (Valerie, Sully, Ogarla) with privacy protection",
+    "bot.py": "Core slash commands, buttons, and Discord event handlers",
+    "parsers.py": "Prompt modifier parser (aspect ratios, styles, wildcards, and character shortcuts)",
+    "comfy_client.py": "ComfyUI communication, task queueing, and VRAM memory auto-purge",
+    "views.py": "Interactive Discord buttons, Cancel controls, and Remix popups",
+    "suite_test.py": "Automated verification test suite",
+    "README.md": "Novice-friendly user guide and quickstart documentation",
+    "PROJECT_STATE.md": "Project status, features, and architecture documentation",
+    "image_utils.py": "Image processing (grid stitching, splitting, and scaling)",
+    "db.py": "Database storage for favorite prompts, styles, and history",
+    "monitor.py": "GPU telemetry and generation progress tracking",
+    "config.py": "Bot settings, models, and safety thresholds",
+}
+
+def format_friendly_commit(subject: str, chash: str) -> str:
+    """Formats a git commit message into a clean, novice-friendly sentence."""
+    clean_subj = subject
+    for prefix in ["feat:", "fix:", "refactor:", "perf:", "chore:", "docs:", "test:", "style:"]:
+        if clean_subj.lower().startswith(prefix):
+            clean_subj = clean_subj[len(prefix):].strip()
+            break
+    # Remove scope like feat(ui):
+    clean_subj = re.sub(r'^[a-z_]+(?:\([^\)]+\))?:\s*', '', clean_subj, flags=re.IGNORECASE).strip()
+    if clean_subj:
+        clean_subj = clean_subj[0].upper() + clean_subj[1:]
+    return f"**{clean_subj}**"
+
 def categorize_changes(commits: List[Tuple[str, str, str]], working_tree: List[str]) -> Dict[str, List[str]]:
-    """Groups changes into Added, Changed, Fixed, Performance, and Maintenance."""
+    """Groups changes into Added, Changed, Fixed, Performance, and Maintenance with beginner-friendly text."""
     categories = {
         "Added": [],
         "Changed": [],
@@ -83,23 +111,31 @@ def categorize_changes(commits: List[Tuple[str, str, str]], working_tree: List[s
 
     for chash, subject, _ in commits:
         subj_lower = subject.lower()
-        formatted_entry = f"**{subject}** (`{chash}`)"
+        friendly_entry = format_friendly_commit(subject, chash)
 
         if subj_lower.startswith("feat:") or " add " in subj_lower or " added " in subj_lower:
-            categories["Added"].append(formatted_entry)
+            categories["Added"].append(friendly_entry)
         elif subj_lower.startswith("fix:") or " fix " in subj_lower or " fixed " in subj_lower:
-            categories["Fixed"].append(formatted_entry)
+            categories["Fixed"].append(friendly_entry)
         elif subj_lower.startswith("perf:") or "optimize" in subj_lower or "speed" in subj_lower:
-            categories["Performance"].append(formatted_entry)
+            categories["Performance"].append(friendly_entry)
         elif subj_lower.startswith("chore:") or subj_lower.startswith("docs:") or subj_lower.startswith("test:"):
-            categories["Maintenance"].append(formatted_entry)
+            categories["Maintenance"].append(friendly_entry)
         else:
-            categories["Changed"].append(formatted_entry)
+            categories["Changed"].append(friendly_entry)
 
-    # If there are active working tree changes not yet committed
+    # If there are active working tree changes, present them as readable component updates
     if working_tree:
+        described_files = set()
         for item in working_tree:
-            categories["Maintenance"].append(f"Working tree modification: `{item}`")
+            # Extract just the filename from git status (e.g., 'M bot.py' -> 'bot.py')
+            parts = item.split()
+            fname = parts[-1] if parts else item
+            base = os.path.basename(fname)
+            desc = FRIENDLY_FILE_DESCRIPTIONS.get(base, f"Updated `{base}`")
+            if desc not in described_files:
+                categories["Maintenance"].append(f"Component polish: {desc}")
+                described_files.add(desc)
 
     return {k: v for k, v in categories.items() if v}
 
@@ -126,6 +162,14 @@ def update_changelog(date_str: str = None) -> bool:
         with open(CHANGELOG_PATH, "r", encoding="utf-8") as f:
             content = f.read()
 
+    # If today's section already has detailed human-written entries, don't overwrite them
+    date_header_pattern = rf"## \[{re.escape(date_str)}\].*?(?=\n## \[|\Z)"
+    existing_match = re.search(date_header_pattern, content, flags=re.DOTALL)
+    if existing_match and "### Added" in existing_match.group(0) and "Working tree" not in existing_match.group(0):
+        print(f"ℹ️ Changelog already has human-curated entry for {date_str}. Preserving.")
+        verify_readme_synchronization()
+        return True
+
     # Build today's entry markdown
     entry_lines = [f"## [{date_str}]", ""]
     for cat_name, items in categories.items():
@@ -137,9 +181,7 @@ def update_changelog(date_str: str = None) -> bool:
     entry_lines.append("")
     entry_text = "\n".join(entry_lines)
 
-    # Check if entry for today already exists; if so, replace it cleanly
-    date_header_pattern = rf"## \[{re.escape(date_str)}\].*?(?=\n## \[|\Z)"
-    if re.search(date_header_pattern, content, flags=re.DOTALL):
+    if existing_match:
         new_content = re.sub(date_header_pattern, entry_text.strip(), content, flags=re.DOTALL)
     else:
         # Insert right after the header block

@@ -473,6 +473,24 @@ class ComfyClient:
         db.save_generation(generation_id, gen_data)
         return True
 
+    async def free_memory(self, unload_models: bool = True, free_memory: bool = True) -> bool:
+        """Call ComfyUI /free endpoint to unload models and release VRAM when switching architectures."""
+        try:
+            if not self.session:
+                await self.start()
+            url = f"http://{self.server_address}/free"
+            payload = {"unload_models": unload_models, "free_memory": free_memory}
+            async with self.session.post(url, json=payload, timeout=5) as resp:
+                if resp.status == 200:
+                    logger.info("ComfyUI VRAM and models successfully purged via /free.")
+                    return True
+                else:
+                    logger.warning(f"ComfyUI /free returned status {resp.status}")
+                    return False
+        except Exception as e:
+            logger.warning(f"Unable to invoke ComfyUI /free: {e}")
+            return False
+
 
     async def upload_image(self, image_bytes, filename):
         """Upload an image to ComfyUI server."""
