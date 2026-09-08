@@ -449,23 +449,53 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
     }
     comp_display = comp_names.get(comp_strength, comp_strength)
 
+    char_choice = gen_data.get("char_choice")
+    if not char_choice:
+        char_choice = "ogarla" if oga else "none"
+
+    char_names = {
+        "none": "None",
+        "ogarla": "🌿 Ogarla (--ogarla.70)",
+        "valerie": "👩 Valerie (--valerie.85)",
+        "sully": "👓 Sully (--sully.85)",
+        "cheri": "🌸 Cheri E6 (--cheri.85)",
+        "cheri_e4": "🌸 Cheri E4 (--cheri4.85)",
+        "mageill": "🔮 Mageill E5 (--mageill.85)",
+        "mageill_e6": "🔮 Mageill E6 (--mageill6.85)",
+        "mageill_e4": "🔮 Mageill E4 (--mageill4.85)",
+        "mageill_e3": "🔮 Mageill E3 (--mageill3.85)",
+    }
+    char_display = char_names.get(char_choice, char_choice)
+
     if sr is False or sr == "nosr":
         sr_display = "OFF"
     elif isinstance(sr, str) and sr.startswith("sr"):
-        sr_display = f"ON (--{sr})"
+        val = sr[2:]
+        sr_display = f"--sr.{val}" if val.isdigit() and len(val) == 2 else f"--{sr}"
+    elif sr is True:
+        sr_display = "ON (--sr.75)"
     else:
-        sr_display = "ON"
+        sr_display = str(sr)
 
-    oga_display = "ON (--ogarla.70)" if oga else "OFF"
-    
-    if sref_rand == "nosref" or not sref_rand:
+    preset_style_names = {
+        "nosref": "OFF",
+        "sref": "1 Random Style",
+        "sref1": "1 Random Style",
+        "sref5": "5 Styles Batch",
+        "sref10": "10 Styles Batch",
+        "sref15": "15 Styles Batch",
+        "preset_junji_ito": "🖋️ Junji Ito",
+        "preset_martine_johanna": "🎨 Martine Johanna",
+        "preset_dark_fantasy_landscape": "🏰 Dark Fantasy",
+        "preset_cyberpunk_cityscape": "🌆 Cyberpunk",
+        "preset_ethereal_portrait": "✨ Ethereal Portrait",
+    }
+    if sref_rand in preset_style_names:
+        sref_display = preset_style_names[sref_rand]
+    elif isinstance(sref_rand, str) and sref_rand.startswith("saved_"):
+        sref_display = f"⭐ Saved (--sref {sref_rand[6:]})"
+    elif not sref_rand:
         sref_display = "OFF"
-    elif sref_rand in ["sref", "sref1", True]:
-        sref_display = "1 Style"
-    elif sref_rand == "sref5":
-        sref_display = "5 Styles"
-    elif sref_rand == "sref10":
-        sref_display = "10 Styles"
     else:
         sref_display = str(sref_rand)
 
@@ -495,15 +525,21 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
             inline=False
         )
 
-    config_badges = (
-        f"**📐 Ratio:** `{ar}` • **🤖 Model:** `{model_display}`\n"
-        f"**🖼️ Reference:** `{comp_display}`\n"
-        f"**✨ Semi-Realism:** `{sr_display}` • **🌿 Ogarla:** `{oga_display}` • **🎲 Style Random:** `{sref_display}`"
+    # 3-Column Studio Dashboard Fields
+    embed.add_field(
+        name="📐 Canvas & Framing",
+        value=f"**Ratio:** `{ar}`\n**Comp:** `{comp_display}`",
+        inline=True
     )
     embed.add_field(
-        name="⚙️ Active Configuration",
-        value=config_badges,
-        inline=False
+        name="🤖 Checkpoint",
+        value=f"**Model:** `{model_display}`\n**Realism:** `{sr_display}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🎭 Aesthetics",
+        value=f"**Char:** `{char_display}`\n**Style:** `{sref_display}`",
+        inline=True
     )
 
     if image_url:
@@ -513,189 +549,262 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
 
 
 class BlendButtons(discord.ui.View):
-    def __init__(self, generation_id: str, ar: str = "16:9", sr = True, oga: bool = False, model_choice: str = "wai", comp_strength: str = "style", sref_rand = "nosref"):
+    def __init__(
+        self,
+        generation_id: str,
+        ar: str = "16:9",
+        sr = True,
+        oga: bool = False,
+        model_choice: str = "wai",
+        comp_strength: str = "style",
+        sref_rand = "nosref",
+        char_choice: str = None,
+        tab: str = "canvas",
+        user_favorites: list = None
+    ):
         super().__init__(timeout=None)
         self.generation_id = generation_id
         self.ar = ar
         self.sr = sr
-        self.oga = oga
         self.model_choice = model_choice
         self.comp_strength = comp_strength
         self.sref_rand = sref_rand
+        self.tab = tab if tab in ["canvas", "style"] else "canvas"
+        self.user_favorites = user_favorites or []
 
-        # Resolve tags
-        sr_tag = sr if isinstance(sr, str) else ('sr90' if sr else 'nosr')
-        oga_tag = 'oga' if self.oga else 'nooga'
-        sref_tag = sref_rand if isinstance(sref_rand, str) else ('sref' if sref_rand else 'nosref')
-
-        # Row 0: Aspect Ratio Selection Dropdown
-        ar_options = [
-            discord.SelectOption(label="16:9 Landscape (1344x768)", value="16:9", emoji="📐", default=(self.ar == "16:9")),
-            discord.SelectOption(label="21:9 Ultra-Wide (1536x640)", value="21:9", emoji="📐", default=(self.ar == "21:9")),
-            discord.SelectOption(label="10:7 Standard / Tablet (1216x832)", value="10:7", emoji="📐", default=(self.ar == "10:7")),
-            discord.SelectOption(label="1:1 Square (1024x1024)", value="1:1", emoji="📐", default=(self.ar == "1:1")),
-            discord.SelectOption(label="3:5 Portrait (832x1216)", value="3:5", emoji="📐", default=(self.ar == "3:5")),
-            discord.SelectOption(label="9:16 Tall Portrait (768x1344)", value="9:16", emoji="📐", default=(self.ar == "9:16")),
-        ]
-        ar_select = discord.ui.Select(
-            placeholder="📐 Select Aspect Ratio...",
-            options=ar_options,
-            min_values=1,
-            max_values=1,
-            custom_id=f"set_blend_ar:{self.generation_id}",
-            row=0
-        )
-        self.add_item(ar_select)
-
-        # Row 1: Model Checkpoint Dropdown
-        model_options = [
-            discord.SelectOption(label="Wai Illustrious SDXL v1.70 (Anime / Illustration)", value="wai", emoji="🌸", default=(self.model_choice in ["wai", "default"])),
-            discord.SelectOption(label="Illustrious Realism v1.0 (Anime Realism)", value="illustrious_realism", emoji="🎨", default=(self.model_choice == "illustrious_realism")),
-            discord.SelectOption(label="RealVisXL V4.0 (Photorealistic)", value="realvis", emoji="📸", default=(self.model_choice == "realvis")),
-            discord.SelectOption(label="Juggernaut XL (Balanced Realism)", value="juggernaut", emoji="⚔️", default=(self.model_choice == "juggernaut")),
-            discord.SelectOption(label="Copax Timeless XL (Cinematic)", value="copax", emoji="🎬", default=(self.model_choice == "copax")),
-            discord.SelectOption(label="Ultra Realistic XL v2.5 (Fine Details)", value="ultra", emoji="✨", default=(self.model_choice == "ultra")),
-            discord.SelectOption(label="Hyphoria NAI (Illustrious NAI)", value="hyphoria", emoji="🤖", default=(self.model_choice == "hyphoria")),
-            discord.SelectOption(label="Nova Furry (Stylized)", value="nova", emoji="🦊", default=(self.model_choice == "nova")),
-        ]
-        model_select = discord.ui.Select(
-            placeholder="🤖 Select Model Checkpoint...",
-            options=model_options,
-            min_values=1,
-            max_values=1,
-            custom_id=f"set_blend_model:{self.generation_id}",
-            row=1
-        )
-        self.add_item(model_select)
-
-        # Row 2: Reference & Composition Strength Dropdown
-        comp_options = [
-            discord.SelectOption(label="Style Reference Only (0.20 weight)", value="style", emoji="🎨", description="Transfers style/colors without copying layout", default=(self.comp_strength == "style")),
-            discord.SelectOption(label="Light Composition (0.35 weight)", value="low", emoji="🖼️", description="Soft pose/layout reference", default=(self.comp_strength == "low")),
-            discord.SelectOption(label="Medium Composition (0.60 weight)", value="med", emoji="🖼️", description="Balanced character identity & layout", default=(self.comp_strength == "med")),
-            discord.SelectOption(label="Strong Composition (0.85 weight)", value="high", emoji="🖼️", description="Strict pose, framing & structural locking", default=(self.comp_strength == "high")),
-        ]
-        comp_select = discord.ui.Select(
-            placeholder="🖼️ Select Reference & Composition Strength...",
-            options=comp_options,
-            min_values=1,
-            max_values=1,
-            custom_id=f"set_blend_comp:{self.generation_id}",
-            row=2
-        )
-        self.add_item(comp_select)
-
-        # Resolve sr mode
-        if isinstance(sr, str):
-            sr_mode = sr
-        elif sr is True:
-            sr_mode = 'sr90' if model_choice == 'hyphoria' else 'sr75'
+        # Resolve char_choice & oga
+        if char_choice is not None:
+            self.char_choice = char_choice
+            self.oga = (char_choice == "ogarla")
         else:
-            sr_mode = 'nosr'
-        sr_tag = sr_mode
-        oga_tag = 'oga' if self.oga else 'nooga'
+            self.oga = oga
+            self.char_choice = "ogarla" if oga else "none"
 
-        # Resolve sref_mode string
-        if isinstance(sref_rand, str):
-            sref_mode = sref_rand
-        elif sref_rand is True:
-            sref_mode = 'sref'
+        # Resolve sr string
+        if self.sr in ["nosr", False]:
+            cur_sr = "nosr"
+        elif self.sr in ["sr60", "sr.60"]:
+            cur_sr = "sr60"
+        elif self.sr in ["sr70", "sr.70"]:
+            cur_sr = "sr70"
+        elif self.sr in ["sr75", "sr.75"]:
+            cur_sr = "sr75"
+        elif self.sr in ["sr80", "sr.80"]:
+            cur_sr = "sr80"
+        elif self.sr in ["sr90", "sr.90", "sr", True]:
+            cur_sr = "sr90"
         else:
-            sref_mode = 'nosref'
-        sref_tag = sref_mode
+            cur_sr = str(self.sr)
 
-        # Row 3: Quick Toggles (Semi-Realism, Ogarla, Style Random)
-        if sr_mode == "nosr":
-            sr_label = "✨ Semi-Realism (--sr): OFF"
-            sr_style = discord.ButtonStyle.secondary
-            toggle_sr_val = "sr60"
-        elif sr_mode in ["sr60", "sr.60"]:
-            sr_label = "✨ Semi-Realism (--sr.60): ON"
-            sr_style = discord.ButtonStyle.primary
-            toggle_sr_val = "sr70"
-        elif sr_mode in ["sr70", "sr.70"]:
-            sr_label = "✨ Semi-Realism (--sr.70): ON"
-            sr_style = discord.ButtonStyle.primary
-            toggle_sr_val = "sr80"
-        elif sr_mode in ["sr80", "sr.80"]:
-            sr_label = "✨ Semi-Realism (--sr.80): ON"
-            sr_style = discord.ButtonStyle.primary
-            toggle_sr_val = "sr90"
-        elif sr_mode in ["sr90", "sr.90", "sr"]:
-            sr_label = "✨ Semi-Realism (--sr.90): ON"
-            sr_style = discord.ButtonStyle.primary
-            toggle_sr_val = "nosr"
+        # Resolve style string
+        if isinstance(self.sref_rand, str):
+            cur_style = self.sref_rand
+        elif self.sref_rand is True:
+            cur_style = "sref"
         else:
-            sr_label = "✨ Semi-Realism (--sr): OFF"
-            sr_style = discord.ButtonStyle.secondary
-            toggle_sr_val = "sr60"
+            cur_style = "nosref"
 
-        self.add_item(discord.ui.Button(
-            label=sr_label,
-            style=sr_style,
-            custom_id=f"toggle_blend_sr:{self.generation_id}:{self.ar}:{toggle_sr_val}:{oga_tag}:{self.model_choice}:{self.comp_strength}:{sref_tag}",
-            row=3
-        ))
+        # Build dynamic peek summaries for tab buttons
+        char_short = {
+            "none": "No Char",
+            "ogarla": "Ogarla",
+            "valerie": "Valerie",
+            "sully": "Sully",
+            "cheri": "Cheri",
+            "cheri_e4": "Cheri E4",
+            "mageill": "Mageill",
+            "mageill_e6": "Mageill E6",
+            "mageill_e4": "Mageill E4",
+            "mageill_e3": "Mageill E3",
+        }.get(self.char_choice, self.char_choice)
+        sr_short = "No SR" if cur_sr == "nosr" else f"--{cur_sr}"
+        style_tab_peek = f"🎭 Characters & Styles [{char_short} • {sr_short}] ➡️"
 
-        oga_style = discord.ButtonStyle.primary if self.oga else discord.ButtonStyle.secondary
-        oga_label = "🌿 Ogarla (--ogarla.70): ON" if self.oga else "🌿 Ogarla (--ogarla.70): OFF"
-        toggle_oga_val = 'nooga' if self.oga else 'oga'
-        self.add_item(discord.ui.Button(
-            label=oga_label,
-            style=oga_style,
-            custom_id=f"toggle_blend_oga:{self.generation_id}:{self.ar}:{sr_tag}:{toggle_oga_val}:{self.model_choice}:{self.comp_strength}:{sref_tag}",
-            row=3
-        ))
+        model_short = {
+            "wai": "Wai",
+            "illustrious_realism": "Illu Real",
+            "realvis": "RealVis",
+            "juggernaut": "Juggernaut",
+            "copax": "Copax",
+            "ultra": "Ultra",
+            "hyphoria": "Hyphoria",
+            "nova": "Nova",
+        }.get(self.model_choice, self.model_choice)
+        canvas_tab_peek = f"📐 Canvas & Model [{self.ar} • {model_short}] ⬅️"
 
-        # Define button properties & cycle order for Style Random / Style Batch
-        if sref_mode == "nosref":
-            sref_label = "🎲 Style Random (--sref random): OFF"
-            sref_style = discord.ButtonStyle.secondary
-            toggle_sref_val = "sref"
-        elif sref_mode in ["sref", "sref1"]:
-            sref_label = "🎲 Style Random (--sref random): 1 Style"
-            sref_style = discord.ButtonStyle.primary
-            toggle_sref_val = "sref5"
-        elif sref_mode == "sref5":
-            sref_label = "🎲 Style Batch (--sref random): 5 Styles"
-            sref_style = discord.ButtonStyle.primary
-            toggle_sref_val = "sref10"
-        elif sref_mode == "sref10":
-            sref_label = "🎲 Style Batch (--sref random): 10 Styles"
-            sref_style = discord.ButtonStyle.primary
-            toggle_sref_val = "sref15"
-        elif sref_mode == "sref15":
-            sref_label = "🎲 Style Batch (--sref random): 15 Styles"
-            sref_style = discord.ButtonStyle.primary
-            toggle_sref_val = "nosref"
+        if self.tab == "canvas":
+            # Row 0: Aspect Ratio Selection Dropdown
+            ar_options = [
+                discord.SelectOption(label="16:9 Landscape (1344x768)", value="16:9", emoji="📐", default=(self.ar == "16:9")),
+                discord.SelectOption(label="21:9 Ultra-Wide (1536x640)", value="21:9", emoji="📐", default=(self.ar == "21:9")),
+                discord.SelectOption(label="10:7 Standard / Tablet (1216x832)", value="10:7", emoji="📐", default=(self.ar == "10:7")),
+                discord.SelectOption(label="1:1 Square (1024x1024)", value="1:1", emoji="📐", default=(self.ar == "1:1")),
+                discord.SelectOption(label="3:5 Portrait (832x1216)", value="3:5", emoji="📐", default=(self.ar == "3:5")),
+                discord.SelectOption(label="9:16 Tall Portrait (768x1344)", value="9:16", emoji="📐", default=(self.ar == "9:16")),
+            ]
+            ar_select = discord.ui.Select(
+                placeholder="📐 Select Aspect Ratio...",
+                options=ar_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_ar:{self.generation_id}",
+                row=0
+            )
+            self.add_item(ar_select)
+
+            # Row 1: Model Checkpoint Dropdown
+            model_options = [
+                discord.SelectOption(label="Wai Illustrious SDXL v1.70 (Anime / Illustration)", value="wai", emoji="🌸", default=(self.model_choice in ["wai", "default"])),
+                discord.SelectOption(label="Illustrious Realism v1.0 (Anime Realism)", value="illustrious_realism", emoji="🎨", default=(self.model_choice == "illustrious_realism")),
+                discord.SelectOption(label="RealVisXL V4.0 (Photorealistic)", value="realvis", emoji="📸", default=(self.model_choice == "realvis")),
+                discord.SelectOption(label="Juggernaut XL (Balanced Realism)", value="juggernaut", emoji="⚔️", default=(self.model_choice == "juggernaut")),
+                discord.SelectOption(label="Copax Timeless XL (Cinematic)", value="copax", emoji="🎬", default=(self.model_choice == "copax")),
+                discord.SelectOption(label="Ultra Realistic XL v2.5 (Fine Details)", value="ultra", emoji="✨", default=(self.model_choice == "ultra")),
+                discord.SelectOption(label="Hyphoria NAI (Illustrious NAI)", value="hyphoria", emoji="🤖", default=(self.model_choice == "hyphoria")),
+                discord.SelectOption(label="Nova Furry (Stylized)", value="nova", emoji="🦊", default=(self.model_choice == "nova")),
+            ]
+            model_select = discord.ui.Select(
+                placeholder="🤖 Select Model Checkpoint...",
+                options=model_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_model:{self.generation_id}",
+                row=1
+            )
+            self.add_item(model_select)
+
+            # Row 2: Reference & Composition Strength Dropdown
+            comp_options = [
+                discord.SelectOption(label="Style Reference Only (0.20 weight)", value="style", emoji="🎨", description="Transfers style/colors without copying layout", default=(self.comp_strength == "style")),
+                discord.SelectOption(label="Light Composition (0.35 weight)", value="low", emoji="🖼️", description="Soft pose/layout reference", default=(self.comp_strength == "low")),
+                discord.SelectOption(label="Medium Composition (0.60 weight)", value="med", emoji="🖼️", description="Balanced character identity & layout", default=(self.comp_strength == "med")),
+                discord.SelectOption(label="Strong Composition (0.85 weight)", value="high", emoji="🖼️", description="Strict pose, framing & structural locking", default=(self.comp_strength == "high")),
+            ]
+            comp_select = discord.ui.Select(
+                placeholder="🖼️ Select Reference & Composition Strength...",
+                options=comp_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_comp:{self.generation_id}",
+                row=2
+            )
+            self.add_item(comp_select)
+
+            # Row 3: Tab Switch Button to Characters & Styles (with peek badge)
+            self.add_item(discord.ui.Button(
+                label=style_tab_peek[:80],
+                style=discord.ButtonStyle.primary,
+                custom_id=f"switch_blend_tab:{self.generation_id}:style",
+                row=3
+            ))
+
         else:
-            sref_label = "🎲 Style Random (--sref random): OFF"
-            sref_style = discord.ButtonStyle.secondary
-            toggle_sref_val = "sref"
+            # tab == "style"
+            # Row 0: Character LoRA Dropdown
+            char_options = [
+                discord.SelectOption(label="None (No Character LoRA)", value="none", emoji="🚫", description="Generate without character presets", default=(self.char_choice == "none")),
+                discord.SelectOption(label="Ogarla", value="ogarla", emoji="🌿", description="Original fantasy character LoRA (--ogarla.70)", default=(self.char_choice == "ogarla")),
+                discord.SelectOption(label="Valerie", value="valerie", emoji="👩", description="Consistent Valerie character preset (--valerie.85)", default=(self.char_choice == "valerie")),
+                discord.SelectOption(label="Sully", value="sully", emoji="👓", description="Black hair & thin-rim glasses (--sully.85)", default=(self.char_choice == "sully")),
+                discord.SelectOption(label="Cheri (Epoch 6 - Default)", value="cheri", emoji="🌸", description="Blonde hair signature preset (--cheri.85)", default=(self.char_choice == "cheri")),
+                discord.SelectOption(label="Cheri (Epoch 4)", value="cheri_e4", emoji="🌸", description="Cheri Epoch 4 model (--cheri4.85)", default=(self.char_choice == "cheri_e4")),
+                discord.SelectOption(label="Mageill (Epoch 5 - Default)", value="mageill", emoji="🔮", description="Original Mageill character preset (--mageill.85)", default=(self.char_choice == "mageill")),
+                discord.SelectOption(label="Mageill (Epoch 6)", value="mageill_e6", emoji="🔮", description="Mageill Epoch 6 model (--mageill6.85)", default=(self.char_choice == "mageill_e6")),
+                discord.SelectOption(label="Mageill (Epoch 4)", value="mageill_e4", emoji="🔮", description="Mageill Epoch 4 model (--mageill4.85)", default=(self.char_choice == "mageill_e4")),
+                discord.SelectOption(label="Mageill (Epoch 3)", value="mageill_e3", emoji="🔮", description="Mageill Epoch 3 model (--mageill3.85)", default=(self.char_choice == "mageill_e3")),
+            ]
+            char_select = discord.ui.Select(
+                placeholder="🎭 Select Character LoRA Preset...",
+                options=char_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_char:{self.generation_id}",
+                row=0
+            )
+            self.add_item(char_select)
 
-        self.add_item(discord.ui.Button(
-            label=sref_label,
-            style=sref_style,
-            custom_id=f"toggle_blend_sref:{self.generation_id}:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}:{self.comp_strength}:{toggle_sref_val}",
-            row=3
-        ))
+            # Row 1: Semi-Realism Strength Dropdown
+            sr_options = [
+                discord.SelectOption(label="Semi-Realism: OFF", value="nosr", emoji="🚫", description="Default anime/model stylization without LoRA", default=(cur_sr == "nosr")),
+                discord.SelectOption(label="Light Semi-Realism (--sr.60)", value="sr60", emoji="✨", description="Subtle skin texture and soft shading", default=(cur_sr == "sr60")),
+                discord.SelectOption(label="Balanced Semi-Realism (--sr.70)", value="sr70", emoji="✨", description="Balanced anime/realism blend", default=(cur_sr == "sr70")),
+                discord.SelectOption(label="Medium-High Semi-Realism (--sr.75)", value="sr75", emoji="✨", description="Enhanced depth and realistic lighting", default=(cur_sr == "sr75")),
+                discord.SelectOption(label="High Semi-Realism (--sr.80)", value="sr80", emoji="✨", description="Strong realism pass with micro-details", default=(cur_sr == "sr80")),
+                discord.SelectOption(label="Maximum Realism (--sr.90)", value="sr90", emoji="✨", description="Intense photorealistic rendering pass", default=(cur_sr == "sr90")),
+            ]
+            sr_select = discord.ui.Select(
+                placeholder="✨ Select Semi-Realism Strength...",
+                options=sr_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_sr:{self.generation_id}",
+                row=1
+            )
+            self.add_item(sr_select)
 
-        # Row 4: Action Launchers & Edit Prompt
+            # Row 2: Style & Sref Mode Dropdown
+            style_options = [
+                discord.SelectOption(label="Style Sref: OFF", value="nosref", emoji="🚫", description="No style reference applied", default=(cur_style == "nosref")),
+                discord.SelectOption(label="1 Random Style (--sref random)", value="sref", emoji="🎲", description="Inject 1 randomized style code", default=(cur_style in ["sref", "sref1"])),
+                discord.SelectOption(label="5 Styles Batch (--sref batch:5)", value="sref5", emoji="🎲", description="Queues 5 variants with random & saved styles", default=(cur_style == "sref5")),
+                discord.SelectOption(label="10 Styles Batch (--sref batch:10)", value="sref10", emoji="🎲", description="Queues 10 variants with random & saved styles", default=(cur_style == "sref10")),
+                discord.SelectOption(label="15 Styles Batch (--sref batch:15)", value="sref15", emoji="🎲", description="Queues 15 variants with random & saved styles", default=(cur_style == "sref15")),
+                discord.SelectOption(label="Junji Ito (Horror Manga Ink)", value="preset_junji_ito", emoji="🖋️", description="Clinical cross-hatching, high-contrast ink, spirals", default=(cur_style == "preset_junji_ito")),
+                discord.SelectOption(label="Martine Johanna (Pastel Surreal)", value="preset_martine_johanna", emoji="🎨", description="Prismatic pastel strokes, dreamy gaze", default=(cur_style == "preset_martine_johanna")),
+                discord.SelectOption(label="Dark Fantasy Landscape", value="preset_dark_fantasy_landscape", emoji="🏰", description="Moody gothic spires, volumetric fog", default=(cur_style == "preset_dark_fantasy_landscape")),
+                discord.SelectOption(label="Cyberpunk Cityscape", value="preset_cyberpunk_cityscape", emoji="🌆", description="Neon monoliths, rain-slicked futuristic streets", default=(cur_style == "preset_cyberpunk_cityscape")),
+                discord.SelectOption(label="Ethereal Fine Art Portrait", value="preset_ethereal_portrait", emoji="✨", description="Delicate soft focus, gentle pastel tones", default=(cur_style == "preset_ethereal_portrait")),
+            ]
+            # Dynamic user favorite styles from /styles (up to 4)
+            if self.user_favorites:
+                for fav in self.user_favorites[:4]:
+                    code = str(fav.get("style_code") or fav.get("code") or "")
+                    name = fav.get("style_name") or fav.get("name") or f"Style {code}"
+                    if code:
+                        val = f"saved_{code}"
+                        style_options.append(
+                            discord.SelectOption(
+                                label=f"⭐ {name[:60]}",
+                                value=val,
+                                description=f"--sref {code}",
+                                default=(cur_style == val)
+                            )
+                        )
+
+            style_select = discord.ui.Select(
+                placeholder="🎨 Select Style & Sref Mode...",
+                options=style_options,
+                min_values=1,
+                max_values=1,
+                custom_id=f"set_blend_style:{self.generation_id}",
+                row=2
+            )
+            self.add_item(style_select)
+
+            # Row 3: Tab Switch Button to Canvas & Model (with peek badge)
+            self.add_item(discord.ui.Button(
+                label=canvas_tab_peek[:80],
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"switch_blend_tab:{self.generation_id}:canvas",
+                row=3
+            ))
+
+        # Row 4: Action Launchers (always accessible from both tabs!)
         self.add_item(discord.ui.Button(
-            label="✏️ Edit & Add Details",
+            label="✏️ Edit Prompts",
             style=discord.ButtonStyle.secondary,
             custom_id=f"edit_blend_prompt:{self.generation_id}",
             row=4
         ))
         self.add_item(discord.ui.Button(
-            label="🎨 Blend with Caption",
+            label="🏷️ Blend Tags",
             style=discord.ButtonStyle.success,
             custom_id=f"blend_desc:{self.generation_id}:caption",
             row=4
         ))
         self.add_item(discord.ui.Button(
-            label="🎨 Blend with Detailed",
-            style=discord.ButtonStyle.success,
+            label="✨ Blend Scene",
+            style=discord.ButtonStyle.primary,
             custom_id=f"blend_desc:{self.generation_id}:detailed",
             row=4
         ))

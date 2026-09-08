@@ -62,6 +62,7 @@ from image_utils import (
     upscale_isolated_image,
     boost_image_vibrancy_and_contrast,
     get_checkpoint_abbrev,
+    detect_closest_aspect_ratio,
 )
 from views import (
     GridButtons,
@@ -2486,6 +2487,30 @@ async def on_interaction(interaction: discord.Interaction):
                     on_submit_callback=handle_submit_edit_blend_prompts
                 )
                 await interaction.response.send_modal(modal)
+        elif custom_id.startswith("switch_blend_tab:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 3:
+                gen_id = parts[1]
+                tab = parts[2]
+                await handle_update_blend_view(interaction, gen_id, tab=tab)
+        elif custom_id.startswith("set_blend_char:"):
+            parts = custom_id.split(":")
+            gen_id = parts[1]
+            if interaction.data and "values" in interaction.data:
+                val = interaction.data["values"][0]
+                await handle_update_blend_view(interaction, gen_id, new_char=val)
+        elif custom_id.startswith("set_blend_sr:"):
+            parts = custom_id.split(":")
+            gen_id = parts[1]
+            if interaction.data and "values" in interaction.data:
+                val = interaction.data["values"][0]
+                await handle_update_blend_view(interaction, gen_id, new_sr=val)
+        elif custom_id.startswith("set_blend_style:"):
+            parts = custom_id.split(":")
+            gen_id = parts[1]
+            if interaction.data and "values" in interaction.data:
+                val = interaction.data["values"][0]
+                await handle_update_blend_view(interaction, gen_id, new_sref=val)
         elif custom_id.startswith("set_blend_ar:"):
             parts = custom_id.split(":")
             gen_id = parts[1]
@@ -2582,11 +2607,12 @@ async def on_interaction(interaction: discord.Interaction):
                 ar = gen_data.get("ar", "16:9")
                 use_sr = gen_data.get("sr", True)
                 use_oga = gen_data.get("oga", False)
+                char_choice = gen_data.get("char_choice", "ogarla" if use_oga else "none")
                 model_choice = gen_data.get("model_choice", "wai")
                 comp_strength = gen_data.get("comp_strength", "style")
                 use_sref = gen_data.get("sref_rand", "nosref")
                 await safe_defer(interaction)
-                await handle_generate_blended(interaction, generation_id, desc_type, ar=ar, use_sr=use_sr, use_oga=use_oga, model_choice=model_choice, comp_strength=comp_strength, use_sref_rand=use_sref)
+                await handle_generate_blended(interaction, generation_id, desc_type, ar=ar, use_sr=use_sr, use_oga=use_oga, model_choice=model_choice, comp_strength=comp_strength, use_sref_rand=use_sref, char_choice=char_choice)
             elif len(parts) >= 9:
                 generation_id = parts[1]
                 desc_type = parts[2]
@@ -4627,27 +4653,37 @@ async def handle_update_describe_view(interaction: discord.Interaction, generati
         logger.debug(f"Ignored expected interaction update error: {e}")
 
 
-async def handle_update_blend_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_sr = None, new_oga: bool = None, new_model: str = None, new_comp: str = None, new_sref = None):
+async def handle_update_blend_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_sr = None, new_oga: bool = None, new_model: str = None, new_comp: str = None, new_sref = None, new_char: str = None, tab: str = None):
     """Updates the interactive buttons and settings on the /blend result embed."""
     gen_data = get_generation(generation_id) or {}
     if new_ar is not None:
         gen_data["ar"] = new_ar
     if new_sr is not None:
         gen_data["sr"] = new_sr
-    if new_oga is not None:
+    if new_char is not None:
+        gen_data["char_choice"] = new_char
+        gen_data["oga"] = (new_char == "ogarla")
+    elif new_oga is not None:
         gen_data["oga"] = new_oga
+        if new_oga:
+            gen_data["char_choice"] = "ogarla"
+        elif gen_data.get("char_choice") == "ogarla":
+            gen_data["char_choice"] = "none"
     if new_model is not None:
         gen_data["model_choice"] = new_model
     if new_comp is not None:
         gen_data["comp_strength"] = new_comp
     if new_sref is not None:
         gen_data["sref_rand"] = new_sref
+    if tab is not None:
+        gen_data["blend_tab"] = tab
 
     db.save_generation(generation_id, gen_data)
 
     author_str = gen_data.get("author_str", interaction.user.name if (interaction and interaction.user) else "User")
     image_url = gen_data.get("image_url")
     embed = build_blend_embed(gen_data, author_str=author_str, image_url=image_url)
+    user_favs = db.get_favorite_styles(interaction.user.id) if (interaction and interaction.user) else []
     
     view = BlendButtons(
         generation_id=generation_id,
@@ -4656,7 +4692,10 @@ async def handle_update_blend_view(interaction: discord.Interaction, generation_
         oga=gen_data.get("oga", False),
         model_choice=gen_data.get("model_choice", "wai"),
         comp_strength=gen_data.get("comp_strength", "style"),
-        sref_rand=gen_data.get("sref_rand", "nosref")
+        sref_rand=gen_data.get("sref_rand", "nosref"),
+        char_choice=gen_data.get("char_choice", "none"),
+        tab=gen_data.get("blend_tab", "canvas"),
+        user_favorites=user_favs
     )
     try:
         await interaction.response.edit_message(embed=embed, view=view)
@@ -4681,11 +4720,14 @@ async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, gen
     ar = gen_data.get("ar", "16:9")
     sr = gen_data.get("sr", True)
     oga = gen_data.get("oga", False)
+    char_choice = gen_data.get("char_choice", "ogarla" if oga else "none")
+    tab = gen_data.get("blend_tab", "canvas")
     model_choice = gen_data.get("model_choice", "wai")
     comp_strength = gen_data.get("comp_strength", "style")
     sref_rand = gen_data.get("sref_rand", "nosref")
 
     embed = build_blend_embed(gen_data, author_str=author_str, image_url=image_url, is_edited=True)
+    user_favs = db.get_favorite_styles(interaction.user.id) if (interaction and interaction.user) else []
     view = BlendButtons(
         generation_id=generation_id,
         ar=ar,
@@ -4693,12 +4735,15 @@ async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, gen
         oga=oga,
         model_choice=model_choice,
         comp_strength=comp_strength,
-        sref_rand=sref_rand
+        sref_rand=sref_rand,
+        char_choice=char_choice,
+        tab=tab,
+        user_favorites=user_favs
     )
     await interaction.response.edit_message(embed=embed, view=view)
 
 
-async def handle_generate_blended(interaction: discord.Interaction, generation_id: str, desc_type: str, ar: str = "16:9", use_sr = True, use_oga: bool = False, model_choice: str = "wai", comp_strength: str = "style", use_sref_rand = "nosref"):
+async def handle_generate_blended(interaction: discord.Interaction, generation_id: str, desc_type: str, ar: str = "16:9", use_sr = True, use_oga: bool = False, model_choice: str = "wai", comp_strength: str = "style", use_sref_rand = "nosref", char_choice: str = None):
     """Generates blended image grid(s) using stored caption/detailed description + uploaded base image with chosen settings."""
     await safe_defer(interaction)
 
@@ -4739,15 +4784,37 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
     
     if use_sr and use_sr != "nosr":
         if isinstance(use_sr, str) and use_sr.startswith("sr"):
-            sr_tag = f"--{use_sr}"
+            val = use_sr[2:]
+            sr_tag = f"--sr.{val}" if (val.isdigit() and len(val) == 2) else f"--{use_sr}"
         else:
             sr_tag = "--sr.90" if is_anime else "--sr.75"
         base_parts.append("Semi-realism, masterpiece, best quality.")
     else:
         sr_tag = None
 
-    if use_oga:
+    if char_choice is None:
+        char_choice = "ogarla" if use_oga else "none"
+
+    char_tag = None
+    if char_choice and char_choice != "none":
+        char_flag_map = {
+            "ogarla": ("ogarla,", "--ogarla.70"),
+            "valerie": ("valerie,", "--valerie.85"),
+            "sully": ("sully,", "--sully.85"),
+            "cheri": ("cheri,", "--cheri.85"),
+            "cheri_e4": ("cheri,", "--cheri4.85"),
+            "mageill": ("mageill,", "--mageill.85"),
+            "mageill_e6": ("mageill,", "--mageill6.85"),
+            "mageill_e4": ("mageill,", "--mageill4.85"),
+            "mageill_e3": ("mageill,", "--mageill3.85"),
+        }
+        if char_choice in char_flag_map:
+            prefix, flag = char_flag_map[char_choice]
+            base_parts.append(prefix)
+            char_tag = flag
+    elif use_oga:
         base_parts.append("ogarla,")
+        char_tag = "--ogarla.70"
 
     base_parts.append(base_prompt)
 
@@ -4760,11 +4827,34 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
     if sr_tag:
         base_parts.append(sr_tag)
 
-    if use_oga:
-        base_parts.append("--ogarla.70")
+    if char_tag:
+        base_parts.append(char_tag)
 
     if ar:
         base_parts.append(f"--ar {ar}")
+
+    # Handle saved style code from user favorites
+    if isinstance(use_sref_rand, str) and use_sref_rand.startswith("saved_"):
+        saved_code = use_sref_rand.replace("saved_", "")
+        prompt_parts = list(base_parts)
+        prompt_parts.append(f"--sref {saved_code}")
+        full_prompt = " ".join(prompt_parts)
+        await execute_blend_generation(interaction, uploaded_image_name, prompt=full_prompt, model=selected_model, comp_strength=comp_strength)
+        return
+
+    # Handle style presets vs random sref batch
+    preset_style_key = None
+    if isinstance(use_sref_rand, str) and use_sref_rand.startswith("preset_"):
+        preset_style_key = use_sref_rand.replace("preset_", "")
+
+    if preset_style_key and preset_style_key in LOCKED_STYLE_PRESETS:
+        style_info = LOCKED_STYLE_PRESETS[preset_style_key]
+        base_parts.append(style_info["positive"])
+        full_prompt = " ".join(base_parts)
+        preset_neg = style_info.get("negative")
+        custom_neg = f"{DEFAULT_NEGATIVE_PROMPT}, {preset_neg}" if preset_neg else None
+        await execute_blend_generation(interaction, uploaded_image_name, prompt=full_prompt, negative_prompt=custom_neg, model=selected_model, comp_strength=comp_strength)
+        return
 
     # Determine batch count from sref mode
     batch_count = 0
@@ -5620,6 +5710,22 @@ async def execute_blend_core(
         raw_caption = caption
         raw_detailed_caption = detailed_caption
 
+        # Free Florence-2 vision model weights from GPU memory to give SDXL maximum VRAM
+        try:
+            await comfy_client.free_memory(unload_models=True)
+            logger.info("Florence-2 vision model VRAM successfully freed.")
+        except Exception as e:
+            logger.debug(f"Could not free VRAM after Florence-2: {e}")
+
+        # Auto-detect native aspect ratio from uploaded image dimensions
+        detected_ar = "16:9"
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as pil_img:
+                detected_ar = detect_closest_aspect_ratio(pil_img.width, pil_img.height)
+                logger.info(f"Auto-detected aspect ratio {detected_ar} from image size ({pil_img.width}x{pil_img.height})")
+        except Exception as e:
+            logger.debug(f"Could not inspect image dimensions for auto AR: {e}")
+
         # Truncate descriptions to fit within Discord's 1024-character limit for embed fields
         if len(caption) > 1024:
             caption = caption[:1021] + "..."
@@ -5635,9 +5741,11 @@ async def execute_blend_core(
             "uploaded_image_name": uploaded_name,
             "image_url": image_url,
             "user_prompt": prompt or "",
-            "ar": "16:9",
+            "ar": detected_ar,
             "sr": True,
             "oga": False,
+            "char_choice": "none",
+            "blend_tab": "canvas",
             "model_choice": "wai",
             "comp_strength": "style",
             "sref_rand": "nosref",
@@ -5647,16 +5755,20 @@ async def execute_blend_core(
         db.save_generation(generation_id, gen_data)
         save_generations()
 
-        # Build streamlined embed response
+        # Build streamlined embed response with 3-column dashboard
         embed = build_blend_embed(gen_data, author_str=interaction.user.name, image_url=image_url)
+        user_favs = db.get_favorite_styles(interaction.user.id) if (interaction and interaction.user) else []
         view = BlendButtons(
             generation_id=generation_id,
-            ar="16:9",
+            ar=detected_ar,
             sr=True,
             oga=False,
             model_choice="wai",
             comp_strength="style",
-            sref_rand="nosref"
+            sref_rand="nosref",
+            char_choice="none",
+            tab="canvas",
+            user_favorites=user_favs
         )
         await edit_original_fallback(interaction, content=None, embed=embed, view=view)
 

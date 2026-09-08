@@ -556,52 +556,58 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIsNotNone(info15)
         self.assertEqual(info15.get("batch_count"), 15)
 
-        # 2. Test BlendButtons sref mode cycling
-        # Mode 1: nosref -> next is sref
-        v_no = BlendButtons("gen123", sref_rand="nosref")
-        btn_no = [item for item in v_no.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertIn("sref", btn_no.custom_id.split(":")[-1])
-        self.assertIn("OFF", btn_no.label)
+        # 2. Test BlendButtons Canvas and Style tab dropdowns
+        # Canvas tab has AR, Model, Comp selects and tab switch button
+        v_canvas = BlendButtons("gen123", tab="canvas")
+        select_ar = [item for item in v_canvas.children if "set_blend_ar" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_ar)
+        self.assertEqual(len(select_ar.options), 6)
 
-        # Mode 2: sref -> next is sref5
-        v_sref = BlendButtons("gen123", sref_rand="sref")
-        btn_sref = [item for item in v_sref.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sref.custom_id.split(":")[-1], "sref5")
-        self.assertIn("1 Style", btn_sref.label)
+        tab_btn = [item for item in v_canvas.children if "switch_blend_tab" in getattr(item, "custom_id", "")][0]
+        self.assertEqual(tab_btn.custom_id, "switch_blend_tab:gen123:style")
 
-        # Mode 3: sref5 -> next is sref10
-        v_sref5 = BlendButtons("gen123", sref_rand="sref5")
-        btn_sref5 = [item for item in v_sref5.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sref5.custom_id.split(":")[-1], "sref10")
-        self.assertIn("5 Styles", btn_sref5.label)
+        # Style tab has Character LoRA, Semi-Realism, and Style Mode dropdowns
+        v_style = BlendButtons("gen123", tab="style", char_choice="sully", sr="sr80", sref_rand="sref5")
+        
+        # Test Character select
+        select_char = [item for item in v_style.children if "set_blend_char" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_char)
+        char_vals = [opt.value for opt in select_char.options]
+        self.assertIn("none", char_vals)
+        self.assertIn("ogarla", char_vals)
+        self.assertIn("valerie", char_vals)
+        self.assertIn("sully", char_vals)
+        self.assertIn("cheri", char_vals)
+        self.assertIn("mageill", char_vals)
+        # Verify default selected option matches char_choice
+        selected_char_opt = [opt for opt in select_char.options if opt.default][0]
+        self.assertEqual(selected_char_opt.value, "sully")
 
-        # Mode 4: sref10 -> next is sref15
-        v_sref10 = BlendButtons("gen123", sref_rand="sref10")
-        btn_sref10 = [item for item in v_sref10.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sref10.custom_id.split(":")[-1], "sref15")
-        self.assertIn("10 Styles", btn_sref10.label)
+        # Test Semi-Realism select
+        select_sr = [item for item in v_style.children if "set_blend_sr" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_sr)
+        sr_vals = [opt.value for opt in select_sr.options]
+        self.assertEqual(sr_vals, ["nosr", "sr60", "sr70", "sr75", "sr80", "sr90"])
+        selected_sr_opt = [opt for opt in select_sr.options if opt.default][0]
+        self.assertEqual(selected_sr_opt.value, "sr80")
 
-        # Mode 5: sref15 -> next is nosref
-        v_sref15 = BlendButtons("gen123", sref_rand="sref15")
-        btn_sref15 = [item for item in v_sref15.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sref15.custom_id.split(":")[-1], "nosref")
-        self.assertIn("15 Styles", btn_sref15.label)
+        # Test Style & Sref select
+        select_style = [item for item in v_style.children if "set_blend_style" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_style)
+        style_vals = [opt.value for opt in select_style.options]
+        self.assertIn("nosref", style_vals)
+        self.assertIn("sref", style_vals)
+        self.assertIn("sref5", style_vals)
+        self.assertIn("sref10", style_vals)
+        self.assertIn("sref15", style_vals)
+        self.assertIn("preset_junji_ito", style_vals)
+        self.assertIn("preset_martine_johanna", style_vals)
+        selected_style_opt = [opt for opt in select_style.options if opt.default][0]
+        self.assertEqual(selected_style_opt.value, "sref5")
 
-        # 3. Test Semi-Realism weight cycling (nosr -> sr60 -> sr70 -> sr80 -> sr90 -> nosr)
-        v_sr_off = BlendButtons("gen123", sr="nosr")
-        btn_sr_off = [item for item in v_sr_off.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sr_off.custom_id.split(":")[4], "sr60")
-        self.assertIn("OFF", btn_sr_off.label)
-
-        v_sr60 = BlendButtons("gen123", sr="sr60")
-        btn_sr60 = [item for item in v_sr60.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sr60.custom_id.split(":")[4], "sr70")
-        self.assertIn("--sr.60", btn_sr60.label)
-
-        v_sr90 = BlendButtons("gen123", sr="sr90")
-        btn_sr90 = [item for item in v_sr90.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(btn_sr90.custom_id.split(":")[4], "nosr")
-        self.assertIn("--sr.90", btn_sr90.label)
+        # Test Style tab switch button back to canvas
+        back_tab_btn = [item for item in v_style.children if "switch_blend_tab" in getattr(item, "custom_id", "")][0]
+        self.assertEqual(back_tab_btn.custom_id, "switch_blend_tab:gen123:canvas")
 
     def test_module13_followup_fallback_no_view_type_error(self):
         """Test send_followup_fallback omits view parameter when view=None so discord.py does not raise TypeError."""
@@ -1763,6 +1769,113 @@ class TestCUIBotFunctions(unittest.TestCase):
         modal = RemixModal("gen_999", initial_prompt="a cute cat", initial_seed=12345)
         self.assertEqual(modal.prompt_input.default, "a cute cat")
         self.assertEqual(modal.seed_input.default, "12345")
+
+    def test_blend_character_loras_and_embed_badges(self):
+        """Test build_blend_embed 3-column dashboard and handle_generate_blended character LoRAs & style presets."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch, MagicMock
+        from views import build_blend_embed, BlendButtons
+        from image_utils import detect_closest_aspect_ratio
+        import bot
+
+        # 1. Test detect_closest_aspect_ratio
+        self.assertEqual(detect_closest_aspect_ratio(1920, 1080), "16:9")
+        self.assertEqual(detect_closest_aspect_ratio(1080, 1920), "9:16")
+        self.assertEqual(detect_closest_aspect_ratio(800, 1200), "3:5")
+        self.assertEqual(detect_closest_aspect_ratio(1000, 1000), "1:1")
+        self.assertEqual(detect_closest_aspect_ratio(2560, 1080), "21:9")
+        self.assertEqual(detect_closest_aspect_ratio(1000, 700), "10:7")
+        self.assertEqual(detect_closest_aspect_ratio(0, 100), "16:9")
+
+        # 2. Test build_blend_embed 3-column inline dashboard formatting
+        gen_data = {
+            "caption": "a woman standing in a garden",
+            "detailed_caption": "detailed description of woman in garden",
+            "ar": "3:5",
+            "model_choice": "wai",
+            "comp_strength": "style",
+            "sr": "sr75",
+            "char_choice": "sully",
+            "sref_rand": "preset_junji_ito",
+        }
+        embed = build_blend_embed(gen_data, author_str="TestUser")
+        field_dict = {f.name: f.value for f in embed.fields}
+        self.assertIn("📐 Canvas & Framing", field_dict)
+        self.assertIn("🤖 Checkpoint", field_dict)
+        self.assertIn("🎭 Aesthetics", field_dict)
+
+        self.assertIn("`3:5`", field_dict["📐 Canvas & Framing"])
+        self.assertIn("--sr.75", field_dict["🤖 Checkpoint"])
+        self.assertIn("👓 Sully (--sully.85)", field_dict["🎭 Aesthetics"])
+        self.assertIn("🖋️ Junji Ito", field_dict["🎭 Aesthetics"])
+
+        # 3. Test BlendButtons 2-tab view and dynamic user favorites
+        user_favs = [
+            {"code": 112233, "name": "Vaporwave Neon", "prompt": "cyberpunk neon colors"}
+        ]
+        # Canvas Tab
+        view_canvas = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", tab="canvas", user_favorites=user_favs)
+        self.assertLessEqual(len(view_canvas.children), 25)
+        canvas_rows = set(child.row for child in view_canvas.children)
+        self.assertLessEqual(len(canvas_rows), 5)
+        # Check tab switch button peek
+        tab_btn = next((c for c in view_canvas.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("switch_blend_tab:") and ":style" in c.custom_id), None)
+        self.assertIsNotNone(tab_btn)
+        self.assertIn("Valerie", tab_btn.label)
+        self.assertIn("--sr70", tab_btn.label)
+
+        # Style Tab
+        view_style = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", tab="style", user_favorites=user_favs)
+        style_rows = set(child.row for child in view_style.children)
+        self.assertLessEqual(len(style_rows), 5)
+        # Verify user favorite in style dropdown
+        style_select = next((c for c in view_style.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("set_blend_style:")), None)
+        self.assertIsNotNone(style_select)
+        fav_option = next((opt for opt in style_select.options if opt.value == "saved_112233"), None)
+        self.assertIsNotNone(fav_option)
+        self.assertIn("Vaporwave Neon", fav_option.label)
+
+        # 4. Test handle_generate_blended character flag assembly and saved style resolution
+        bot.db.save_generation("gen_test_char", gen_data)
+        bot.active_generations["gen_test_char"] = gen_data
+
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            # Test character flag injection: Valerie
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_test_char", desc_type="caption",
+                ar="3:5", use_sr="sr70", char_choice="valerie", use_sref_rand="nosref"
+            ))
+            mock_exec.assert_called_once()
+            called_prompt = mock_exec.call_args[1]["prompt"]
+            self.assertIn("valerie,", called_prompt)
+            self.assertIn("--valerie.85", called_prompt)
+            self.assertIn("--sr.70", called_prompt)
+            self.assertIn("--ar 3:5", called_prompt)
+
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            # Test style preset injection: Junji Ito
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_test_char", desc_type="caption",
+                ar="16:9", use_sr="nosr", char_choice="cheri", use_sref_rand="preset_junji_ito"
+            ))
+            mock_exec.assert_called_once()
+            called_prompt = mock_exec.call_args[1]["prompt"]
+            self.assertIn("cheri,", called_prompt)
+            self.assertIn("--cheri.85", called_prompt)
+            self.assertIn("Junji Ito", called_prompt)
+
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            # Test saved style injection from user favorites
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_test_char", desc_type="caption",
+                ar="1:1", use_sr="nosr", char_choice="nochar", use_sref_rand="saved_112233"
+            ))
+            mock_exec.assert_called_once()
+            called_prompt = mock_exec.call_args[1]["prompt"]
+            self.assertIn("--sref 112233", called_prompt)
 
 
 if __name__ == "__main__":

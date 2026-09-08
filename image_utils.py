@@ -412,3 +412,23 @@ def convert_image_to_ico(image_bytes: bytes, rounded_corners: bool = True, radiu
     except Exception as e:
         logger.error(f"Error converting image to ICO: {e}")
         return None, None
+
+
+def detect_closest_aspect_ratio(width: int, height: int) -> str:
+    """
+    Finds the closest supported aspect ratio for an uploaded image based on its width and height.
+    Supported: '21:9', '16:9', '10:7', '1:1', '3:5', '9:16'.
+    """
+    if not width or not height or width <= 0 or height <= 0:
+        return "16:9"
+    ratio = float(width) / float(height)
+    candidates = {
+        "21:9": 21.0 / 9.0,
+        "16:9": 16.0 / 9.0,
+        "10:7": 10.0 / 7.0,
+        "1:1": 1.0,
+        "3:5": 3.0 / 5.0,
+        "9:16": 9.0 / 16.0,
+    }
+    return min(candidates.keys(), key=lambda ar: abs(candidates[ar] - ratio))
+

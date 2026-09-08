@@ -4,6 +4,18 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-07]
+
+### Added
+* 🎨 **Interactive `/blend` Character LoRA Dropdown**: Upgraded `/blend` with a dedicated Character LoRA dropdown supporting **Ogarla**, **Valerie**, **Sully**, **Cheri** (Epochs 4 & 6), and **Mageill** (Epochs 3, 4, 5, 6) with automatic trait injection and privacy masking.
+* ✨ **Semi-Realism Level Dropdown in `/blend`**: Replaced the cycling toggle button with an intuitive dropdown to directly select `--sr` strength (`OFF`, `0.60`, `0.70`, `0.75`, `0.80`, `0.90`).
+* 🎲 **Style & Sref Presets Dropdown in `/blend`**: Replaced the cycling random button with a comprehensive style dropdown featuring `--sref random` (1 style), `--sref batch` (5, 10, and 15 styles), and locked artist styles (Junji Ito, Martine Johanna, Dark Fantasy Landscape, Cyberpunk Cityscape, Ethereal Fine Art Portrait).
+* 📑 **2-Tab Studio Layout for Discord 5-Row Compliance**: Created a 2-tab view (`📐 Canvas & Model` ↔ `🎭 Characters & Styles`) allowing all 6 major settings to have full dropdown menus while strictly adhering to Discord's 5-row component limit.
+
+### Maintenance
+* 🧪 **Automated Test Suite Expansion**: Expanded automated tests to 57 passing checks verifying both Blend tabs, character flag injection, style preset resolution, and embed configuration badges.
+
+---
 ## [2026-09-04]
 
 ### Added
