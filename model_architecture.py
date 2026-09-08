@@ -158,7 +158,7 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
         return (model_type, Architecture.SDXL, SubType.ILLUSTRIOUS)
     if "pony" in clean_name:
         return (model_type, Architecture.SDXL, SubType.PONY)
-    if any(k in clean_name for k in ["realvis", "juggernaut", "copax", "ultrarealistic", "biglust", "lustify", "xl"]):
+    if any(k in clean_name for k in ["realvis", "juggernaut", "copax", "ultrarealistic", "xl"]):
         return (model_type, Architecture.SDXL, SubType.REALISTIC)
 
     # Default fallback to SDXL for repository context if safetensors

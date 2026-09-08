@@ -633,6 +633,19 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(edit_kwargs.get("view"), None)
         self.assertEqual(edit_kwargs.get("content"), "Editing")
 
+        # Test edit_message_fallback with allow_send_fallback=False suppresses channel.send on expired token
+        mock_msg_interaction = MagicMock()
+        mock_msg_interaction.channel_id = 12345
+        mock_msg_interaction.channel = MagicMock()
+        mock_msg_interaction.channel.fetch_message = AsyncMock(side_effect=Exception("429 Too Many Requests: 30046"))
+        mock_msg_interaction.followup = MagicMock()
+        mock_msg_interaction.followup.edit_message = AsyncMock(side_effect=Exception("10062 Unknown interaction"))
+        mock_msg_interaction.channel.send = AsyncMock()
+
+        # Should complete quietly and NOT call channel.send
+        asyncio.run(edit_message_fallback(mock_msg_interaction, 99999, content="Progress tick", allow_send_fallback=False))
+        mock_msg_interaction.channel.send.assert_not_called()
+
     def test_module14_wan_video_dimensions(self):
         """Test Wan 2.2 video dimension math for 8GB VRAM cards across different source aspect ratios."""
         # 16:9 widescreen source image (1920x1080) -> expect ~832x480 (multiples of 16)

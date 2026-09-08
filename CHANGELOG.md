@@ -14,6 +14,10 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ### Changed
 * 🎯 **Streamlined `/imagine` Enhancements Description**: Refreshed parameter help text to accurately reflect studio and pipeline presets, removing misleading legacy text.
 
+### Fixed
+* 🛡️ **Progress Message Channel Spam Prevention**: Enhanced `edit_message_fallback` in [bot.py](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) and [core_helpers.py](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/core_helpers.py) with an `allow_send_fallback` flag set to `False` on intermediate progress callbacks. If an interaction token expires (>15 min) or a status message is older than 1 hour (Discord 30046), progress updates now quietly suppress channel-send fallbacks instead of flooding the channel with new percentage bar messages.
+* 🧹 **Model Checkpoint Cleanup**: Permanently deleted and safely unlinked `lustifySDXLNSFWSFW_v10` and `bigLust_v16.safetensors` from all dropdown choices, configuration dictionaries, database registries, and architecture detectors.
+
 ### Maintenance
 * 🧪 **Automated Test Suite Expansion**: Added unit tests in `suite_test.py` verifying the `ultimate` preset, Discord label character constraints, and all shorthand prompt flags (`--powerhouse`, `--ph`, `--refine`, `--raw`, `--nofreeu`, `--disable-freeu`). All 59 unit tests passing.
 

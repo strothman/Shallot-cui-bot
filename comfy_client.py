@@ -626,8 +626,6 @@ class ComfyClient:
             "hyphoriaRealIllu_v09.safetensors",
             "hyphoriaIlluNAI_v001.safetensors",
             "illustriousRealismBy_v10VAE.safetensors",
-            "bigLust_v16.safetensors",
-            "lustifySDXLNSFWSFW_v10.safetensors",
             "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
             "RealVisXL_V5.0_Lightning_fp16.safetensors",
             "novaFurryXL_ilV180A.safetensors",

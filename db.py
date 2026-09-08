@@ -643,8 +643,6 @@ def seed_default_model_registry():
         ("hyphoriaRealIllu_v09.safetensors", "checkpoint", "sdxl", "illustrious", "Hyphoria Real Illu v0.9"),
         ("hyphoriaIlluNAI_v001.safetensors", "checkpoint", "sdxl", "illustrious", "Hyphoria NAI"),
         ("illustriousRealismBy_v10VAE.safetensors", "checkpoint", "sdxl", "illustrious", "Illustrious Realism v1.0"),
-        ("bigLust_v16.safetensors", "checkpoint", "sdxl", "realistic", "Big Lust v1.6"),
-        ("lustifySDXLNSFWSFW_v10.safetensors", "checkpoint", "sdxl", "realistic", "Lustify v1.0"),
         ("ponyDiffusionV6XL_v6StartWithThisOne.safetensors", "checkpoint", "sdxl", "pony", "Pony Diffusion V6 XL"),
         ("RealVisXL_V5.0_Lightning_fp16.safetensors", "checkpoint", "sdxl", "realistic", "RealVisXL V5.0 Lightning"),
         ("novaFurryXL_ilV180A.safetensors", "checkpoint", "sdxl", "illustrious", "Nova Furry XL"),

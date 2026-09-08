@@ -163,8 +163,8 @@ async def edit_original_fallback(interaction: discord.Interaction, content=None,
             raise hex_err
 
 
-async def edit_message_fallback(interaction: discord.Interaction, message_id: int, content=None, embed=None, file=None, view=None):
-    """Edits a status message by ID. Falls back to channel.send if interaction token expired/fails."""
+async def edit_message_fallback(interaction: discord.Interaction, message_id: int, content=None, embed=None, file=None, view=None, allow_send_fallback: bool = True):
+    """Edits a status message by ID. Falls back to channel.send if interaction token expired/fails (unless allow_send_fallback is False)."""
     chan_id = interaction.channel_id
     edit_kwargs = {}
     send_kwargs = {}
@@ -193,6 +193,8 @@ async def edit_message_fallback(interaction: discord.Interaction, message_id: in
                     await message.edit(**edit_kwargs)
                     return
         except Exception as e:
+            if not allow_send_fallback:
+                return
             logger.info(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
 
     try:
@@ -202,6 +204,8 @@ async def edit_message_fallback(interaction: discord.Interaction, message_id: in
         await interaction.followup.edit_message(message_id, **edit_kwargs)
     except (discord.HTTPException, discord.NotFound) as hex_err:
         if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
+            if not allow_send_fallback:
+                return
             logger.info(f"Interaction token expired during message edit. Sending new message to channel.")
             channel = interaction.channel
             if not channel and interaction.channel_id:
@@ -217,7 +221,8 @@ async def edit_message_fallback(interaction: discord.Interaction, message_id: in
                     send_kwargs["file"] = file
                 await channel.send(**send_kwargs)
         else:
-            raise hex_err
+            if allow_send_fallback:
+                raise hex_err
 
 
 async def _update_button_state(interaction: discord.Interaction, custom_id: str, style: discord.ButtonStyle, disabled: bool = True):

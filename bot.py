@@ -129,8 +129,6 @@ SDXL_CHECKPOINT_CHOICES = [
     app_commands.Choice(name="Hyphoria Real Illu v0.9", value="hyphoriaRealIllu_v09.safetensors"),
     app_commands.Choice(name="Hyphoria NAI", value="hyphoriaIlluNAI_v001.safetensors"),
     app_commands.Choice(name="Illustrious Realism v1.0", value="illustriousRealismBy_v10VAE.safetensors"),
-    app_commands.Choice(name="Big Lust v1.6 (SDXL Realism)", value="bigLust_v16.safetensors"),
-    app_commands.Choice(name="Lustify v1.0 (SDXL Realism)", value="lustifySDXLNSFWSFW_v10.safetensors"),
     app_commands.Choice(name="Pony Diffusion V6 XL", value="ponyDiffusionV6XL_v6StartWithThisOne.safetensors"),
     app_commands.Choice(name="RealVisXL V5.0 Lightning (Ultra Fast)", value="RealVisXL_V5.0_Lightning_fp16.safetensors"),
     app_commands.Choice(name="Nova Furry", value="novaFurryXL_ilV180A.safetensors"),
@@ -229,22 +227,6 @@ CHECKPOINT_CONFIGS = {
         "steps": 30,
         "cfg": 5.0,
         "negative_addon": "anime, drawing, cartoon, cgi, lowres",
-    },
-    "bigLust_v16.safetensors": {
-        "display_name": "Big Lust v1.6 (SDXL Realism)",
-        "sampler_name": "dpmpp_2m_sde",
-        "scheduler": "karras",
-        "steps": 28,
-        "cfg": 4.0,
-        "negative_addon": "worst quality, low quality, bad anatomy, bad hands, missing fingers, extra digits, cgi, 3d render, lowres",
-    },
-    "lustifySDXLNSFWSFW_v10.safetensors": {
-        "display_name": "Lustify v1.0 (SDXL Realism)",
-        "sampler_name": "dpmpp_2m_sde",
-        "scheduler": "karras",
-        "steps": 30,
-        "cfg": 4.5,
-        "negative_addon": "worst quality, low quality, blurry, bad anatomy, distorted face, plastic skin, cgi, 3d",
     },
     "ponyDiffusionV6XL_v6StartWithThisOne.safetensors": {
         "display_name": "Pony Diffusion V6 XL",
@@ -592,8 +574,8 @@ async def edit_original_fallback(interaction, content=None, embed=None, view=Non
             raise hex
 
 
-async def edit_message_fallback(interaction, message_id, content=None, embed=None, file=None, view=None):
-    """Edits a status message by ID. Falls back to channel.send if interaction token expired/fails."""
+async def edit_message_fallback(interaction, message_id, content=None, embed=None, file=None, view=None, allow_send_fallback=True):
+    """Edits a status message by ID. Falls back to channel.send if interaction token expired/fails (unless allow_send_fallback is False)."""
     chan_id = interaction.channel_id
     edit_kwargs = {}
     send_kwargs = {}
@@ -620,6 +602,8 @@ async def edit_message_fallback(interaction, message_id, content=None, embed=Non
                 await message.edit(**edit_kwargs)
                 return
         except Exception as e:
+            if not allow_send_fallback:
+                return
             logger.info(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
     
     try:
@@ -629,6 +613,8 @@ async def edit_message_fallback(interaction, message_id, content=None, embed=Non
         await interaction.followup.edit_message(message_id, **edit_kwargs)
     except (discord.HTTPException, discord.NotFound) as hex:
         if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
+            if not allow_send_fallback:
+                return
             logger.info(f"Interaction token expired during message edit. Sending new message to channel.")
             channel = interaction.channel
             if not channel and interaction.channel_id:
@@ -642,7 +628,8 @@ async def edit_message_fallback(interaction, message_id, content=None, embed=Non
                     send_kwargs["file"] = file
                 await channel.send(**send_kwargs)
         else:
-            raise hex
+            if allow_send_fallback:
+                raise hex
 
 
 async def complete_grid_generation(interaction, generation_id, images, gen_data, status_message_id=None, timing_data=None):
@@ -3436,7 +3423,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
                     prog_content = f"🎨 **Generating Images...**\n`[{bar}] {pct}%` (Image {img_num}/{total_wfs} • Step {val}/{max_val})\n*Model:* `{selected_model}`"
                     try:
                         if msg:
-                            await edit_message_fallback(interaction, msg.id, content=prog_content)
+                            await edit_message_fallback(interaction, msg.id, content=prog_content, allow_send_fallback=False)
                     except Exception:
                         pass
             return on_grid_progress
