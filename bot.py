@@ -71,6 +71,7 @@ from views import (
     DescribeButtons,
     BlendButtons,
     build_blend_embed,
+    build_blend_complete_embed,
     EditBlendPromptModal,
     StasisControlsView,
     StasisPausedView,
@@ -2632,6 +2633,11 @@ async def on_interaction(interaction: discord.Interaction):
                     use_sref = parts[8] if len(parts) > 8 else "nosref"
                 await safe_defer(interaction)
                 await handle_generate_blended(interaction, generation_id, desc_type, ar=ar, use_sr=use_sr, use_oga=use_oga, model_choice=model_choice, comp_strength=comp_strength, use_sref_rand=use_sref)
+        elif custom_id.startswith("reblend:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                generation_id = parts[1]
+                await handle_reblend(interaction, generation_id)
         elif custom_id.startswith("adopt_imagine:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:
@@ -4743,6 +4749,43 @@ async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, gen
     await interaction.response.edit_message(embed=embed, view=view)
 
 
+async def handle_reblend(interaction: discord.Interaction, generation_id: str):
+    """Re-opens the interactive 2-tab Blend Studio for a previously generated blend grid."""
+    gen_data = get_generation(generation_id)
+    if not gen_data:
+        if interaction.response.is_done():
+            await interaction.followup.send("❌ Could not find session data for this blend. It may have expired.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Could not find session data for this blend. It may have expired.", ephemeral=True)
+        return
+
+    author_name = interaction.user.display_name if (interaction and interaction.user) else "User"
+    user_id = interaction.user.id if (interaction and interaction.user) else 0
+    favs = db.get_favorite_styles(user_id) if user_id else []
+
+    embed = build_blend_embed(
+        gen_data,
+        author_str=author_name,
+        image_url=gen_data.get("image_url")
+    )
+    view = BlendButtons(
+        generation_id=generation_id,
+        ar=gen_data.get("ar", "16:9"),
+        sr=gen_data.get("sr", True),
+        oga=gen_data.get("oga", False),
+        model_choice=gen_data.get("model_choice", "wai"),
+        comp_strength=gen_data.get("comp_strength", "style"),
+        sref_rand=gen_data.get("sref_rand", "nosref"),
+        char_choice=gen_data.get("char_choice", "none"),
+        tab="canvas",
+        user_favorites=favs
+    )
+    if interaction.response.is_done():
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    else:
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
 async def handle_generate_blended(interaction: discord.Interaction, generation_id: str, desc_type: str, ar: str = "16:9", use_sr = True, use_oga: bool = False, model_choice: str = "wai", comp_strength: str = "style", use_sref_rand = "nosref", char_choice: str = None):
     """Generates blended image grid(s) using stored caption/detailed description + uploaded base image with chosen settings."""
     await safe_defer(interaction)
@@ -5009,7 +5052,9 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
     if sref_info and "code" in sref_info:
         display_prompt = re.sub(r'[-\u2014\u2013]{1,2}sref\s+random', f"--sref {sref_info['code']}", prompt, flags=re.IGNORECASE)
 
-    active_generations[generation_id] = {
+    existing_data = get_generation(generation_id) or {}
+    gen_data_record = {
+        **existing_data,
         "prompt": cleaned_prompt,
         "original_prompt": display_prompt,
         "negative_prompt": neg_prompt,
@@ -5025,14 +5070,18 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
         "cref_weight": cref_weight,
         "is_blend": True
     }
+    active_generations[generation_id] = gen_data_record
+    db.save_generation(generation_id, gen_data_record)
     save_generations()
 
     comp_lbls = {"style": "Style Only", "low": "Low Comp", "med": "Medium Comp", "high": "High Comp"}
     comp_info = comp_lbls.get(comp_strength, "Style Only")
     flags_info = f"Seed: {seed}, Model: {selected_model}, Size: {width}x{height}, CFG: {cfg:.1f}, Comp: {comp_info}"
     
+    start_time = time.time()
+    status_msg = None
     try:
-        await send_followup_fallback(interaction, content=f"Job submitted (Seed: {seed}) — Queuing blend...")
+        status_msg = await send_followup_fallback(interaction, content=f"Job submitted (Seed: {seed}) — Queuing blend...")
 
         # Set batch size to 1 for the parallel worker tasks (if Node 5 exists)
         if "5" in workflow:
@@ -5066,33 +5115,50 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         file = discord.File(fp=grid_file_io, filename=format_image_filename("blend_grid", seed, "jpg", sref=sref_code))
         
-        desc_parts = [f"**Steering Prompt:** {truncate_prompt(display_prompt, 250)}", f"**Model:** {selected_model}", f"**Seed:** {seed}", f"**Size:** {width}x{height}", f"**Composition Reference:** {comp_info}"]
-        if "{" in display_prompt and "}" in display_prompt:
-            desc_parts.append("\n**Selected Quadrant Prompts:**")
-            cleaned_eps = clean_quadrant_prompts(expanded_prompts, display_prompt)
-            for idx, clean_ep in enumerate(cleaned_eps):
-                if len(clean_ep) > 120:
-                    clean_ep = clean_ep[:117] + "..."
-                desc_parts.append(f"* **Q{idx+1}:** {clean_ep}")
-        if sref_info and "code" in sref_info:
-            desc_parts.append(f"**Style Reference:** --sref {sref_info['code']} ({sref_info['name']})")
-        if cref_image_name:
-            desc_parts.append(f"**Character Reference:** --cref (weight: {cref_weight:.2f})")
-        if cfg != 4.5:
-            desc_parts.append(f"**CFG:** {cfg:.1f}")
-        if is_magic:
-            desc_parts.append("**Magic Prompt:** ✨ Enabled")
-        if not prepend_quality:
-            desc_parts.append("**Mode:** Raw")
-        
-        embed = discord.Embed(
-            title="Image Blend Complete", 
-            description="\n".join(desc_parts)
+        elapsed_time = time.time() - start_time
+        user_name = interaction.user.display_name if (interaction and interaction.user) else "User"
+        ref_image_url = gen_data_record.get("image_url")
+        char_choice = gen_data_record.get("char_choice")
+        sr_choice = gen_data_record.get("sr")
+
+        embed = build_blend_complete_embed(
+            display_prompt=display_prompt,
+            selected_model=selected_model,
+            seed=seed,
+            width=width,
+            height=height,
+            comp_strength=comp_strength,
+            cfg=cfg,
+            sref_info=sref_info,
+            cref_image_name=cref_image_name,
+            cref_weight=cref_weight,
+            is_magic=is_magic,
+            char_choice=char_choice,
+            sr_choice=sr_choice,
+            user_name=user_name,
+            image_url=ref_image_url,
+            elapsed_time=elapsed_time,
+            expanded_prompts=expanded_prompts
         )
         has_sref = sref_info is not None and "code" in sref_info
-        view = GridButtons(generation_id, has_sref=has_sref)
+        view = GridButtons(generation_id, has_sref=has_sref, is_blend=True)
         
-        await send_followup_fallback(interaction, content=f"**Blend:** {truncate_prompt(display_prompt, 100)}", embed=embed, file=file, view=view)
+        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+        content = f"{tag}**Blend:** {truncate_prompt(display_prompt, 100)}"
+
+        # In-place message transformation: Edit status message directly if possible
+        transformed = False
+        if status_msg and hasattr(status_msg, "id"):
+            try:
+                await edit_message_fallback(interaction, status_msg.id, content=content, embed=embed, file=file, view=view)
+                transformed = True
+            except Exception as edit_err:
+                logger.info(f"Could not transform blend status message in-place ({edit_err}). Falling back to followup.")
+
+        if not transformed:
+            if file:
+                file.fp.seek(0)
+            await send_followup_fallback(interaction, content=content, embed=embed, file=file, view=view)
     except Exception as e:
         error_handler.log_error(
             e,

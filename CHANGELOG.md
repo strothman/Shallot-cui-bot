@@ -11,9 +11,12 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * ✨ **Semi-Realism Level Dropdown in `/blend`**: Replaced the cycling toggle button with an intuitive dropdown to directly select `--sr` strength (`OFF`, `0.60`, `0.70`, `0.75`, `0.80`, `0.90`).
 * 🎲 **Style & Sref Presets Dropdown in `/blend`**: Replaced the cycling random button with a comprehensive style dropdown featuring `--sref random` (1 style), `--sref batch` (5, 10, and 15 styles), and locked artist styles (Junji Ito, Martine Johanna, Dark Fantasy Landscape, Cyberpunk Cityscape, Ethereal Fine Art Portrait).
 * 📑 **2-Tab Studio Layout for Discord 5-Row Compliance**: Created a 2-tab view (`📐 Canvas & Model` ↔ `🎭 Characters & Styles`) allowing all 6 major settings to have full dropdown menus while strictly adhering to Discord's 5-row component limit.
+* 🖼️ **Polished 3-Column "Image Blend Complete" Dashboard**: Upgraded the blend completion embed from a raw text wall into a structured 3-column inline dashboard (`📐 Canvas & Framing`, `🤖 Checkpoint & Tech`, `🎭 Aesthetics & Identity`), complete with source image thumbnail, branded `#8A2BE2` violet accent bar, human-friendly model names, and execution timing footer.
+* 🎛️ **"Adjust Blend" Action Button**: Added an `🎛️ Adjust Blend` button to the grid completion view that seamlessly reopens the interactive 2-tab Blend Studio for that session with all previous settings pre-loaded, removing the need to re-upload or re-analyze images.
+* ⚡ **In-Place Blend Message Transformation**: Replaces intermediate status progress messages in-place with the completed grid and dashboard, keeping channels clean of orphan text.
 
 ### Maintenance
-* 🧪 **Automated Test Suite Expansion**: Expanded automated tests to 57 passing checks verifying both Blend tabs, character flag injection, style preset resolution, and embed configuration badges.
+* 🧪 **Automated Test Suite Expansion**: Expanded automated tests to 58 passing checks verifying both Blend tabs, character flag injection, style preset resolution, embed configuration badges, 3-column completion dashboard, and `reblend` interaction routing.
 
 ---
 ## [2026-09-04]

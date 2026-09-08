@@ -1877,6 +1877,94 @@ class TestCUIBotFunctions(unittest.TestCase):
             called_prompt = mock_exec.call_args[1]["prompt"]
             self.assertIn("--sref 112233", called_prompt)
 
+    def test_blend_complete_embed_and_reblend_button(self):
+        """Test build_blend_complete_embed 3-column dashboard, GridButtons is_blend=True, and handle_reblend."""
+        from views import build_blend_complete_embed, GridButtons, BlendButtons
+        import bot
+        from unittest.mock import MagicMock, AsyncMock, patch
+        import asyncio
+
+        # 1. Test build_blend_complete_embed
+        prompt = "Semi-realism, masterpiece, best quality. mageill, Photo of a young woman with fair skin --sr.70 --sref 855014"
+        embed = build_blend_complete_embed(
+            display_prompt=prompt,
+            selected_model="waiIllustriousSDXL_v170.safetensors",
+            seed=377789952340926,
+            width=1536,
+            height=640,
+            comp_strength="low",
+            cfg=4.0,
+            sref_info={"code": 855014, "name": "Dadaist Pixel Art"},
+            char_choice="mageill",
+            sr_choice="sr70",
+            user_name="TestStroth",
+            image_url="http://example.com/source.png",
+            elapsed_time=8.4
+        )
+        self.assertEqual(embed.title, "✨ Image Blend Complete")
+        self.assertEqual(embed.thumbnail.url, "http://example.com/source.png")
+        self.assertEqual(embed.color.value, 0x8A2BE2)
+        self.assertIn("TestStroth", embed.footer.text)
+        self.assertIn("8.4s", embed.footer.text)
+        self.assertIn("377789952340926", embed.footer.text)
+
+        fields = {f.name: f.value for f in embed.fields}
+        self.assertIn("📐 Canvas & Framing", fields)
+        self.assertIn("🤖 Checkpoint & Tech", fields)
+        self.assertIn("🎭 Aesthetics & Identity", fields)
+
+        # Check friendly names & badges
+        self.assertIn("1536x640", fields["📐 Canvas & Framing"])
+        self.assertIn("🖼️ Light Comp (0.35)", fields["📐 Canvas & Framing"])
+        self.assertIn("Wai Illustrious SDXL v1.70", fields["🤖 Checkpoint & Tech"])
+        self.assertIn("377789952340926", fields["🤖 Checkpoint & Tech"])
+        self.assertIn("CFG:** `4.0`", fields["🤖 Checkpoint & Tech"])
+        self.assertIn("🔮 Mageill (Epoch 5)", fields["🎭 Aesthetics & Identity"])
+        self.assertIn("--sr.70", fields["🎭 Aesthetics & Identity"])
+        self.assertIn("855014", fields["🎭 Aesthetics & Identity"])
+        self.assertIn("Dadaist Pixel Art", fields["🎭 Aesthetics & Identity"])
+
+        # 2. Test GridButtons with is_blend=True and has_sref=True
+        grid_view = GridButtons("gen_blend_123", has_sref=True, is_blend=True)
+        # Check max 5 rows and items per row
+        row2_items = [c for c in grid_view.children if getattr(c, "row", None) == 2]
+        self.assertEqual(len(row2_items), 5)
+        btn_ids = [c.custom_id for c in row2_items]
+        self.assertIn("reblend:gen_blend_123", btn_ids)
+        self.assertIn("fav_style:gen_blend_123", btn_ids)
+        self.assertIn("fav_prompt:gen_blend_123", btn_ids)
+        self.assertIn("copy_prompt:gen_blend_123", btn_ids)
+        self.assertIn("remix:gen_blend_123", btn_ids)
+
+        # 3. Test handle_reblend interaction handler
+        gen_data = {
+            "caption": "a woman in a garden",
+            "detailed_caption": "detailed woman in garden",
+            "ar": "21:9",
+            "model_choice": "wai",
+            "comp_strength": "low",
+            "sr": "sr70",
+            "char_choice": "mageill",
+            "sref_rand": "sref_855014",
+            "image_url": "http://example.com/source.png"
+        }
+        bot.db.save_generation("gen_blend_123", gen_data)
+        bot.active_generations["gen_blend_123"] = gen_data
+
+        mock_reblend_interaction = MagicMock()
+        mock_reblend_interaction.response.is_done.return_value = False
+        mock_reblend_interaction.response.send_message = AsyncMock()
+        mock_reblend_interaction.user.display_name = "TestStroth"
+        mock_reblend_interaction.user.id = 12345
+
+        asyncio.run(bot.handle_reblend(mock_reblend_interaction, "gen_blend_123"))
+        mock_reblend_interaction.response.send_message.assert_called_once()
+        sent_call = mock_reblend_interaction.response.send_message.call_args
+        sent_view = sent_call.kwargs.get("view")
+        self.assertIsInstance(sent_view, BlendButtons)
+        self.assertEqual(sent_view.ar, "21:9")
+        self.assertEqual(sent_view.char_choice, "mageill")
+
 
 if __name__ == "__main__":
     unittest.main()
