@@ -1,4 +1,5 @@
 import logging
+import re
 import discord
 from core_helpers import send_error_fallback
 

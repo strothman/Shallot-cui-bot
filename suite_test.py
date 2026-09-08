@@ -1924,6 +1924,22 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("855014", fields["🎭 Aesthetics & Identity"])
         self.assertIn("Dadaist Pixel Art", fields["🎭 Aesthetics & Identity"])
 
+        # Test fallback regex parsing branches in build_blend_complete_embed
+        embed_fallback = build_blend_complete_embed(
+            display_prompt="ogarla, beautiful portrait --sr.60 --sref 999111",
+            selected_model="waiIllustriousSDXL_v170.safetensors",
+            seed=12345,
+            width=768,
+            height=1344,
+            char_choice=None,
+            sr_choice=None,
+            sref_info=None
+        )
+        fb_fields = {f.name: f.value for f in embed_fallback.fields}
+        self.assertIn("🌿 Ogarla (--ogarla.70)", fb_fields["🎭 Aesthetics & Identity"])
+        self.assertIn("--sr.60", fb_fields["🎭 Aesthetics & Identity"])
+        self.assertIn("`--sref 999111`", fb_fields["🎭 Aesthetics & Identity"])
+
         # 2. Test GridButtons with is_blend=True and has_sref=True
         grid_view = GridButtons("gen_blend_123", has_sref=True, is_blend=True)
         # Check max 5 rows and items per row
