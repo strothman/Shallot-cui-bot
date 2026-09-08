@@ -40,6 +40,8 @@ from parsers import (
     expand_dynamic_prompt,
     parse_magic_prompt,
     parse_smart_prompt,
+    parse_powerhouse_prompt,
+    parse_freeu_prompt,
     apply_smart_magic_and_sref,
     apply_magic_enhancement,
     extract_positive_prompt,
@@ -72,6 +74,7 @@ from views import (
     BlendButtons,
     build_blend_embed,
     build_blend_complete_embed,
+    build_blended_image_embed,
     EditBlendPromptModal,
     StasisControlsView,
     StasisPausedView,
@@ -135,17 +138,18 @@ SDXL_CHECKPOINT_CHOICES = [
 
 # Consolidated Enhancements choices (replaces multiple True/False toggles with a clean dropdown)
 SDXL_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
-    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
-    app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
+    app_commands.Choice(name="👑 Ultimate Quality (Powerhouse 1.35x + Smart Director + Magic)", value="ultimate"),
+    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
     app_commands.Choice(name="⚡ 2-Stage Powerhouse (FreeU + 1.35x Refiner)", value="powerhouse"),
-    app_commands.Choice(name="🚫 Disable FreeU (Pure Checkpoint Sampling)", value="no_freeu"),
+    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
+    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
+    app_commands.Choice(name="🚫 Pure Checkpoint (Disable FreeU Enhancer)", value="no_freeu"),
 ]
 
 FLUX_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized)", value="smart"),
-    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting)", value="magic"),
-    app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
+    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
+    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
+    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
 ]
 
 FLUX_CHECKPOINT_CHOICES = [
@@ -1111,31 +1115,35 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
 
         files_to_send = [file]
 
-        desc_lines = [
-            f"**Prompt:** {truncate_prompt(original_prompt, 250)}",
-            f"**Model:** {checkpoint}",
-            f"**Seed:** {target_seed}",
-            f"**Size:** {width}x{height}"
-        ]
-        if sref_info and "code" in sref_info:
-            desc_lines.append(f"**Style Reference:** --sref {sref_info['code']} ({sref_info['name']})")
+        user_name = interaction.user.display_name if (interaction and interaction.user) else "User"
+        user_id = interaction.user.id if (interaction and interaction.user) else None
+        ref_image_url = gen_data.get("image_url")
+        comp_strength = gen_data.get("comp_strength", "style")
+        char_choice = gen_data.get("char_choice")
+        sr_choice = gen_data.get("sr")
 
-        if is_blend:
-            title_txt = f"Blended Image {index}"
-            content_txt = f"**Blended Image {index}:** {truncate_prompt(original_prompt, 100)}"
-        else:
-            title_txt = f"Isolated Image {index}"
-            content_txt = f"**Isolated Image {index}:** {truncate_prompt(original_prompt, 100)}"
-            content_txt = f"**Isolate Image {index}:** {truncate_prompt(original_prompt, 100)}"
-
-        embed = discord.Embed(
-            title=title_txt,
-            description="\n".join(desc_lines)
+        embed = build_blended_image_embed(
+            index=index,
+            display_prompt=original_prompt,
+            checkpoint=checkpoint,
+            target_seed=target_seed,
+            width=width,
+            height=height,
+            comp_strength=comp_strength,
+            cfg=gen_data.get("cfg", 4.0),
+            sref_info=sref_info,
+            char_choice=char_choice,
+            sr_choice=sr_choice,
+            user_name=user_name,
+            user_id=user_id,
+            image_url=ref_image_url,
+            is_blend=is_blend
         )
-        embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id})")
-        
+
+        content_txt = f"✨ **Blended Image {index}:** {truncate_prompt(original_prompt, 100)}" if is_blend else f"**Isolated Image {index}:** {truncate_prompt(original_prompt, 100)}"
+
         has_sref = sref_info is not None and "code" in sref_info
-        view = IsolatedImageButtons(generation_id, index, has_sref=has_sref)
+        view = IsolatedImageButtons(generation_id, index, has_sref=has_sref, is_blend=is_blend)
         await send_followup_fallback(interaction, content=content_txt, embed=embed, files=files_to_send, view=view)
         
         # Mark grid button as completed (green + disabled)
@@ -2890,11 +2898,11 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
 
     if enhancements:
         enh_val = str(enhancements).lower()
-        if "smart" in enh_val or enh_val == "all":
+        if "smart" in enh_val or enh_val in ["all", "ultimate"]:
             smart = True
-        if "magic" in enh_val or enh_val == "all":
+        if "magic" in enh_val or enh_val in ["all", "ultimate"]:
             magic_prompt = True
-        if "powerhouse" in enh_val:
+        if "powerhouse" in enh_val or enh_val in ["all", "ultimate"]:
             is_sdxl_powerhouse = True
         if "no_freeu" in enh_val or "disable_freeu" in enh_val:
             freeu = False
@@ -2954,6 +2962,14 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
 
     cleaned_prompt, magic_flag = parse_magic_prompt(cleaned_prompt)
     is_magic = magic_flag or (magic_prompt is True)
+
+    cleaned_prompt, ph_flag = parse_powerhouse_prompt(cleaned_prompt)
+    if ph_flag:
+        is_sdxl_powerhouse = True
+
+    cleaned_prompt, no_freeu_flag = parse_freeu_prompt(cleaned_prompt)
+    if no_freeu_flag:
+        freeu = False
 
     cleaned_prompt, user_seed = parse_seed(cleaned_prompt)
     seed = user_seed if user_seed is not None else random.randint(1, 1125899906842624)
@@ -3523,7 +3539,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
 @app_commands.describe(
     prompt="The prompt to generate images from (supports wildcards {a|b|c}, --smart, --magic, etc.)", 
     checkpoint="The checkpoint model to use",
-    enhancements="⚡ Enhancements preset (Turbo, Smart Art Director, Magic Prompt)",
+    enhancements="⚡ Studio & pipeline presets (Ultimate Quality, Smart Director, Magic, Powerhouse)",
     aspect_ratio="Aspect ratio for generated images (--ar)",
     semi_realism="Select Semi-realism LoRA strength (--sr weight)",
     character="Select Character LoRA preset (Ogarla or Valerie)",

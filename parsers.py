@@ -93,6 +93,8 @@ MAGIC_ENHANCEMENTS = [
 RE_ASPECT_RATIO = re.compile(r'[-\u2014\u2013]{1,2}(?:ar|at)?\s*(\d+(?:\.\d+)?)\s*(?:[x:/]\s*(\d+(?:\.\d+)?))?', re.IGNORECASE)
 RE_SEED = re.compile(r'[-\u2014\u2013]{1,2}seed\s+(\d+)', re.IGNORECASE)
 RE_RAW = re.compile(r'[-\u2014\u2013]{1,2}raw\b', re.IGNORECASE)
+RE_POWERHOUSE = re.compile(r'[-\u2014\u2013]{1,2}(?:powerhouse|ph|refine)\b', re.IGNORECASE)
+RE_FREEU = re.compile(r'[-\u2014\u2013]{1,2}(?:no[-_]?freeu|disable[-_]?freeu|raw)\b', re.IGNORECASE)
 RE_STYLIZE = re.compile(r'[-\u2014\u2013]{1,2}(?:stylize|s)\s+(\d+)', re.IGNORECASE)
 RE_SW = re.compile(r'[-\u2014\u2013]{1,2}(?:sw|sref[-_]?weight)(?:\s+|\.)?([0-9\.]+)', re.IGNORECASE)
 RE_SREF = re.compile(r'[-\u2014\u2013]{1,2}sref\s+(.+?)(?=\s+[-\u2014\u2013]{1,2}[a-z]+|$)', re.IGNORECASE)
@@ -1046,6 +1048,28 @@ def parse_smart_prompt(prompt: str):
         is_smart = True
         prompt = re.sub(r'[-\u2014\u2013]{1,2}(?:smart|sm)\b', '', prompt, flags=re.IGNORECASE).strip()
     return prompt, is_smart
+
+def parse_powerhouse_prompt(prompt: str):
+    """
+    Parses --powerhouse / --ph / --refine flag from prompt string.
+    Returns (cleaned_prompt, is_powerhouse_enabled).
+    """
+    is_ph = False
+    if RE_POWERHOUSE.search(prompt):
+        is_ph = True
+        prompt = RE_POWERHOUSE.sub('', prompt).strip()
+    return prompt, is_ph
+
+def parse_freeu_prompt(prompt: str):
+    """
+    Parses --nofreeu / --no-freeu / --raw / --disable-freeu flag from prompt string.
+    Returns (cleaned_prompt, is_no_freeu_enabled).
+    """
+    is_no_freeu = False
+    if RE_FREEU.search(prompt):
+        is_no_freeu = True
+        prompt = RE_FREEU.sub('', prompt).strip()
+    return prompt, is_no_freeu
 
 def apply_smart_magic_and_sref(prompt: str, is_flux: bool = False):
     """

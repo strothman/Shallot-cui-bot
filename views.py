@@ -107,12 +107,13 @@ class SavedSrefSelectView(discord.ui.View):
 
 
 class IsolatedImageButtons(discord.ui.View):
-    def __init__(self, generation_id: str, index: int, has_sref: bool = False):
+    def __init__(self, generation_id: str, index: int, has_sref: bool = False, is_blend: bool = False):
         super().__init__(timeout=None) # Persistent buttons
         self.generation_id = generation_id
         self.index = index
+        self.is_blend = is_blend
 
-        # Row 0: Upscaling Options
+        # Row 0: Upscale & Variation Options (4 buttons max)
         self.add_item(discord.ui.Button(
             label="⚡ Detailed Upscale (1.25x)",
             style=discord.ButtonStyle.success,
@@ -125,61 +126,72 @@ class IsolatedImageButtons(discord.ui.View):
             custom_id=f"upscale_run:{self.generation_id}:{self.index}:1.5",
             row=0
         ))
-
-        # Row 1: Variations (Subtle vs Strong)
         self.add_item(discord.ui.Button(
             label="🎨 Vary (Subtle)",
             style=discord.ButtonStyle.secondary,
             custom_id=f"vary_subtle:{self.generation_id}:{self.index}",
-            row=1
+            row=0
         ))
         self.add_item(discord.ui.Button(
             label="🎨 Vary (Strong)",
             style=discord.ButtonStyle.secondary,
             custom_id=f"vary_strong:{self.generation_id}:{self.index}",
-            row=1
+            row=0
         ))
 
-        # Row 2: Favorite Buttons (Style & Prompt)
+        # Row 1: Actions, Favorites, Remix & Studio Loop (up to 5 buttons max)
         if has_sref:
             self.add_item(discord.ui.Button(
                 label="⭐ Favorite Style",
                 style=discord.ButtonStyle.success,
                 custom_id=f"fav_style:{self.generation_id}",
-                row=2
+                row=1
             ))
         self.add_item(discord.ui.Button(
             label="⭐ Favorite Prompt",
             style=discord.ButtonStyle.success,
             custom_id=f"fav_prompt:{self.generation_id}",
-            row=2
+            row=1
         ))
         self.add_item(discord.ui.Button(
             label="📋 Copy Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"copy_prompt:{self.generation_id}",
-            row=2
+            row=1
         ))
+        self.add_item(discord.ui.Button(
+            label="✏️ Remix",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"remix:{self.generation_id}",
+            row=1
+        ))
+        if is_blend:
+            self.add_item(discord.ui.Button(
+                label="🎛️ Adjust Blend",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"reblend:{self.generation_id}",
+                row=1
+            ))
 
-        # Row 3: Change Style Reference (--sref)
+        # Row 2: Change Style Reference (--sref) (only if has_sref=True, 3 buttons max)
         if has_sref:
             self.add_item(discord.ui.Button(
                 label="🎨 Custom --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_custom:{self.generation_id}:{self.index}",
-                row=3
+                row=2
             ))
             self.add_item(discord.ui.Button(
                 label="🎲 Random --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_random:{self.generation_id}:{self.index}",
-                row=3
+                row=2
             ))
             self.add_item(discord.ui.Button(
                 label="⭐ Saved --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_saved:{self.generation_id}:{self.index}",
-                row=3
+                row=2
             ))
 
 
@@ -731,6 +743,156 @@ def build_blend_complete_embed(
 
     timing_str = f" • Rendered in {elapsed_time:.1f}s" if elapsed_time else ""
     embed.set_footer(text=f"Requested by {user_name}{timing_str} • Seed: {seed}")
+    return embed
+
+
+def build_blended_image_embed(
+    index: int,
+    display_prompt: str,
+    checkpoint: str,
+    target_seed: int,
+    width: int,
+    height: int,
+    comp_strength: str = "style",
+    cfg: float = 4.0,
+    sref_info: dict = None,
+    char_choice: str = None,
+    sr_choice = None,
+    user_name: str = "User",
+    user_id: int = None,
+    image_url: str = None,
+    is_blend: bool = True
+) -> discord.Embed:
+    """Builds a polished 3-column inline studio dashboard embed for an isolated/blended single image."""
+    model_friendly_names = {
+        "waiIllustriousSDXL_v170.safetensors": "Wai Illustrious SDXL v1.70",
+        "illustriousRealismBy_v10VAE.safetensors": "Illustrious Realism V1",
+        "RealVisXL_V4.0.safetensors": "RealVisXL V4.0",
+        "juggernautXL_ragnarok.safetensors": "Juggernaut XL Ragnarok",
+        "CopaxTimeLessXL.safetensors": "Copax Timeless XL",
+        "ultraRealisticByStable_v25.safetensors": "UltraRealistic V2.5",
+        "hyphoriaIlluNAI_v001.safetensors": "Hyphoria NAI v0.01",
+        "novaFurryXL_ilV180A.safetensors": "Nova Furry XL v1.8",
+        "wai": "Wai Illustrious SDXL v1.70",
+        "illustrious_realism": "Illustrious Realism V1",
+        "realvis": "RealVisXL V4.0",
+        "juggernaut": "Juggernaut XL Ragnarok",
+        "copax": "Copax Timeless XL",
+        "ultra": "UltraRealistic V2.5",
+        "hyphoria": "Hyphoria NAI v0.01",
+        "nova": "Nova Furry XL v1.8",
+    }
+    model_display = model_friendly_names.get(checkpoint, str(checkpoint).replace(".safetensors", ""))
+
+    comp_map = {
+        "style": "🎨 Style Only (0.20)",
+        "low": "🖼️ Light Comp (0.35)",
+        "med": "🖼️ Med Comp (0.60)",
+        "high": "🖼️ High Comp (0.85)",
+    }
+    comp_display = comp_map.get(comp_strength, comp_strength)
+
+    # Resolve character badge
+    char_map = {
+        "ogarla": "🌿 Ogarla (--ogarla.70)",
+        "valerie": "👩 Valerie (--valerie.85)",
+        "sully": "👓 Sully (--sully.85)",
+        "cheri": "🌸 Cheri (Epoch 6)",
+        "cheri_e4": "🌸 Cheri (Epoch 4)",
+        "mageill": "🔮 Mageill (Epoch 5)",
+        "mageill_e6": "🔮 Mageill (Epoch 6)",
+        "mageill_e4": "🔮 Mageill (Epoch 4)",
+        "mageill_e3": "🔮 Mageill (Epoch 3)",
+        "none": "None",
+    }
+    if not char_choice or char_choice == "none":
+        p_lower = display_prompt.lower()
+        if "--valerie" in p_lower:
+            char_display = "👩 Valerie (--valerie.85)"
+        elif "--sully" in p_lower:
+            char_display = "👓 Sully (--sully.85)"
+        elif "--cheri4" in p_lower:
+            char_display = "🌸 Cheri (Epoch 4)"
+        elif "--cheri" in p_lower:
+            char_display = "🌸 Cheri (Epoch 6)"
+        elif "--mageill6" in p_lower:
+            char_display = "🔮 Mageill (Epoch 6)"
+        elif "--mageill4" in p_lower:
+            char_display = "🔮 Mageill (Epoch 4)"
+        elif "--mageill3" in p_lower:
+            char_display = "🔮 Mageill (Epoch 3)"
+        elif "--mageill" in p_lower or "mageill" in p_lower:
+            char_display = "🔮 Mageill (Epoch 5)"
+        elif "--ogarla" in p_lower or "ogarla" in p_lower:
+            char_display = "🌿 Ogarla (--ogarla.70)"
+        else:
+            char_display = "None"
+    else:
+        char_display = char_map.get(char_choice, char_choice)
+
+    # Resolve semi-realism badge
+    if not sr_choice or sr_choice in ["nosr", False]:
+        m = re.search(r'--sr\.?(\d+)', display_prompt)
+        if m:
+            sr_display = f"--sr.{m.group(1)}"
+        elif "semi-realism" in display_prompt.lower():
+            sr_display = "Enabled"
+        else:
+            sr_display = "OFF"
+    else:
+        if isinstance(sr_choice, str) and sr_choice.startswith("sr"):
+            sr_display = f"--sr.{sr_choice[2:]}"
+        else:
+            sr_display = "Enabled"
+
+    # Resolve style / sref badge
+    if sref_info and isinstance(sref_info, dict) and "code" in sref_info:
+        s_name = sref_info.get("name", "")
+        style_display = f"`--sref {sref_info['code']}`" + (f" *({s_name})*" if s_name else "")
+    else:
+        m = re.search(r'--sref\s+(\d+)', display_prompt)
+        if m:
+            style_display = f"`--sref {m.group(1)}`"
+        elif "--sref random" in display_prompt.lower():
+            style_display = "🎲 Random Style"
+        else:
+            style_display = "OFF"
+
+    clean_p = display_prompt.strip()
+    if len(clean_p) > 300:
+        truncated = clean_p[:297].rsplit(" ", 1)[0] + "..."
+    else:
+        truncated = clean_p
+
+    title_txt = f"✨ Blended Image {index}" if is_blend else f"🖼️ Isolated Image {index}"
+    embed = discord.Embed(
+        title=title_txt,
+        description=f"**Prompt:**\n> {truncated}",
+        color=discord.Color.from_rgb(138, 43, 226) if is_blend else discord.Color.blurple()
+    )
+
+    # 3-Column Studio Dashboard
+    embed.add_field(
+        name="📐 Canvas & Framing",
+        value=f"**Size:** `{width}x{height}`\n**Comp:** `{comp_display}`" if is_blend else f"**Size:** `{width}x{height}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🤖 Checkpoint & Tech",
+        value=f"**Model:** `{model_display}`\n**Seed:** `{target_seed}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🎭 Aesthetics & Identity",
+        value=f"**Char:** `{char_display}`\n**Realism:** `{sr_display}`\n**Style:** {style_display}",
+        inline=True
+    )
+
+    if image_url:
+        embed.set_thumbnail(url=image_url)
+
+    id_str = f" (ID: {user_id})" if user_id else ""
+    embed.set_footer(text=f"Requested by {user_name}{id_str} • Seed: {target_seed}")
     return embed
 
 

@@ -953,16 +953,47 @@ class TestCUIBotFunctions(unittest.TestCase):
         sdxl_vals = [c.value for c in SDXL_ENHANCEMENT_CHOICES]
         self.assertNotIn("lightning", sdxl_vals)
         self.assertNotIn("all", sdxl_vals)
+        self.assertIn("ultimate", sdxl_vals)
         self.assertIn("smart", sdxl_vals)
         self.assertIn("magic", sdxl_vals)
         self.assertIn("smart+magic", sdxl_vals)
         self.assertIn("no_freeu", sdxl_vals)
         self.assertIn("powerhouse", sdxl_vals)
 
+        # Discord requires choice names <= 100 chars
+        for c in SDXL_ENHANCEMENT_CHOICES + FLUX_ENHANCEMENT_CHOICES:
+            self.assertLessEqual(len(c.name), 100, f"Choice name exceeds 100 chars: {c.name}")
+
         flux_vals = [c.value for c in FLUX_ENHANCEMENT_CHOICES]
         self.assertIn("smart", flux_vals)
         self.assertIn("magic", flux_vals)
         self.assertIn("smart+magic", flux_vals)
+
+        # Test prompt flag parsers for powerhouse and freeu
+        from parsers import parse_powerhouse_prompt, parse_freeu_prompt
+        p1, is_ph = parse_powerhouse_prompt("cyberpunk city street --powerhouse")
+        self.assertTrue(is_ph)
+        self.assertEqual(p1, "cyberpunk city street")
+
+        p2, is_ph2 = parse_powerhouse_prompt("cyberpunk city street --ph")
+        self.assertTrue(is_ph2)
+        self.assertEqual(p2, "cyberpunk city street")
+
+        p3, is_ph3 = parse_powerhouse_prompt("cyberpunk city street --refine")
+        self.assertTrue(is_ph3)
+        self.assertEqual(p3, "cyberpunk city street")
+
+        p4, is_raw = parse_freeu_prompt("cyberpunk city street --raw")
+        self.assertTrue(is_raw)
+        self.assertEqual(p4, "cyberpunk city street")
+
+        p5, is_nofreeu = parse_freeu_prompt("cyberpunk city street --nofreeu")
+        self.assertTrue(is_nofreeu)
+        self.assertEqual(p5, "cyberpunk city street")
+
+        p6, is_nofreeu2 = parse_freeu_prompt("cyberpunk city street --disable-freeu")
+        self.assertTrue(is_nofreeu2)
+        self.assertEqual(p6, "cyberpunk city street")
 
     def test_module29_reroll_lora_preservation(self):
         """Test that re-rolled generations properly preserve and wire Ogarla & Semi-Realism LoRAs."""
@@ -1980,6 +2011,74 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIsInstance(sent_view, BlendButtons)
         self.assertEqual(sent_view.ar, "21:9")
         self.assertEqual(sent_view.char_choice, "mageill")
+
+    def test_blended_image_embed_and_consolidated_buttons(self):
+        """Test build_blended_image_embed 3-column dashboard and IsolatedImageButtons 3-row consolidation."""
+        from views import build_blended_image_embed, IsolatedImageButtons
+
+        # 1. Test build_blended_image_embed
+        prompt = "Semi-realism, masterpiece, best quality. mageill, A digital illustration of a slender woman --sr.60 --sref 576522"
+        embed = build_blended_image_embed(
+            index=3,
+            display_prompt=prompt,
+            checkpoint="waiIllustriousSDXL_v170.safetensors",
+            target_seed=1113230745203310,
+            width=768,
+            height=1344,
+            comp_strength="low",
+            cfg=4.0,
+            sref_info={"code": 576522, "name": "Pop Art 3D Render"},
+            char_choice="mageill",
+            sr_choice="sr60",
+            user_name="strothman",
+            user_id=200011008327024641,
+            image_url="http://example.com/source_ref.png",
+            is_blend=True
+        )
+        self.assertEqual(embed.title, "✨ Blended Image 3")
+        self.assertEqual(embed.thumbnail.url, "http://example.com/source_ref.png")
+        self.assertEqual(embed.color.value, 0x8A2BE2)
+        self.assertIn("strothman", embed.footer.text)
+        self.assertIn("1113230745203310", embed.footer.text)
+
+        fields = {f.name: f.value for f in embed.fields}
+        self.assertIn("📐 Canvas & Framing", fields)
+        self.assertIn("🤖 Checkpoint & Tech", fields)
+        self.assertIn("🎭 Aesthetics & Identity", fields)
+
+        self.assertIn("768x1344", fields["📐 Canvas & Framing"])
+        self.assertIn("🖼️ Light Comp (0.35)", fields["📐 Canvas & Framing"])
+        self.assertIn("Wai Illustrious SDXL v1.70", fields["🤖 Checkpoint & Tech"])
+        self.assertIn("1113230745203310", fields["🤖 Checkpoint & Tech"])
+        self.assertIn("🔮 Mageill (Epoch 5)", fields["🎭 Aesthetics & Identity"])
+        self.assertIn("--sr.60", fields["🎭 Aesthetics & Identity"])
+        self.assertIn("576522", fields["🎭 Aesthetics & Identity"])
+
+        # 2. Test IsolatedImageButtons with is_blend=True and has_sref=True (3 rows max)
+        iso_view_sref = IsolatedImageButtons("gen_iso_1", index=3, has_sref=True, is_blend=True)
+        r0 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 0]
+        r1 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 1]
+        r2 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 2]
+        r3 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 3]
+
+        self.assertEqual(len(r0), 4) # 1.25x, 1.5x, vary subtle, vary strong
+        self.assertEqual(len(r1), 5) # fav_style, fav_prompt, copy_prompt, remix, reblend
+        self.assertEqual(len(r2), 3) # custom, random, saved sref
+        self.assertEqual(len(r3), 0) # Consolidated from 4 rows down to 3!
+
+        btn_ids = [c.custom_id for c in r1]
+        self.assertIn("remix:gen_iso_1", btn_ids)
+        self.assertIn("reblend:gen_iso_1", btn_ids)
+
+        # 3. Test IsolatedImageButtons with is_blend=True and has_sref=False (2 rows max!)
+        iso_view_nosref = IsolatedImageButtons("gen_iso_2", index=1, has_sref=False, is_blend=True)
+        r0_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 0]
+        r1_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 1]
+        r2_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 2]
+
+        self.assertEqual(len(r0_no), 4)
+        self.assertEqual(len(r1_no), 4) # fav_prompt, copy_prompt, remix, reblend
+        self.assertEqual(len(r2_no), 0) # Only 2 rows!
 
 
 if __name__ == "__main__":

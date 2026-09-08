@@ -66,16 +66,18 @@ SDXL_CHECKPOINT_CHOICES = [
 
 # Consolidated Enhancements choices
 SDXL_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
+    app_commands.Choice(name="👑 Ultimate Quality (Powerhouse 1.35x + Smart Director + Magic)", value="ultimate"),
+    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
+    app_commands.Choice(name="⚡ 2-Stage Powerhouse (FreeU + 1.35x Refiner)", value="powerhouse"),
     app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
-    app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
-    app_commands.Choice(name="🚫 Disable FreeU (Pure Checkpoint Sampling)", value="no_freeu"),
+    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
+    app_commands.Choice(name="🚫 Pure Checkpoint (Disable FreeU Enhancer)", value="no_freeu"),
 ]
 
 FLUX_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized)", value="smart"),
-    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting)", value="magic"),
-    app_commands.Choice(name="🧠+✨ Smart Art Director + Magic Prompt", value="smart+magic"),
+    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
+    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
+    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
 ]
 
 ICO_ENHANCEMENT_CHOICES = [

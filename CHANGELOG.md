@@ -4,6 +4,20 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-08]
+
+### Added
+* 👑 **Ultimate Quality Enhancement Preset**: Added `👑 Ultimate Quality (Powerhouse 1.35x + Smart Director + Magic)` to the `/imagine` enhancements dropdown, uniting two-stage 1.35x resolution refinement, FreeU dynamics, subject-harmonized art direction, and cinematic lighting into a single one-click preset.
+* ⚡ **Pipeline Prompt Flag Parsers**: Added direct prompt flag parsers for `--powerhouse`, `--ph`, and `--refine` (activating the SDXL 2-stage refiner pipeline) and `--raw`, `--nofreeu`, `--no-freeu`, and `--disable-freeu` (bypassing FreeU for pure checkpoint sampling).
+* 🌟 **Synchronized Studio Presets**: Realigned SDXL and Flux enhancement dropdown choices in both `bot.py` and `config.py` with clean, intuitive labels (`👑 Ultimate Quality`, `🌟 Studio Duo`, `⚡ 2-Stage Powerhouse`, `✨ Magic Prompt`, `🧠 Smart Art Director`, and `🚫 Pure Checkpoint`).
+
+### Changed
+* 🎯 **Streamlined `/imagine` Enhancements Description**: Refreshed parameter help text to accurately reflect studio and pipeline presets, removing misleading legacy text.
+
+### Maintenance
+* 🧪 **Automated Test Suite Expansion**: Added unit tests in `suite_test.py` verifying the `ultimate` preset, Discord label character constraints, and all shorthand prompt flags (`--powerhouse`, `--ph`, `--refine`, `--raw`, `--nofreeu`, `--disable-freeu`). All 59 unit tests passing.
+
+---
 ## [2026-09-07]
 
 ### Added
@@ -14,9 +28,10 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * 🖼️ **Polished 3-Column "Image Blend Complete" Dashboard**: Upgraded the blend completion embed from a raw text wall into a structured 3-column inline dashboard (`📐 Canvas & Framing`, `🤖 Checkpoint & Tech`, `🎭 Aesthetics & Identity`), complete with source image thumbnail, branded `#8A2BE2` violet accent bar, human-friendly model names, and execution timing footer.
 * 🎛️ **"Adjust Blend" Action Button**: Added an `🎛️ Adjust Blend` button to the grid completion view that seamlessly reopens the interactive 2-tab Blend Studio for that session with all previous settings pre-loaded, removing the need to re-upload or re-analyze images.
 * ⚡ **In-Place Blend Message Transformation**: Replaces intermediate status progress messages in-place with the completed grid and dashboard, keeping channels clean of orphan text.
+* 🔍 **Streamlined "Blended Image x" Isolated Card**: Upgraded single isolated/upscaled blend results with a 3-column inline studio dashboard, original source thumbnail, and consolidated 3-row button controls (`⚡ Upscales & Vary` • `⭐ Favorites, ✏️ Remix & 🎛️ Adjust Blend` • `🎨 Style Sref`).
 
 ### Maintenance
-* 🧪 **Automated Test Suite Expansion**: Expanded automated tests to 58 passing checks verifying both Blend tabs, character flag injection, style preset resolution, embed configuration badges, 3-column completion dashboard, and `reblend` interaction routing.
+* 🧪 **Automated Test Suite Expansion**: Expanded automated tests to 59 passing checks verifying Blend tabs, character flag injection, style presets, 3-column dashboards, and consolidated 3-row isolated image action controls.
 
 ---
 ## [2026-09-04]
