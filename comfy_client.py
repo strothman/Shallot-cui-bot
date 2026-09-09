@@ -265,8 +265,11 @@ class ComfyClient:
                 raise e
         return None
 
-    async def generate(self, workflow, timeout=14400, retries=1, generation_id=None, progress_callback=None):
+    async def generate(self, workflow, timeout=14400, retries=1, generation_id=None, progress_callback=None, on_progress=None):
         """Submit prompt to ComfyUI and await the generated images with automatic retry for transient errors."""
+        if progress_callback is None and on_progress is not None:
+            progress_callback = on_progress
+
         if not await self.is_online():
             raise Exception("ComfyUI server is currently offline. Please start it using `/cui-start` first.")
 

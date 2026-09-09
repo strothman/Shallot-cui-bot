@@ -15,6 +15,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
   * **Interactive Action Controls (`BertflowButtons`)**: Interactive `[ 🔄 Re-roll ]` with fresh seed and `[ ✏️ Remix ]` modal to tweak prompt in-place.
 * 🧬 **Automated Character Dataset Generator (`tools/build_character_dataset.py`)**: Built an end-to-end synthetic dataset generator and 1-click batch runner (`generate_ogarla_dataset.bat`) to synthetically generate diverse Flux character portraits and auto-caption them with Florence-2 for training on new architectures (e.g., Krea 2 / OneTrainer).
 * 🛠️ **ComfyClient Output Compatibility Fix**: Updated `execute_bertflow` and dataset generator to seamlessly handle both raw byte lists and dictionary node output maps from `ComfyClient.generate()`.
+* 🐛 **Fix Bertflow Progress Callback & Timing**: Fixed keyword argument mismatch (`on_progress` -> `progress_callback`) and timing breakdown retrieval in `execute_bertflow`, adding `on_progress` alias support to `ComfyClient.generate()` for cross-caller resilience.
 * 🎛️ **Interactive Video Action Controls (`VideoActionView`)**: Added interactive Discord button controls below completed `/video` generations:
   * **`[ 🔄 Re-roll ]`**: Re-animates the exact same uploaded image with a fresh random seed.
   * **`[ ✏️ Remix Motion ]`**: Reopens `VideoPromptModal` with previous prompt, duration (5s/10s), and smoothness mode pre-filled for rapid prompt iteration.

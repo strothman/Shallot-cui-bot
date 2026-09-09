@@ -3917,8 +3917,9 @@ async def execute_bertflow(
 
     try:
         t_start = time.time()
-        outputs, t_breakdown = await comfy_client.generate(workflow, on_progress=on_bertflow_progress)
+        outputs = await comfy_client.generate(workflow, generation_id=generation_id, progress_callback=on_bertflow_progress)
         elapsed_time = time.time() - t_start
+        t_breakdown = comfy_client.get_execution_timing()
 
         image_bytes = None
         output_filename = None
@@ -3972,8 +3973,10 @@ async def execute_bertflow(
         if character and str(character).lower() not in ["none", "nochar", "off"]:
             complete_embed.add_field(name="🎭 Character", value="🌿 Ogarla (Krea 2)", inline=True)
         t_str = f"{elapsed_time:.1f}s"
-        if t_breakdown.get("sample", 0) > 0:
-            t_str += f" (Init {t_breakdown.get('init', 0):.1f}s | Gen {t_breakdown.get('sample', 0):.1f}s)"
+        sample_sec = t_breakdown.get("sampling_duration", 0.0) or t_breakdown.get("sample", 0.0)
+        init_sec = t_breakdown.get("init_duration", 0.0) or t_breakdown.get("init", 0.0)
+        if sample_sec > 0:
+            t_str += f" (Init {init_sec:.1f}s | Gen {sample_sec:.1f}s)"
         complete_embed.add_field(name="⏱️ Render", value=f"{t_str}\nSeed: `{actual_seed}`", inline=True)
         complete_embed.set_image(url=f"attachment://{generation_id}.png")
         complete_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Flow-Matching", icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
