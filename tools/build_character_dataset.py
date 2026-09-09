@@ -96,117 +96,117 @@ async def run_dataset_builder(
     logger.info(f"Character: {char.display_name} (Trigger: '{trigger}', LoRA: '{flux_lora}')")
 
     comfy = ComfyClient(server_address=server_address)
-    alive = await comfy.check_alive()
-    if not alive:
+    online = await comfy.is_online()
+    if not online:
         logger.error(f"Cannot connect to ComfyUI at {server_address}. Is ComfyUI running?")
         return
 
-    # Load base Flux workflow
-    flux_wf_path = "workflows/com_flux_gguf.json"
-    if not os.path.exists(flux_wf_path):
-        flux_wf_path = "workflows/flux_lowres.json"
+    await comfy.start()
+    try:
+        # Load base Flux workflow
+        flux_wf_path = "workflows/com_flux_gguf.json"
+        if not os.path.exists(flux_wf_path):
+            flux_wf_path = "workflows/flux_lowres.json"
 
-    with open(flux_wf_path, "r", encoding="utf-8") as f:
-        base_flux_wf = json.load(f)
+        with open(flux_wf_path, "r", encoding="utf-8") as f:
+            base_flux_wf = json.load(f)
 
-    # Load Florence-2 describe workflow for captioning
-    desc_wf_path = "workflows/DESCRIBE_cuibot.json"
-    florence_wf = None
-    if os.path.exists(desc_wf_path):
-        with open(desc_wf_path, "r", encoding="utf-8") as f:
-            florence_wf = json.load(f)
+        # Load Florence-2 describe workflow for captioning
+        desc_wf_path = "workflows/DESCRIBE_cuibot.json"
+        florence_wf = None
+        if os.path.exists(desc_wf_path):
+            with open(desc_wf_path, "r", encoding="utf-8") as f:
+                florence_wf = json.load(f)
 
-    prompts = generate_prompt_matrix(trigger, count)
-    logger.info(f"Generated {len(prompts)} distinct generation prompts.")
+        prompts = generate_prompt_matrix(trigger, count)
+        logger.info(f"Generated {len(prompts)} distinct generation prompts.")
 
-    for idx, prompt_text in enumerate(prompts, start=1):
-        sample_seed = random.randint(1, 1125899906842624)
-        logger.info(f"[{idx}/{count}] Generating image (Seed: {sample_seed})...")
+        for idx, prompt_text in enumerate(prompts, start=1):
+            sample_seed = random.randint(1, 1125899906842624)
+            logger.info(f"[{idx}/{count}] Generating image (Seed: {sample_seed})...")
 
-        # Configure Flux workflow
-        wf = json.loads(json.dumps(base_flux_wf))
-        if "6" in wf:
-            wf["6"]["inputs"]["text"] = prompt_text
-        if "27" in wf:
-            wf["27"]["inputs"]["width"] = resolution
-            wf["27"]["inputs"]["height"] = resolution
-        elif "5" in wf:
-            wf["5"]["inputs"]["width"] = resolution
-            wf["5"]["inputs"]["height"] = resolution
-        if "31" in wf:
-            wf["31"]["inputs"]["seed"] = sample_seed
-        elif "3" in wf:
-            wf["3"]["inputs"]["seed"] = sample_seed
+            # Configure Flux workflow
+            wf = json.loads(json.dumps(base_flux_wf))
+            if "5" in wf:
+                wf["5"]["inputs"]["width"] = resolution
+                wf["5"]["inputs"]["height"] = resolution
+                wf["5"]["inputs"]["batch_size"] = 1
+            if "6" in wf:
+                wf["6"]["inputs"]["text"] = prompt_text
+            if "11" in wf:
+                wf["11"]["inputs"]["seed"] = sample_seed
+                wf["11"]["inputs"]["steps"] = steps
 
-        # Inject character LoRA if available
-        if flux_lora and "38" in wf:
-            wf["38"]["inputs"]["lora_name_1"] = flux_lora
-            wf["38"]["inputs"]["model_weight_1"] = char.default_weight
+            # Inject character LoRA if available
+            if flux_lora and "76" in wf:
+                wf["76"]["inputs"]["lora_name"] = flux_lora
+                wf["76"]["inputs"]["strength_model"] = char.default_weight
 
-        # Generate image via ComfyUI
-        try:
-            outputs = await comfy.generate(wf, timeout=600)
-        except Exception as e:
-            logger.error(f"Error generating sample {idx}: {e}")
-            continue
-
-        image_bytes = None
-        out_filename = None
-        for node_id, node_output in outputs.items():
-            if "images" in node_output:
-                for img_info in node_output["images"]:
-                    out_filename = img_info.get("filename")
-                    subfolder = img_info.get("subfolder", "")
-                    img_type = img_info.get("type", "output")
-                    image_bytes = await comfy.get_image(out_filename, subfolder, img_type)
-                    if image_bytes:
-                        break
-            if image_bytes:
-                break
-
-        if not image_bytes:
-            logger.error(f"Failed to retrieve image bytes for sample {idx}")
-            continue
-
-        file_base = f"{character_id}_{idx:03d}"
-        img_path = os.path.join(output_dir, f"{file_base}.png")
-        txt_path = os.path.join(output_dir, f"{file_base}.txt")
-
-        # Save PNG image
-        with open(img_path, "wb") as f:
-            f.write(image_bytes)
-
-        # Generate Caption via Florence-2 if available
-        caption_text = None
-        if florence_wf:
+            # Generate image via ComfyUI
             try:
-                upload_res = await comfy.upload_image(image_bytes, f"{file_base}.png")
-                uploaded_name = upload_res.get("name")
-                if uploaded_name:
-                    cap_wf = json.loads(json.dumps(florence_wf))
-                    if "1" in cap_wf:
-                        cap_wf["1"]["inputs"]["image"] = uploaded_name
-                    cap_outputs = await comfy.generate(cap_wf, timeout=300)
-                    for n_id, n_out in cap_outputs.items():
-                        if "text" in n_out and n_out["text"]:
-                            raw_cap = n_out["text"][0] if isinstance(n_out["text"], list) else str(n_out["text"])
-                            # Format for Qwen3-VL / Krea 2: prepend trigger and clean
-                            raw_cap = raw_cap.replace("The image shows", "").replace("This is", "").strip()
-                            caption_text = f"{trigger}, {raw_cap}"
+                outputs = await comfy.generate(wf, timeout=600)
+            except Exception as e:
+                logger.error(f"Error generating sample {idx}: {e}")
+                continue
+
+            image_bytes = None
+            out_filename = None
+            for node_id, node_output in outputs.items():
+                if "images" in node_output:
+                    for img_info in node_output["images"]:
+                        out_filename = img_info.get("filename")
+                        subfolder = img_info.get("subfolder", "")
+                        img_type = img_info.get("type", "output")
+                        image_bytes = await comfy.get_image(out_filename, subfolder, img_type)
+                        if image_bytes:
                             break
-            except Exception as cap_err:
-                logger.warning(f"Florence-2 captioning failed for {idx}: {cap_err}")
+                if image_bytes:
+                    break
 
-        # Fallback to prompt text if captioning was not available
-        if not caption_text:
-            caption_text = prompt_text
+            if not image_bytes:
+                logger.error(f"Failed to retrieve image bytes for sample {idx}")
+                continue
 
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(caption_text.strip())
+            file_base = f"{character_id}_{idx:03d}"
+            img_path = os.path.join(output_dir, f"{file_base}.png")
+            txt_path = os.path.join(output_dir, f"{file_base}.txt")
 
-        logger.info(f"Saved: {file_base}.png + {file_base}.txt")
+            # Save PNG image
+            with open(img_path, "wb") as f:
+                f.write(image_bytes)
 
-    logger.info(f"🎉 Dataset generation complete! {count} pairs created in {os.path.abspath(output_dir)}")
+            # Generate Caption via Florence-2 if available
+            caption_text = None
+            if florence_wf:
+                try:
+                    upload_res = await comfy.upload_image(image_bytes, f"{file_base}.png")
+                    uploaded_name = upload_res.get("name")
+                    if uploaded_name:
+                        cap_wf = json.loads(json.dumps(florence_wf))
+                        if "1" in cap_wf:
+                            cap_wf["1"]["inputs"]["image"] = uploaded_name
+                        cap_outputs = await comfy.generate(cap_wf, timeout=300)
+                        for n_id, n_out in cap_outputs.items():
+                            if "text" in n_out and n_out["text"]:
+                                raw_cap = n_out["text"][0] if isinstance(n_out["text"], list) else str(n_out["text"])
+                                raw_cap = raw_cap.replace("The image shows", "").replace("This is", "").strip()
+                                caption_text = f"{trigger}, {raw_cap}"
+                                break
+                except Exception as cap_err:
+                    logger.warning(f"Florence-2 captioning failed for {idx}: {cap_err}")
+
+            # Fallback to prompt text if captioning was not available
+            if not caption_text:
+                caption_text = prompt_text
+
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(caption_text.strip())
+
+            logger.info(f"Saved: {file_base}.png + {file_base}.txt")
+
+        logger.info(f"🎉 Dataset generation complete! {count} pairs created in {os.path.abspath(output_dir)}")
+    finally:
+        await comfy.stop()
 
 
 if __name__ == "__main__":
