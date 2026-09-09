@@ -3830,17 +3830,20 @@ async def execute_bertflow(
 
         image_bytes = None
         output_filename = None
-        for node_id, node_output in outputs.items():
-            if "images" in node_output:
-                for img_info in node_output["images"]:
-                    output_filename = img_info.get("filename")
-                    subfolder = img_info.get("subfolder", "")
-                    img_type = img_info.get("type", "output")
-                    image_bytes = await comfy_client.get_image(output_filename, subfolder, img_type)
-                    if image_bytes:
-                        break
-            if image_bytes:
-                break
+        if isinstance(outputs, list) and len(outputs) > 0 and isinstance(outputs[0], (bytes, bytearray)):
+            image_bytes = outputs[0]
+        elif isinstance(outputs, dict):
+            for node_id, node_output in outputs.items():
+                if isinstance(node_output, dict) and "images" in node_output:
+                    for img_info in node_output["images"]:
+                        output_filename = img_info.get("filename")
+                        subfolder = img_info.get("subfolder", "")
+                        img_type = img_info.get("type", "output")
+                        image_bytes = await comfy_client.get_image(output_filename, subfolder, img_type)
+                        if image_bytes:
+                            break
+                if image_bytes:
+                    break
 
         if not image_bytes:
             await send_error_fallback(interaction, "Generation succeeded on ComfyUI but failed to retrieve image bytes.")

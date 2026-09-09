@@ -13,6 +13,8 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
   * **Dual Model Support**: Auto-detects and supports both `Muse v3.5 Extended` (Stable Yogi) and `Pornmaster v2` (Krea 2 FP8).
   * **Resolution Presets**: Supports 1:1 (`1224x1224` native), 16:9, 9:16, 21:9, 3:4, 4:3, and 16:9.3, plus custom `--ar` flag parsing.
   * **Interactive Action Controls (`BertflowButtons`)**: Interactive `[ 🔄 Re-roll ]` with fresh seed and `[ ✏️ Remix ]` modal to tweak prompt in-place.
+* 🧬 **Automated Character Dataset Generator (`tools/build_character_dataset.py`)**: Built an end-to-end synthetic dataset generator and 1-click batch runner (`generate_ogarla_dataset.bat`) to synthetically generate diverse Flux character portraits and auto-caption them with Florence-2 for training on new architectures (e.g., Krea 2 / OneTrainer).
+* 🛠️ **ComfyClient Output Compatibility Fix**: Updated `execute_bertflow` and dataset generator to seamlessly handle both raw byte lists and dictionary node output maps from `ComfyClient.generate()`.
 * 🎛️ **Interactive Video Action Controls (`VideoActionView`)**: Added interactive Discord button controls below completed `/video` generations:
   * **`[ 🔄 Re-roll ]`**: Re-animates the exact same uploaded image with a fresh random seed.
   * **`[ ✏️ Remix Motion ]`**: Reopens `VideoPromptModal` with previous prompt, duration (5s/10s), and smoothness mode pre-filled for rapid prompt iteration.

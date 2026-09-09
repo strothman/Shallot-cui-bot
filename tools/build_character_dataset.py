@@ -150,18 +150,20 @@ async def run_dataset_builder(
                 continue
 
             image_bytes = None
-            out_filename = None
-            for node_id, node_output in outputs.items():
-                if "images" in node_output:
-                    for img_info in node_output["images"]:
-                        out_filename = img_info.get("filename")
-                        subfolder = img_info.get("subfolder", "")
-                        img_type = img_info.get("type", "output")
-                        image_bytes = await comfy.get_image(out_filename, subfolder, img_type)
-                        if image_bytes:
-                            break
-                if image_bytes:
-                    break
+            if isinstance(outputs, list) and len(outputs) > 0:
+                image_bytes = outputs[0]
+            elif isinstance(outputs, dict):
+                for node_id, node_output in outputs.items():
+                    if isinstance(node_output, dict) and "images" in node_output:
+                        for img_info in node_output["images"]:
+                            out_filename = img_info.get("filename")
+                            subfolder = img_info.get("subfolder", "")
+                            img_type = img_info.get("type", "output")
+                            image_bytes = await comfy.get_image(out_filename, subfolder, img_type)
+                            if image_bytes:
+                                break
+                    if image_bytes:
+                        break
 
             if not image_bytes:
                 logger.error(f"Failed to retrieve image bytes for sample {idx}")
