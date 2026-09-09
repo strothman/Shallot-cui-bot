@@ -191,6 +191,11 @@ CHARACTER_CHOICES_FLUX = [
     app_commands.Choice(name="🌿 Ogarla Flux (.70 - Light)", value="ogarla.70"),
 ]
 
+CHARACTER_CHOICES_KREA2 = [
+    app_commands.Choice(name="🌿 Ogarla Krea 2 (.85 - Default)", value="ogarla.85"),
+    app_commands.Choice(name="🌿 Ogarla Krea 2 (.70 - Light)", value="ogarla.70"),
+]
+
 # Checkpoint-specific configurations & optimal generation parameters for photorealism and LoRA compatibility
 CHECKPOINT_CONFIGS = {
     "RealVisXL_V4.0.safetensors": {
@@ -2373,6 +2378,14 @@ async def on_interaction(interaction: discord.Interaction):
             parts = custom_id.split(":")
             if len(parts) >= 2:
                 await handle_bertflow_remix(interaction, parts[1])
+        elif custom_id.startswith("bertflow_toggle_char:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                await handle_bertflow_toggle_char(interaction, parts[1])
+        elif custom_id.startswith("bertflow_upscale:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                await handle_bertflow_upscale(interaction, parts[1])
         elif custom_id.startswith("fav_style:"):
             parts = custom_id.split(":")
             if len(parts) == 2:
@@ -2527,6 +2540,13 @@ async def on_interaction(interaction: discord.Interaction):
                 cur_comp = gen_data.get("composition", "off")
                 next_comp = "medium" if cur_comp == "off" else ("strong" if cur_comp == "medium" else ("subtle" if cur_comp == "strong" else "off"))
                 await handle_update_blend_krea_view(interaction, gen_id, new_comp=next_comp)
+        elif custom_id.startswith("set_blend_krea_char:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                if interaction.data and "values" in interaction.data:
+                    val = interaction.data["values"][0]
+                    await handle_update_blend_krea_view(interaction, gen_id, new_char=val)
         elif custom_id.startswith("edit_blend_krea_prompt:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:
@@ -3802,9 +3822,10 @@ async def execute_bertflow(
     wetness_strength: float = -2.0,
     status_msg_ref: list = None,
     init_image_name: str = None,
-    comp_strength: str = "off"
+    comp_strength: str = "off",
+    character: str = None
 ):
-    """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference."""
+    """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference and character LoRA."""
     global _active_architecture
     target_arch = "KREA2"
     if _active_architecture is not None and _active_architecture != target_arch:
@@ -3817,7 +3838,8 @@ async def execute_bertflow(
     active_unet = get_bertflow_unet_model(model_name)
 
     comp_info = f" | Comp: {comp_strength} ({init_image_name})" if init_image_name and comp_strength != "off" else ""
-    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Wetness: {wetness_strength}{comp_info} | Seed: {actual_seed}")
+    char_info = f" | Character: {character}" if character and str(character).lower() not in ["none", "nochar", "off"] else ""
+    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Wetness: {wetness_strength}{comp_info}{char_info} | Seed: {actual_seed}")
 
     try:
         workflow = prepare_bertflow_workflow(
@@ -3829,7 +3851,8 @@ async def execute_bertflow(
             unet_model=active_unet,
             wetness_strength=wetness_strength,
             init_image=init_image_name,
-            comp_strength=comp_strength
+            comp_strength=comp_strength,
+            character=character
         )
     except Exception as e:
         logger.error(f"Error preparing Bertflow workflow: {e}")
@@ -3842,6 +3865,7 @@ async def execute_bertflow(
 
     init_bar = create_progress_bar(0, steps)
     comp_line = f" | **Comp:** `{comp_strength.title()}`" if init_image_name and comp_strength != "off" else ""
+    char_line = f" | **Character:** `🌿 Ogarla (Krea 2)`" if character and str(character).lower() not in ["none", "nochar", "off"] else ""
     init_embed = discord.Embed(
         title="📸 Generating with Bertflow...",
         description=(
@@ -3849,7 +3873,7 @@ async def execute_bertflow(
             f"**Progress:** {init_bar}\n"
             f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
             f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
-            f"**Steps:** {steps}{comp_line} | **Seed:** `{actual_seed}`"
+            f"**Steps:** {steps}{comp_line}{char_line} | **Seed:** `{actual_seed}`"
         ),
         color=discord.Color.from_rgb(235, 140, 52)
     )
@@ -3869,33 +3893,32 @@ async def execute_bertflow(
         presence_str = f"📸 Bertflow: {percent}% (Step {val}/{max_val})"
         asyncio.create_task(update_bot_presence(presence_str))
 
-        now = asyncio.get_event_loop().time()
-        if now - last_update_time[0] >= 1.2 or val == max_val:
+        now = time.time()
+        if now - last_update_time[0] >= 1.5 or val >= max_val:
             last_update_time[0] = now
             bar = create_progress_bar(val, max_val)
-            prog_embed = discord.Embed(
+            progress_embed = discord.Embed(
                 title="📸 Generating with Bertflow...",
                 description=(
                     f"**Prompt:** {cleaned_prompt}\n"
-                    f"**Progress:** {bar}\n"
+                    f"**Progress:** {bar} ({percent}%)\n"
                     f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
                     f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
-                    f"**Steps:** {val}/{max_val} | **Seed:** `{actual_seed}`"
+                    f"**Steps:** {steps}{comp_line}{char_line} | **Seed:** `{actual_seed}`"
                 ),
                 color=discord.Color.from_rgb(235, 140, 52)
             )
-            prog_embed.set_footer(text="Sampling realistic skin & lighting on GPU...")
+            progress_embed.set_footer(text=f"⏳ Krea 2 Turbo • Step {val}/{max_val}")
             try:
                 if status_msg[0] is not None:
-                    await status_msg[0].edit(embed=prog_embed, view=cancel_view)
+                    await status_msg[0].edit(embed=progress_embed, view=cancel_view)
             except Exception:
                 pass
 
-    start_time = time.perf_counter()
     try:
-        outputs = await comfy_client.generate(workflow, timeout=1200, progress_callback=on_bertflow_progress)
-        elapsed_time = time.perf_counter() - start_time
-        t_breakdown = comfy_client.get_execution_timing()
+        t_start = time.time()
+        outputs, t_breakdown = await comfy_client.generate(workflow, on_progress=on_bertflow_progress)
+        elapsed_time = time.time() - t_start
 
         image_bytes = None
         output_filename = None
@@ -3928,6 +3951,7 @@ async def execute_bertflow(
             "steps": steps,
             "seed": actual_seed,
             "unet_model": active_unet,
+            "character": character,
             "user_id": interaction.user.id
         })
 
@@ -3945,6 +3969,8 @@ async def execute_bertflow(
         )
         complete_embed.add_field(name="📐 Specs", value=f"`{width}x{height}`\n`{aspect_ratio or '1:1'}`", inline=True)
         complete_embed.add_field(name="⚡ Engine", value=f"Krea 2 Turbo\n`{active_unet.split('.')[0]}`", inline=True)
+        if character and str(character).lower() not in ["none", "nochar", "off"]:
+            complete_embed.add_field(name="🎭 Character", value="🌿 Ogarla (Krea 2)", inline=True)
         t_str = f"{elapsed_time:.1f}s"
         if t_breakdown.get("sample", 0) > 0:
             t_str += f" (Init {t_breakdown.get('init', 0):.1f}s | Gen {t_breakdown.get('sample', 0):.1f}s)"
@@ -3956,7 +3982,10 @@ async def execute_bertflow(
         view = BertflowButtons(
             generation_id=generation_id,
             on_reroll_cb=handle_bertflow_reroll,
-            on_remix_cb=handle_bertflow_remix
+            on_remix_cb=handle_bertflow_remix,
+            character=character,
+            on_toggle_char_cb=handle_bertflow_toggle_char,
+            on_upscale_cb=handle_bertflow_upscale
         )
 
         try:
@@ -3971,7 +4000,22 @@ async def execute_bertflow(
         logger.info(f"[/bertflow] Execution cancelled by user.")
     except Exception as e:
         logger.error(f"[/bertflow] Generation error: {e}", exc_info=True)
-        await send_error_fallback(interaction, f"An error occurred during Bertflow generation: {e}")
+        err_msg = str(e).lower()
+        if "out of memory" in err_msg or "cuda" in err_msg or "vram" in err_msg:
+            logger.warning("[/bertflow] CUDA Out-of-Memory detected! Purging ComfyUI VRAM via /free...")
+            try:
+                await comfy_client.free_memory(unload_models=True, free_memory=True)
+            except Exception:
+                pass
+            await send_error_fallback(
+                interaction,
+                "⚠️ **GPU Out-of-Memory (8GB VRAM limit reached)**\n"
+                "The bot automatically purged cached models and released VRAM.\n"
+                "• Try using `1:1` or `16:9` standard resolution.\n"
+                "• Use `/free` if you experience any residual stutter."
+            )
+        else:
+            await send_error_fallback(interaction, f"An error occurred during Bertflow generation: {e}")
 
 
 async def handle_bertflow_reroll(interaction: discord.Interaction, generation_id: str):
@@ -3989,7 +4033,8 @@ async def handle_bertflow_reroll(interaction: discord.Interaction, generation_id
         aspect_ratio=gen_data.get("aspect_ratio", "1:1"),
         seed=new_seed,
         steps=gen_data.get("steps", 8),
-        model_name=gen_data.get("unet_model")
+        model_name=gen_data.get("unet_model"),
+        character=gen_data.get("character")
     )
 
 
@@ -4011,7 +4056,8 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
             aspect_ratio=gen_data.get("aspect_ratio", "1:1"),
             seed=new_seed if new_seed is not None else random.randint(1, 1125899906842624),
             steps=gen_data.get("steps", 8),
-            model_name=gen_data.get("unet_model")
+            model_name=gen_data.get("unet_model"),
+            character=gen_data.get("character")
         )
 
     modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
@@ -4023,10 +4069,82 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
             logger.warning(f"Failed to send Bertflow Remix modal: {e}")
 
 
+async def handle_bertflow_toggle_char(interaction: discord.Interaction, generation_id: str):
+    """Toggles character LoRA (Ogarla) on/off for the given Bertflow generation."""
+    await safe_defer(interaction, thinking=True)
+    gen_data = db.get_generation(generation_id)
+    if not gen_data:
+        await interaction.followup.send("Could not find generation session data. It may have expired.", ephemeral=True)
+        return
+
+    curr_char = gen_data.get("character")
+    has_char = curr_char and str(curr_char).lower() not in ["none", "nochar", "off", "false"]
+    new_char = None if has_char else "ogarla.85"
+
+    await execute_bertflow(
+        interaction=interaction,
+        prompt=gen_data.get("original_prompt") or gen_data.get("prompt"),
+        aspect_ratio=gen_data.get("aspect_ratio", "1:1"),
+        seed=gen_data.get("seed"),
+        steps=gen_data.get("steps", 8),
+        model_name=gen_data.get("unet_model"),
+        character=new_char
+    )
+
+
+async def handle_bertflow_upscale(interaction: discord.Interaction, generation_id: str):
+    """Upscales a Bertflow image (1.5x) using high-fidelity Lanczos sampling."""
+    await safe_defer(interaction, thinking=True)
+    gen_data = db.get_generation(generation_id)
+    cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}.png")
+
+    image_bytes = None
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                image_bytes = f.read()
+        except Exception:
+            pass
+
+    if not image_bytes:
+        await interaction.followup.send("Could not retrieve cached image for upscaling. It may have expired.", ephemeral=True)
+        return
+
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        w, h = img.size
+        new_w = int(w * 1.5)
+        new_h = int(h * 1.5)
+        upscaled_img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        out_io = io.BytesIO()
+        upscaled_img.save(out_io, format="PNG")
+        upscaled_bytes = out_io.getvalue()
+
+        upscale_embed = discord.Embed(
+            title="🔍 Bertflow Upscale (1.5x)",
+            description=f"**Prompt:** {gen_data.get('prompt', '') if gen_data else 'Bertflow Generation'}",
+            color=discord.Color.from_rgb(235, 140, 52)
+        )
+        upscale_embed.add_field(name="📐 Resolution", value=f"`{w}x{h}` ➔ `{new_w}x{new_h}`", inline=True)
+        if gen_data and gen_data.get("character") and str(gen_data.get("character")).lower() not in ["none", "nochar", "off"]:
+            upscale_embed.add_field(name="🎭 Character", value="🌿 Ogarla (Krea 2)", inline=True)
+        upscale_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Photorealism")
+        upscale_embed.set_image(url=f"attachment://upscale_{generation_id}.png")
+
+        file = discord.File(io.BytesIO(upscaled_bytes), filename=f"upscale_{generation_id}.png")
+        await send_followup_fallback(interaction, embed=upscale_embed, file=file)
+    except Exception as e:
+        logger.error(f"Error upscaling Bertflow generation: {e}", exc_info=True)
+        await send_error_fallback(interaction, f"Failed to upscale Bertflow image: {e}")
+
+
+
 @bot.tree.command(name="bertflow", description="📸 Generate ultra-photorealistic images using Bert's Krea 2 workflow!")
 @app_commands.describe(
-    prompt="Scene/subject description (supports natural language and --ar)",
+    prompt="Scene/subject description (supports natural language, --ar, and --ogarla)",
     aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
+    character="Optional character LoRA preset (Ogarla Krea 2)",
     model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",
     steps="Sampling steps (8 for Turbo, up to 20 for Extended)",
     seed="Optional fixed seed for reproducibility"
@@ -4041,24 +4159,28 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
         app_commands.Choice(name="4:3 (Classic Landscape - 1408x1056)", value="4:3"),
         app_commands.Choice(name="16:9.3 (Taskbar Fit - 1632x880)", value="16:9.3"),
     ],
+    character=CHARACTER_CHOICES_KREA2,
     model=BERTFLOW_MODEL_CHOICES
 )
 async def bertflow_command(
     interaction: discord.Interaction,
     prompt: str,
     aspect_ratio: str = "1:1",
+    character: app_commands.Choice[str] = None,
     model: str = None,
     steps: int = 8,
     seed: int = None
 ):
     await safe_defer(interaction, thinking=True)
+    char_val = character.value if character else None
     await execute_bertflow(
         interaction=interaction,
         prompt=prompt,
         aspect_ratio=aspect_ratio,
         seed=seed,
         steps=steps,
-        model_name=model
+        model_name=model,
+        character=char_val
     )
 
 
@@ -4129,6 +4251,34 @@ async def prompt_delete_autocomplete(interaction: discord.Interaction, current: 
     return choices[:25]
 
 bot.tree.add_command(prompt_group)
+
+
+
+@bot.tree.command(name="free", description="🧹 Purge ComfyUI model weights and free GPU VRAM immediately.")
+async def free_vram_command(interaction: discord.Interaction):
+    """Frees loaded models and purges PyTorch CUDA cache on the local ComfyUI instance."""
+    await safe_defer(interaction, thinking=True)
+    try:
+        success = await comfy_client.free_memory(unload_models=True, free_memory=True)
+        if success:
+            embed = discord.Embed(
+                title="🧹 ComfyUI VRAM Purged",
+                description="Successfully unloaded all models from GPU VRAM and cleared PyTorch memory caches.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Status", value="✅ Ready for fresh generation or gaming / system tasks.", inline=False)
+            embed.set_footer(text="Shallot ComfyUI VRAM Manager • 8GB Low-VRAM Hygiene")
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send("⚠️ ComfyUI `/free` endpoint did not respond with 200 OK. Verify ComfyUI is running.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error purging VRAM via /free: {e}")
+        await interaction.followup.send(f"Failed to purge VRAM: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="purge-vram", description="🧹 Alias for /free - Purge ComfyUI models & GPU memory.")
+async def purge_vram_command(interaction: discord.Interaction):
+    await free_vram_command(interaction)
 
 
 
@@ -5062,7 +5212,8 @@ async def handle_generate_described(interaction: discord.Interaction, generation
         if not krea2_prompt:
             await interaction.followup.send("No Krea 2 prompt found in session.", ephemeral=True)
             return
-        await execute_bertflow(interaction, prompt=krea2_prompt, aspect_ratio=ar)
+        char_val = "ogarla.85" if use_oga else None
+        await execute_bertflow(interaction, prompt=krea2_prompt, aspect_ratio=ar, character=char_val)
         return
 
     base_prompt = gen_data.get("caption") if desc_type == "caption" else gen_data.get("detailed_caption")
@@ -5243,7 +5394,7 @@ async def handle_reblend(interaction: discord.Interaction, generation_id: str):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-async def handle_update_blend_krea_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_model: str = None, new_wetness: float = None, new_comp: str = None):
+async def handle_update_blend_krea_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_model: str = None, new_wetness: float = None, new_comp: str = None, new_char: str = None):
     """Updates interactive buttons and embed for a /blend-krea session."""
     gen_data = get_generation(generation_id)
     if not gen_data:
@@ -5258,6 +5409,8 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
         gen_data["wetness"] = float(new_wetness)
     if new_comp:
         gen_data["composition"] = new_comp
+    if new_char:
+        gen_data["char_choice"] = new_char
 
     gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
     active_generations[generation_id] = gen_data
@@ -5269,7 +5422,8 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
         ar=gen_data.get("ar", "16:9"),
         model_choice=gen_data.get("model_choice", "muse"),
         wetness=gen_data.get("wetness", -2.0),
-        composition=gen_data.get("composition", "off")
+        composition=gen_data.get("composition", "off"),
+        character=gen_data.get("char_choice", "none")
     )
     try:
         await interaction.response.edit_message(embed=embed, view=view)
@@ -5295,7 +5449,8 @@ async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction,
         ar=gen_data.get("ar", "16:9"),
         model_choice=gen_data.get("model_choice", "muse"),
         wetness=gen_data.get("wetness", -2.0),
-        composition=gen_data.get("composition", "off")
+        composition=gen_data.get("composition", "off"),
+        character=gen_data.get("char_choice", "none")
     )
     await interaction.response.edit_message(embed=embed, view=view)
 
@@ -5314,6 +5469,7 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
     wetness = float(gen_data.get("wetness", -2.0))
     comp = gen_data.get("composition", "off")
     uploaded_image_name = gen_data.get("uploaded_image_name")
+    character = gen_data.get("char_choice")
 
     unet_name = "museByStableYogi_v35Int8Extended.safetensors" if "muse" in model_choice.lower() else "pornmasterKrea2_v1FP8.safetensors"
     await execute_bertflow(
@@ -5323,7 +5479,8 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
         model_name=unet_name,
         wetness_strength=wetness,
         init_image_name=uploaded_image_name if comp != "off" else None,
-        comp_strength=comp
+        comp_strength=comp,
+        character=character
     )
 
 
@@ -5355,7 +5512,8 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
             aspect_ratio=ar,
             model_name=unet_name,
             init_image_name=uploaded_image_name if krea_comp != "off" else None,
-            comp_strength=krea_comp
+            comp_strength=krea_comp,
+            character=char_choice
         )
         return
 
@@ -6567,7 +6725,8 @@ async def execute_blend_krea_core(
     aspect_ratio: str = "16:9",
     model: str = "muse",
     wetness: float = -2.0,
-    composition: str = "off"
+    composition: str = "off",
+    character: str = "none"
 ):
     """Core logic to analyze an image with Florence-2 and initialize the Krea 2 Blend Studio dashboard."""
     try:
@@ -6629,6 +6788,7 @@ async def execute_blend_krea_core(
             "model_choice": model or "muse",
             "wetness": float(wetness if wetness is not None else -2.0),
             "composition": composition or "off",
+            "char_choice": character or "none",
             "author_str": interaction.user.name
         }
         active_generations[generation_id] = gen_data
@@ -6641,7 +6801,8 @@ async def execute_blend_krea_core(
             ar=resolved_ar,
             model_choice=gen_data["model_choice"],
             wetness=gen_data["wetness"],
-            composition=gen_data["composition"]
+            composition=gen_data["composition"],
+            character=gen_data["char_choice"]
         )
         await edit_original_fallback(interaction, content=None, embed=embed, view=view)
 
@@ -6655,6 +6816,7 @@ async def execute_blend_krea_core(
     image="The image file you want to analyze and blend",
     prompt="Optional remix instructions or extra details to blend into the image",
     aspect_ratio="The aspect ratio for the Krea 2 render",
+    character="Optional character preset (Ogarla Krea 2)",
     model="Select Krea 2 UNET Checkpoint (Defaults to auto-detecting Muse v3.5)",
     wetness="Anti-sheen skin matte strength (-2.0 default, 0.0 normal, 1.0 glossy)",
     composition="Optional direct physical composition/pose locking (Off default, Medium 70%, Strong 50%)"
@@ -6668,6 +6830,7 @@ async def execute_blend_krea_core(
         app_commands.Choice(name="3:4 Standard Portrait (1056x1408)", value="3:4"),
         app_commands.Choice(name="4:3 Standard Landscape (1408x1056)", value="4:3"),
     ],
+    character=CHARACTER_CHOICES_KREA2,
     model=BERTFLOW_MODEL_CHOICES,
     composition=[
         app_commands.Choice(name="Off (Semantic Vision Only - Default)", value="off"),
@@ -6681,6 +6844,7 @@ async def blend_krea(
     image: discord.Attachment, 
     prompt: str = None,
     aspect_ratio: str = "16:9",
+    character: app_commands.Choice[str] = None,
     model: app_commands.Choice[str] = None,
     wetness: float = -2.0,
     composition: app_commands.Choice[str] = None
@@ -6696,6 +6860,7 @@ async def blend_krea(
         image_bytes = await image.read()
         selected_model = model.value if model else "muse"
         comp_val = composition.value if composition else "off"
+        char_val = character.value if character else "none"
         await execute_blend_krea_core(
             interaction=interaction,
             image_bytes=image_bytes,
@@ -6705,7 +6870,8 @@ async def blend_krea(
             aspect_ratio=aspect_ratio,
             model=selected_model,
             wetness=wetness,
-            composition=comp_val
+            composition=comp_val,
+            character=char_val
         )
     except Exception as e:
         logger.error(f"Error reading image for blend-krea: {e}")

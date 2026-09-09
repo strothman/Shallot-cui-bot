@@ -90,6 +90,7 @@ Turn any still image into a smooth, animated video:
 * **`/blend` (Image Blend Studio)**: Upload an image to mix it with new styles, checkpoints, and text ideas.
 * **`/blend-krea` (Krea 2 Photorealism Blend)**: Upload an image to remix it with Florence-2 vision analysis and Bert's photorealistic Krea 2 Turbo flow-matching pipeline! Features an optional **Direct Composition** toggle (`Off`, `Medium 70%`, `Strong 50%`) to lock subject silhouettes and poses via VAE latent encoding.
 * **`/upscale` (1920px AI Upscaler)**: Upload any picture to make it sharp and high-resolution.
+* **`/free` / `/purge-vram` (Purge VRAM & Memory)**: Unloads active models from ComfyUI and purges PyTorch GPU memory caches immediately to release 8GB VRAM for gaming or fresh generation tasks.
 
 ---
 

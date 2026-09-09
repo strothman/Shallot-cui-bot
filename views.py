@@ -1226,6 +1226,7 @@ class EditBlendPromptModal(discord.ui.Modal, title="✏️ Edit & Refine Blend P
             logger.error(f"Error in EditBlendPromptModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to update blend prompt: {e}")
 
+
 def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: str = None) -> discord.Embed:
     """Builds a streamlined, photorealism-focused embed for /blend-krea sessions."""
     vision_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption", "No description")
@@ -1235,6 +1236,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     model_choice = gen_data.get("model_choice", "muse")
     wetness = float(gen_data.get("wetness", -2.0))
     comp = gen_data.get("composition", "off")
+    char_choice = gen_data.get("char_choice", "none")
 
     model_display = "Muse v3.5 Extended (Stable Yogi)" if "muse" in model_choice.lower() else "Pornmaster v2 (Krea 2 FP8)"
     if wetness == -2.0:
@@ -1254,6 +1256,13 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         comp_display = "Subtle Composition (85% Denoise)"
     else:
         comp_display = "Off (Semantic Vision Only)"
+
+    if char_choice in ["ogarla.85", "ogarla", "oga"]:
+        char_display = "🌿 Ogarla (.85 - Default)"
+    elif char_choice in ["ogarla.70", "ogarla_light"]:
+        char_display = "🌿 Ogarla (.70 - Light)"
+    else:
+        char_display = "None"
 
     embed = discord.Embed(
         title="📸 Krea 2 Blend Studio",
@@ -1280,7 +1289,8 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
             f"📐 **Aspect Ratio:** `{ar}`\n"
             f"🤖 **Engine:** `{model_display}`\n"
             f"💧 **Skin Finish:** `{skin_display}`\n"
-            f"🖼️ **Direct Composition:** `{comp_display}`"
+            f"🖼️ **Direct Composition:** `{comp_display}`\n"
+            f"🎭 **Character:** `{char_display}`"
         ),
         inline=False
     )
@@ -1298,29 +1308,31 @@ class EditBlendKreaModal(discord.ui.Modal):
             label="Remix / Extra Details to Blend In",
             style=discord.TextStyle.paragraph,
             default=current_prompt[:500] if current_prompt else "",
-            max_length=1000,
+            placeholder="Add objects, lighting, attire, or scene changes...",
             required=False,
-            placeholder="e.g. golden hour sunlight, laughing candidly, wearing leather jacket, 35mm photograph"
+            max_length=500
         )
         self.add_item(self.remix_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
+            val = self.remix_input.value.strip()
             if self.on_submit_callback:
-                await self.on_submit_callback(interaction, self.generation_id, self.remix_input.value.strip())
+                await self.on_submit_callback(interaction, self.generation_id, val)
         except Exception as e:
             logger.error(f"Error in EditBlendKreaModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to update Krea 2 remix prompt: {e}")
 
 
 class BlendKreaButtons(discord.ui.View):
-    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off"):
+    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none"):
         super().__init__(timeout=None)
         self.generation_id = generation_id
         self.ar = ar
         self.model_choice = model_choice
         self.wetness = wetness
         self.composition = composition
+        self.character = character or "none"
 
         # Row 0: Aspect Ratios (21:9, 16:9, 1:1, 3:4, 9:16)
         ar_options = [("21:9", "21:9"), ("16:9", "16:9"), ("1:1", "1:1"), ("3:4", "3:4"), ("9:16", "9:16")]
@@ -1381,18 +1393,51 @@ class BlendKreaButtons(discord.ui.View):
             row=1
         ))
 
-        # Row 2: Action Launchers
+        # Row 2: Character LoRA Dropdown Selector
+        char_options = [
+            discord.SelectOption(
+                label="None (No Character LoRA)",
+                value="none",
+                emoji="🚫",
+                description="Generate without character presets",
+                default=(self.character in [None, "none", "nochar"])
+            ),
+            discord.SelectOption(
+                label="Ogarla (Krea 2 - 0.85)",
+                value="ogarla.85",
+                emoji="🌿",
+                description="Trained Krea 2 Character LoRA (Default)",
+                default=(self.character in ["ogarla", "ogarla.85", "oga"])
+            ),
+            discord.SelectOption(
+                label="Ogarla (Krea 2 Light - 0.70)",
+                value="ogarla.70",
+                emoji="🌿",
+                description="Subtle Krea 2 Character LoRA",
+                default=(self.character in ["ogarla.70", "ogarla_light"])
+            ),
+        ]
+        self.add_item(discord.ui.Select(
+            placeholder="🎭 Select Character LoRA (Ogarla Krea 2)...",
+            options=char_options,
+            min_values=1,
+            max_values=1,
+            custom_id=f"set_blend_krea_char:{self.generation_id}",
+            row=2
+        ))
+
+        # Row 3: Action Launchers
         self.add_item(discord.ui.Button(
             label="✏️ Edit Remix Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"edit_blend_krea_prompt:{self.generation_id}",
-            row=2
+            row=3
         ))
         self.add_item(discord.ui.Button(
             label="⚡ Generate in Krea 2",
             style=discord.ButtonStyle.danger,
             custom_id=f"gen_blend_krea:{self.generation_id}",
-            row=2
+            row=3
         ))
 
 
@@ -2325,11 +2370,22 @@ class VideoActionView(discord.ui.View):
 
 class BertflowButtons(discord.ui.View):
     """Buttons attached to /bertflow photorealism generations."""
-    def __init__(self, generation_id: str, on_reroll_cb=None, on_remix_cb=None):
+    def __init__(
+        self,
+        generation_id: str,
+        on_reroll_cb=None,
+        on_remix_cb=None,
+        character: str = None,
+        on_toggle_char_cb=None,
+        on_upscale_cb=None
+    ):
         super().__init__(timeout=None)
         self.generation_id = generation_id
         self.on_reroll_cb = on_reroll_cb
         self.on_remix_cb = on_remix_cb
+        self.character = character
+        self.on_toggle_char_cb = on_toggle_char_cb
+        self.on_upscale_cb = on_upscale_cb
 
         self.reroll_btn = discord.ui.Button(
             label="🔄 Re-roll",
@@ -2347,6 +2403,25 @@ class BertflowButtons(discord.ui.View):
         self.remix_btn.callback = self._on_remix
         self.add_item(self.remix_btn)
 
+        has_char = character and str(character).lower() not in ["none", "nochar", "off", "false"]
+        char_label = "🌿 Ogarla: ON" if has_char else "🌿 Ogarla: OFF"
+        char_style = discord.ButtonStyle.success if has_char else discord.ButtonStyle.secondary
+        self.toggle_char_btn = discord.ui.Button(
+            label=char_label,
+            style=char_style,
+            custom_id=f"bertflow_toggle_char:{generation_id}"
+        )
+        self.toggle_char_btn.callback = self._on_toggle_char
+        self.add_item(self.toggle_char_btn)
+
+        self.upscale_btn = discord.ui.Button(
+            label="🔍 Upscale (1.5x)",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"bertflow_upscale:{generation_id}"
+        )
+        self.upscale_btn.callback = self._on_upscale
+        self.add_item(self.upscale_btn)
+
     async def _on_reroll(self, interaction: discord.Interaction):
         try:
             if self.on_reroll_cb:
@@ -2362,3 +2437,20 @@ class BertflowButtons(discord.ui.View):
         except Exception as e:
             logger.error(f"Error in BertflowButtons remix: {e}")
             await send_error_fallback(interaction, f"Failed to remix: {e}")
+
+    async def _on_toggle_char(self, interaction: discord.Interaction):
+        try:
+            if self.on_toggle_char_cb:
+                await self.on_toggle_char_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in BertflowButtons toggle char: {e}")
+            await send_error_fallback(interaction, f"Failed to toggle character: {e}")
+
+    async def _on_upscale(self, interaction: discord.Interaction):
+        try:
+            if self.on_upscale_cb:
+                await self.on_upscale_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in BertflowButtons upscale: {e}")
+            await send_error_fallback(interaction, f"Failed to upscale: {e}")
+

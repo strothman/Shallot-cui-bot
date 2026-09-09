@@ -18,6 +18,7 @@ logger = logging.getLogger("DiscordBot.ModelArch")
 class Architecture:
     SDXL = "sdxl"
     FLUX = "flux"
+    KREA2 = "krea2"
     SD15 = "sd15"
     SD35 = "sd35"
     WAN = "wan"
@@ -25,7 +26,7 @@ class Architecture:
     HUNYUAN = "hunyuan"
     UNKNOWN = "unknown"
 
-    ALL = [SDXL, FLUX, SD15, SD35, WAN, LTX, HUNYUAN, UNKNOWN]
+    ALL = [SDXL, FLUX, KREA2, SD15, SD35, WAN, LTX, HUNYUAN, UNKNOWN]
 
 class SubType:
     STANDARD = "standard"
@@ -193,6 +194,7 @@ LORA_FAMILY_VARIANTS = {
         Architecture.SDXL: "ogarla_epoch_5.safetensors",
         f"{Architecture.SDXL}:{SubType.PONY}": "ogarlapony_epoch_6.safetensors",
         Architecture.FLUX: "ogarlaflux_epoch_5.safetensors",
+        Architecture.KREA2: "Krea2\\ogarla_krea2.safetensors",
     },
     "semi-realism": {
         Architecture.SDXL: "Semi-realism_illustrious.safetensors",
@@ -209,7 +211,9 @@ def resolve_lora_for_architecture(lora_name: str, target_arch: str, target_subty
     
     # Check Ogarla family
     if "ogarla" in clean:
-        if target_arch == Architecture.FLUX:
+        if target_arch == Architecture.KREA2 or "krea" in str(target_arch).lower():
+            return "Krea2\\ogarla_krea2.safetensors"
+        elif target_arch == Architecture.FLUX:
             return "ogarlaflux_epoch_5.safetensors"
         elif target_arch == Architecture.SDXL:
             if target_subtype == SubType.PONY or "pony" in str(target_subtype).lower():

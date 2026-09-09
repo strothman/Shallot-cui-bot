@@ -15,6 +15,7 @@ class CharacterProfile:
     trained_trigger: str
     lora_sdxl: Optional[str]
     lora_flux: Optional[str] = None
+    lora_krea2: Optional[str] = None
     default_weight: float = 0.85
     shorthands: List[str] = field(default_factory=list)
     description: str = ""
@@ -29,9 +30,10 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         trained_trigger="ogarla",
         lora_sdxl="ogarla_epoch_5.safetensors",
         lora_flux="ogarlaflux_epoch_5.safetensors",
+        lora_krea2="Krea2\\ogarla_krea2.safetensors",
         default_weight=0.85,
         shorthands=["ogarla", "oga"],
-        description="Original Ogarla character LoRA (SDXL & Flux)",
+        description="Original Ogarla character LoRA (SDXL, Flux & Krea 2)",
         is_private=False
     ),
     "valerie": CharacterProfile(
@@ -183,3 +185,43 @@ def inject_trained_trigger_in_prompt(prompt: str, character_id: str) -> str:
 
     # Otherwise prepend the trigger phrase
     return f"{trigger_phrase}, {prompt}".strip()
+
+
+def scan_krea2_loras(lora_dir: Optional[str] = None) -> List[str]:
+    """
+    Scans the Krea 2 LoRA directory (defaulting to C:\\ComfyUI\\ComfyUI\\models\\loras\\Krea2)
+    for available .safetensors files. Automatically discovers new LoRAs and returns their relative paths.
+    """
+    import os
+    target_dirs = []
+    if lora_dir:
+        target_dirs.append(lora_dir)
+    default_dir = r"C:\ComfyUI\ComfyUI\models\loras\Krea2"
+    if default_dir not in target_dirs:
+        target_dirs.append(default_dir)
+
+    discovered = []
+    for d in target_dirs:
+        if os.path.exists(d) and os.path.isdir(d):
+            for fname in os.listdir(d):
+                if fname.lower().endswith(".safetensors"):
+                    rel_path = os.path.join("Krea2", fname)
+                    discovered.append(rel_path)
+                    # Dynamic auto-registration if not already registered
+                    stem = os.path.splitext(fname)[0].lower()
+                    char_key = stem.replace("_krea2", "").replace("-krea2", "").replace("krea2_", "")
+                    if char_key not in CHARACTERS and char_key not in ["wetness", "de-oiler", "deoiler"]:
+                        CHARACTERS[char_key] = CharacterProfile(
+                            id=char_key,
+                            display_name=char_key.capitalize(),
+                            trained_trigger=char_key,
+                            lora_sdxl=None,
+                            lora_flux=None,
+                            lora_krea2=rel_path,
+                            default_weight=0.85,
+                            shorthands=[char_key],
+                            description=f"Auto-discovered Krea 2 LoRA ({fname})",
+                            is_private=False
+                        )
+    return discovered
+

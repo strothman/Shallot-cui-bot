@@ -2248,17 +2248,26 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(wf["822"]["inputs"]["lora_1"]["strength"], -2.0)
         self.assertEqual(wf["763"]["class_type"], "ConditioningZeroOut")
 
-        # 4. Test BertflowButtons
-        view = BertflowButtons(generation_id="bert_test_123")
-        self.assertEqual(len(view.children), 2)
+        # 4. Test BertflowButtons (4 buttons: reroll, remix, toggle char, upscale)
+        view = BertflowButtons(generation_id="bert_test_123", character=None)
+        self.assertEqual(len(view.children), 4)
         btn_ids = [c.custom_id for c in view.children]
         self.assertIn("bertflow_reroll:bert_test_123", btn_ids)
         self.assertIn("bertflow_remix:bert_test_123", btn_ids)
+        self.assertIn("bertflow_toggle_char:bert_test_123", btn_ids)
+        self.assertIn("bertflow_upscale:bert_test_123", btn_ids)
+        self.assertEqual(view.toggle_char_btn.label, "🌿 Ogarla: OFF")
+
+        # Test BertflowButtons with active character
+        view_char = BertflowButtons(generation_id="bert_test_456", character="ogarla.85")
+        self.assertEqual(view_char.toggle_char_btn.label, "🌿 Ogarla: ON")
 
         # 5. Test command registration
         from bot import bot
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("bertflow", commands)
+        self.assertIn("free", commands)
+        self.assertIn("purge-vram", commands)
 
     def test_module60_describe_krea2_workflow_and_buttons(self):
         """Test Krea 2 prompt formatting, workflow nodes, and DescribeButtons integration."""
@@ -2346,13 +2355,56 @@ class TestCUIBotFunctions(unittest.TestCase):
         )
         self.assertFalse(wf_zero["822"]["inputs"]["lora_1"]["on"])
 
+        # Test Krea 2 Character LoRA injection and trigger word
+        wf_char = prepare_bertflow_workflow(
+            prompt="cyberpunk alley",
+            character="ogarla.85"
+        )
+        self.assertTrue(wf_char["822"]["inputs"]["lora_2"]["on"])
+        self.assertEqual(wf_char["822"]["inputs"]["lora_2"]["lora"], "Krea2\\ogarla_krea2.safetensors")
+        self.assertEqual(wf_char["822"]["inputs"]["lora_2"]["strength"], 0.85)
+        self.assertEqual(wf_char["627"]["inputs"]["text"], "ogarla, cyberpunk alley")
+
+        # Test prompt shorthand parsing (--ogarla.70)
+        wf_prompt = prepare_bertflow_workflow(
+            prompt="cyberpunk alley --ogarla.70"
+        )
+        self.assertTrue(wf_prompt["822"]["inputs"]["lora_2"]["on"])
+        self.assertEqual(wf_prompt["822"]["inputs"]["lora_2"]["strength"], 0.70)
+        # Test prompt wetness flags (--dry, --dewy, --matte, --wet)
+        wf_dry = prepare_bertflow_workflow("a sunny beach --dry")
+        self.assertEqual(wf_dry["822"]["inputs"]["lora_1"]["strength"], -3.0)
+        self.assertEqual(wf_dry["627"]["inputs"]["text"], "a sunny beach")
+
+        wf_dewy = prepare_bertflow_workflow("portrait of a runner --dewy")
+        self.assertEqual(wf_dewy["822"]["inputs"]["lora_1"]["strength"], -0.5)
+
+        wf_matte = prepare_bertflow_workflow("studio portrait --matte")
+        self.assertEqual(wf_matte["822"]["inputs"]["lora_1"]["strength"], -2.5)
+
+        wf_custom_wet = prepare_bertflow_workflow("rainy street --wet 0.75")
+        self.assertEqual(wf_custom_wet["822"]["inputs"]["lora_1"]["strength"], 0.75)
+
+        # Test scan_krea2_loras
+        from characters import scan_krea2_loras
+        discovered_loras = scan_krea2_loras()
+        self.assertIsInstance(discovered_loras, list)
+
+        # Test Architecture resolver for Krea 2
+        from model_architecture import resolve_lora_for_architecture, Architecture
+        self.assertEqual(
+            resolve_lora_for_architecture("ogarla", Architecture.KREA2),
+            "Krea2\\ogarla_krea2.safetensors"
+        )
+
         # 3. Test BlendKreaButtons
-        view = BlendKreaButtons(generation_id="krea_blend_777", ar="16:9", model_choice="muse", wetness=-2.0)
+        view = BlendKreaButtons(generation_id="krea_blend_777", ar="16:9", model_choice="muse", wetness=-2.0, character="ogarla.85")
         btn_ids = [item.custom_id for item in view.children if hasattr(item, "custom_id")]
         self.assertIn("set_blend_krea_ar:krea_blend_777:16:9", btn_ids)
         self.assertIn("set_blend_krea_ar:krea_blend_777:21:9", btn_ids)
         self.assertIn("toggle_blend_krea_model:krea_blend_777", btn_ids)
         self.assertIn("toggle_blend_krea_wetness:krea_blend_777", btn_ids)
+        self.assertIn("set_blend_krea_char:krea_blend_777", btn_ids)
         self.assertIn("edit_blend_krea_prompt:krea_blend_777", btn_ids)
         self.assertIn("gen_blend_krea:krea_blend_777", btn_ids)
 

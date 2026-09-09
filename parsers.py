@@ -1761,14 +1761,17 @@ def prepare_bertflow_workflow(
     wetness_strength: float = -2.0,
     init_image: str = None,
     comp_strength: str = "off",
-    filename_prefix: str = None
+    filename_prefix: str = None,
+    character: str = None,
+    character_strength: float = None
 ) -> dict:
     """
-    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, and wetness strength.
+    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, wetness strength, and optional character LoRA.
     Optionally injects direct compositional reference (img2img VAE latent) when init_image and comp_strength are specified.
     """
     import json
     import random
+    import re
     wf_path = "workflows/bertflow.json"
     with open(wf_path, "r", encoding="utf-8") as f:
         wf = json.load(f)
@@ -1776,8 +1779,61 @@ def prepare_bertflow_workflow(
     final_seed = seed if seed is not None else random.randint(1, 1125899906842624)
     model_name = unet_model or get_bertflow_unet_model()
 
+    # Parse wetness / skin finish flags from prompt if present
+    if prompt:
+        wet_val_match = re.search(r'--(?:wetness|wet)\s*([+-]?\d+(?:\.\d+)?)\b', prompt, re.IGNORECASE)
+        if wet_val_match:
+            try:
+                wetness_strength = float(wet_val_match.group(1))
+            except (ValueError, TypeError):
+                pass
+            prompt = re.sub(r'--(?:wetness|wet)\s*[+-]?\d+(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
+        elif re.search(r'--dry\b', prompt, re.IGNORECASE):
+            wetness_strength = -3.0
+            prompt = re.sub(r'--dry\b', '', prompt, flags=re.IGNORECASE).strip()
+        elif re.search(r'--matte\b', prompt, re.IGNORECASE):
+            wetness_strength = -2.5
+            prompt = re.sub(r'--matte\b', '', prompt, flags=re.IGNORECASE).strip()
+        elif re.search(r'--dewy\b', prompt, re.IGNORECASE):
+            wetness_strength = -0.5
+            prompt = re.sub(r'--dewy\b', '', prompt, flags=re.IGNORECASE).strip()
+
+    # Parse character flag from prompt if present (e.g. --ogarla.85 or --oga)
+    active_char = character
+    char_weight = character_strength
+    if prompt:
+        oga_match = re.search(r'--(ogarla|oga)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
+        if oga_match:
+            active_char = "ogarla"
+            if char_weight is None and oga_match.group(2):
+                char_weight = float(oga_match.group(2)) / 100.0 if len(oga_match.group(2)) == 2 else float(f"0.{oga_match.group(2)}")
+            prompt = re.sub(r'--(ogarla|oga)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
+
+    # Determine character LoRA file, weight, and trigger word
+    char_lora_file = None
+    char_trigger = None
+    if active_char and str(active_char).lower() not in ["none", "nochar", "off", "false"]:
+        c_str = str(active_char).lower()
+        if "ogarla" in c_str or "oga" in c_str:
+            char_lora_file = "Krea2\\ogarla_krea2.safetensors"
+            char_trigger = "ogarla"
+            if char_weight is None:
+                dot_match = re.search(r'\.(\d+)', c_str)
+                if dot_match:
+                    val = dot_match.group(1)
+                    char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
+                else:
+                    char_weight = 0.85
+
+    # Inject trigger word into prompt if needed
+    cleaned_prompt = prompt or ""
+    if char_trigger:
+        if not re.search(rf'\b{re.escape(char_trigger)}\b', cleaned_prompt, re.IGNORECASE):
+            cleaned_prompt = f"{char_trigger}, {cleaned_prompt}".strip()
+        cleaned_prompt = re.sub(r"\s+", " ", cleaned_prompt).lstrip(":,.- ").strip()
+
     if "627" in wf:
-        wf["627"]["inputs"]["text"] = prompt
+        wf["627"]["inputs"]["text"] = cleaned_prompt
     if "649" in wf:
         wf["649"]["inputs"]["seed"] = final_seed
     if "698" in wf:
@@ -1789,9 +1845,18 @@ def prepare_bertflow_workflow(
         wf["599"]["inputs"]["noise_seed"] = ["649", 0]
     if "761" in wf:
         wf["761"]["inputs"]["unet_name"] = model_name
-    if "822" in wf and "inputs" in wf["822"] and "lora_1" in wf["822"]["inputs"]:
-        wf["822"]["inputs"]["lora_1"]["strength"] = float(wetness_strength)
-        wf["822"]["inputs"]["lora_1"]["on"] = (wetness_strength != 0.0)
+    if "822" in wf and "inputs" in wf["822"]:
+        if "lora_1" in wf["822"]["inputs"]:
+            wf["822"]["inputs"]["lora_1"]["strength"] = float(wetness_strength)
+            wf["822"]["inputs"]["lora_1"]["on"] = (wetness_strength != 0.0)
+        if char_lora_file:
+            wf["822"]["inputs"]["lora_2"] = {
+                "on": True,
+                "lora": char_lora_file,
+                "strength": float(char_weight if char_weight is not None else 0.85)
+            }
+        elif "lora_2" in wf["822"]["inputs"]:
+            wf["822"]["inputs"]["lora_2"]["on"] = False
     if "830" in wf and "inputs" in wf["830"]:
         try:
             from image_utils import get_dated_save_prefix
