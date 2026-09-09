@@ -2137,9 +2137,42 @@ class VideoActionView(discord.ui.View):
             await send_error_fallback(interaction, f"Failed to toggle FPS mode: {e}")
 
 
+class BertflowButtons(discord.ui.View):
+    """Buttons attached to /bertflow photorealism generations."""
+    def __init__(self, generation_id: str, on_reroll_cb=None, on_remix_cb=None):
+        super().__init__(timeout=None)
+        self.generation_id = generation_id
+        self.on_reroll_cb = on_reroll_cb
+        self.on_remix_cb = on_remix_cb
 
+        self.reroll_btn = discord.ui.Button(
+            label="🔄 Re-roll",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"bertflow_reroll:{generation_id}"
+        )
+        self.reroll_btn.callback = self._on_reroll
+        self.add_item(self.reroll_btn)
 
+        self.remix_btn = discord.ui.Button(
+            label="✏️ Remix",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"bertflow_remix:{generation_id}"
+        )
+        self.remix_btn.callback = self._on_remix
+        self.add_item(self.remix_btn)
 
+    async def _on_reroll(self, interaction: discord.Interaction):
+        try:
+            if self.on_reroll_cb:
+                await self.on_reroll_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in BertflowButtons reroll: {e}")
+            await send_error_fallback(interaction, f"Failed to re-roll: {e}")
 
-
-
+    async def _on_remix(self, interaction: discord.Interaction):
+        try:
+            if self.on_remix_cb:
+                await self.on_remix_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in BertflowButtons remix: {e}")
+            await send_error_fallback(interaction, f"Failed to remix: {e}")

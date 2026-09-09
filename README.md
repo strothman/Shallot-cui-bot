@@ -60,6 +60,18 @@ Generate photorealistic pictures with incredible hands, natural skin, and clear,
 
 ---
 
+### 📸 `/bertflow` — Bert's Krea 2 Photorealism Workflow
+Generate ultra-photorealistic portraits and character scenes using Bert's 11-node Krea 2 Turbo flow-matching pipeline!
+* **Key Features:**
+  * **Zero Glossy AI Skin**: Leverages `wetness_krea2_loraholic` with `-2.0` negative slider strength to actively strip oily plastic sheen in favor of natural matte skin pores and believable lighting.
+  * **Turbo Flow-Matching**: Fast 8-step generation with CFG 1.0 and Euler / Simple scheduler.
+  * **Model Support**: Supports `Muse v3.5 Extended` (by Stable Yogi) and `Pornmaster v2` (Krea 2 FP8).
+  * **Aspect Ratios**: Supports 1:1 (`1224x1224` native), 16:9, 9:16, 21:9, 3:4, 4:3, and 16:9.3.
+  * **Interactive Controls**: `[ 🔄 Re-roll ]` with fresh seed and `[ ✏️ Remix ]` modal to tweak prompt.
+* **Example:** `/bertflow prompt: candid 35mm photo of a young woman laughing in an art studio, natural morning window light, subtle freckles --ar 16:9`
+
+---
+
 ## 🎬 2. Videos & Animation
 
 Turn any still image into a smooth, animated video:

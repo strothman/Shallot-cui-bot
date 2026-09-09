@@ -51,6 +51,9 @@ from parsers import (
     calculate_wan_dimensions,
     parse_video_motion_flags,
     apply_face_detailer_to_workflow,
+    resolve_bertflow_dimensions,
+    get_bertflow_unet_model,
+    prepare_bertflow_workflow,
 )
 from image_utils import (
     crop_to_aspect_ratio,
@@ -95,6 +98,7 @@ from views import (
     VideoActionView,
     CancelGenerationView,
     RemixModal,
+    BertflowButtons,
 )
 import model_architecture
 from characters import get_character, mask_character_in_prompt, inject_trained_trigger_in_prompt, CHARACTERS
@@ -1388,6 +1392,10 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
         await interaction.followup.send("Could not find generation session data. It may have expired.", ephemeral=True)
         return
 
+    if gen_data.get("is_bertflow"):
+        await handle_bertflow_reroll(interaction, generation_id)
+        return
+
     new_seed = random.randint(1, 1125899906842624)
     prompt = gen_data.get("prompt", "")
     original_prompt = gen_data.get("original_prompt", prompt)
@@ -1650,6 +1658,10 @@ async def handle_remix(interaction: discord.Interaction, generation_id: str):
     gen_data = get_generation(generation_id)
     if not gen_data:
         await interaction.response.send_message("❌ Generation session data expired.", ephemeral=True)
+        return
+
+    if gen_data.get("is_bertflow"):
+        await handle_bertflow_remix(interaction, generation_id)
         return
 
     orig_p = gen_data.get("original_prompt") or gen_data.get("prompt") or ""
@@ -2343,6 +2355,14 @@ async def on_interaction(interaction: discord.Interaction):
             if len(parts) == 2:
                 generation_id = parts[1]
                 await handle_reroll(interaction, generation_id)
+        elif custom_id.startswith("bertflow_reroll:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                await handle_bertflow_reroll(interaction, parts[1])
+        elif custom_id.startswith("bertflow_remix:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                await handle_bertflow_remix(interaction, parts[1])
         elif custom_id.startswith("fav_style:"):
             parts = custom_id.split(":")
             if len(parts) == 2:
@@ -3699,6 +3719,269 @@ async def flux_command(
         is_com=True,
         guidance=guidance,
         smart=smart
+    )
+
+
+# =========================================================================
+# /bertflow (Bert's Krea 2 Photorealism Workflow)
+# =========================================================================
+
+BERTFLOW_MODEL_CHOICES = [
+    app_commands.Choice(name="Muse v3.5 Extended (Stable Yogi - Recommended)", value="museByStableYogi_v35Int8Extended.safetensors"),
+    app_commands.Choice(name="Pornmaster v2 (Krea 2 FP8)", value="pornmasterKrea2_v1FP8.safetensors"),
+]
+
+async def execute_bertflow(
+    interaction: discord.Interaction,
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    seed: int = None,
+    steps: int = 8,
+    model_name: str = None,
+    status_msg_ref: list = None
+):
+    """Executes Bert's photorealistic Krea 2 workflow."""
+    global _active_architecture
+    target_arch = "KREA2"
+    if _active_architecture is not None and _active_architecture != target_arch:
+        logger.info(f"Switching architecture from {_active_architecture} to {target_arch}. Purging ComfyUI VRAM via /free...")
+        await comfy_client.free_memory()
+    _active_architecture = target_arch
+
+    cleaned_prompt, width, height = resolve_bertflow_dimensions(prompt, aspect_ratio)
+    actual_seed = seed if seed is not None else random.randint(1, 1125899906842624)
+    active_unet = get_bertflow_unet_model(model_name)
+
+    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Seed: {actual_seed}")
+
+    try:
+        workflow = prepare_bertflow_workflow(
+            prompt=cleaned_prompt,
+            width=width,
+            height=height,
+            seed=actual_seed,
+            steps=steps,
+            unet_model=active_unet
+        )
+    except Exception as e:
+        logger.error(f"Error preparing Bertflow workflow: {e}")
+        await send_error_fallback(interaction, f"Failed to prepare Bertflow workflow: {e}")
+        return
+
+    generation_id = f"bert_{int(time.time())}_{actual_seed}"
+    status_msg = status_msg_ref if status_msg_ref else [None]
+    last_update_time = [0.0]
+
+    init_bar = create_progress_bar(0, steps)
+    init_embed = discord.Embed(
+        title="📸 Generating with Bertflow...",
+        description=(
+            f"**Prompt:** {cleaned_prompt}\n"
+            f"**Progress:** {init_bar}\n"
+            f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
+            f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
+            f"**Steps:** {steps} | **Seed:** `{actual_seed}`"
+        ),
+        color=discord.Color.from_rgb(235, 140, 52)
+    )
+    init_embed.set_footer(text="⏳ Initializing Krea 2 & rgthree LoRA stack...")
+    cancel_view = CancelGenerationView(generation_id)
+
+    try:
+        if status_msg[0] is None:
+            status_msg[0] = await send_followup_fallback(interaction, embed=init_embed, view=cancel_view)
+        else:
+            await status_msg[0].edit(embed=init_embed, view=cancel_view)
+    except Exception:
+        pass
+
+    async def on_bertflow_progress(val, max_val):
+        percent = min(100, int((val / max_val) * 100)) if max_val > 0 else 0
+        presence_str = f"📸 Bertflow: {percent}% (Step {val}/{max_val})"
+        asyncio.create_task(update_bot_presence(presence_str))
+
+        now = asyncio.get_event_loop().time()
+        if now - last_update_time[0] >= 1.2 or val == max_val:
+            last_update_time[0] = now
+            bar = create_progress_bar(val, max_val)
+            prog_embed = discord.Embed(
+                title="📸 Generating with Bertflow...",
+                description=(
+                    f"**Prompt:** {cleaned_prompt}\n"
+                    f"**Progress:** {bar}\n"
+                    f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
+                    f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
+                    f"**Steps:** {val}/{max_val} | **Seed:** `{actual_seed}`"
+                ),
+                color=discord.Color.from_rgb(235, 140, 52)
+            )
+            prog_embed.set_footer(text="Sampling realistic skin & lighting on GPU...")
+            try:
+                if status_msg[0] is not None:
+                    await status_msg[0].edit(embed=prog_embed, view=cancel_view)
+            except Exception:
+                pass
+
+    start_time = time.perf_counter()
+    try:
+        outputs = await comfy_client.generate(workflow, timeout=1200, progress_callback=on_bertflow_progress)
+        elapsed_time = time.perf_counter() - start_time
+        t_breakdown = comfy_client.get_execution_timing()
+
+        image_bytes = None
+        output_filename = None
+        for node_id, node_output in outputs.items():
+            if "images" in node_output:
+                for img_info in node_output["images"]:
+                    output_filename = img_info.get("filename")
+                    subfolder = img_info.get("subfolder", "")
+                    img_type = img_info.get("type", "output")
+                    image_bytes = await comfy_client.get_image(output_filename, subfolder, img_type)
+                    if image_bytes:
+                        break
+            if image_bytes:
+                break
+
+        if not image_bytes:
+            await send_error_fallback(interaction, "Generation succeeded on ComfyUI but failed to retrieve image bytes.")
+            return
+
+        db.save_generation(generation_id, {
+            "is_bertflow": True,
+            "prompt": cleaned_prompt,
+            "original_prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "width": width,
+            "height": height,
+            "steps": steps,
+            "seed": actual_seed,
+            "unet_model": active_unet,
+            "user_id": interaction.user.id
+        })
+
+        cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}.png")
+        try:
+            with open(cache_path, "wb") as f:
+                f.write(image_bytes)
+        except Exception:
+            pass
+
+        complete_embed = discord.Embed(
+            title="📸 Bertflow Realism",
+            description=f"**Prompt:** {cleaned_prompt}",
+            color=discord.Color.from_rgb(235, 140, 52)
+        )
+        complete_embed.add_field(name="📐 Specs", value=f"`{width}x{height}`\n`{aspect_ratio or '1:1'}`", inline=True)
+        complete_embed.add_field(name="⚡ Engine", value=f"Krea 2 Turbo\n`{active_unet.split('.')[0]}`", inline=True)
+        t_str = f"{elapsed_time:.1f}s"
+        if t_breakdown.get("sample", 0) > 0:
+            t_str += f" (Init {t_breakdown.get('init', 0):.1f}s | Gen {t_breakdown.get('sample', 0):.1f}s)"
+        complete_embed.add_field(name="⏱️ Render", value=f"{t_str}\nSeed: `{actual_seed}`", inline=True)
+        complete_embed.set_image(url=f"attachment://{generation_id}.png")
+        complete_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Flow-Matching", icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
+
+        file = discord.File(io.BytesIO(image_bytes), filename=f"{generation_id}.png")
+        view = BertflowButtons(
+            generation_id=generation_id,
+            on_reroll_cb=handle_bertflow_reroll,
+            on_remix_cb=handle_bertflow_remix
+        )
+
+        try:
+            if status_msg[0] is not None:
+                await status_msg[0].edit(content=None, embed=complete_embed, attachments=[file], view=view)
+            else:
+                await send_followup_fallback(interaction, embed=complete_embed, file=file, view=view)
+        except Exception:
+            await send_followup_fallback(interaction, embed=complete_embed, file=file, view=view)
+
+    except StasisInterruptException:
+        logger.info(f"[/bertflow] Execution cancelled by user.")
+    except Exception as e:
+        logger.error(f"[/bertflow] Generation error: {e}", exc_info=True)
+        await send_error_fallback(interaction, f"An error occurred during Bertflow generation: {e}")
+
+
+async def handle_bertflow_reroll(interaction: discord.Interaction, generation_id: str):
+    """Re-rolls a Bertflow generation with a fresh random seed."""
+    await safe_defer(interaction, thinking=True)
+    gen_data = db.get_generation(generation_id)
+    if not gen_data:
+        await interaction.followup.send("Could not find generation session data. It may have expired.", ephemeral=True)
+        return
+
+    new_seed = random.randint(1, 1125899906842624)
+    await execute_bertflow(
+        interaction=interaction,
+        prompt=gen_data.get("original_prompt") or gen_data.get("prompt"),
+        aspect_ratio=gen_data.get("aspect_ratio", "1:1"),
+        seed=new_seed,
+        steps=gen_data.get("steps", 8),
+        model_name=gen_data.get("unet_model")
+    )
+
+
+async def handle_bertflow_remix(interaction: discord.Interaction, generation_id: str):
+    """Opens a Remix modal for tweaking Bertflow prompt and seed."""
+    gen_data = db.get_generation(generation_id)
+    if not gen_data:
+        await interaction.response.send_message("Generation session data expired.", ephemeral=True)
+        return
+
+    orig_p = gen_data.get("original_prompt") or gen_data.get("prompt") or ""
+    orig_seed = gen_data.get("seed")
+
+    async def remix_callback(inter: discord.Interaction, g_id: str, new_prompt: str, new_seed: int):
+        await safe_defer(inter, thinking=True)
+        await execute_bertflow(
+            interaction=inter,
+            prompt=new_prompt,
+            aspect_ratio=gen_data.get("aspect_ratio", "1:1"),
+            seed=new_seed if new_seed is not None else random.randint(1, 1125899906842624),
+            steps=gen_data.get("steps", 8),
+            model_name=gen_data.get("unet_model")
+        )
+
+    modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
+    await interaction.response.send_modal(modal)
+
+
+@bot.tree.command(name="bertflow", description="📸 Generate ultra-photorealistic images using Bert's Krea 2 workflow!")
+@app_commands.describe(
+    prompt="Scene/subject description (supports natural language and --ar)",
+    aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
+    model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",
+    steps="Sampling steps (8 for Turbo, up to 20 for Extended)",
+    seed="Optional fixed seed for reproducibility"
+)
+@app_commands.choices(
+    aspect_ratio=[
+        app_commands.Choice(name="1:1 (Square - 1224x1224 Native)", value="1:1"),
+        app_commands.Choice(name="16:9 (Landscape - 1632x920)", value="16:9"),
+        app_commands.Choice(name="9:16 (Portrait - 920x1632)", value="9:16"),
+        app_commands.Choice(name="21:9 (Cinematic Ultrawide - 1872x800)", value="21:9"),
+        app_commands.Choice(name="3:4 (Classic Portrait - 1056x1408)", value="3:4"),
+        app_commands.Choice(name="4:3 (Classic Landscape - 1408x1056)", value="4:3"),
+        app_commands.Choice(name="16:9.3 (Taskbar Fit - 1632x880)", value="16:9.3"),
+    ],
+    model=BERTFLOW_MODEL_CHOICES
+)
+async def bertflow_command(
+    interaction: discord.Interaction,
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    model: str = None,
+    steps: int = 8,
+    seed: int = None
+):
+    await safe_defer(interaction, thinking=True)
+    await execute_bertflow(
+        interaction=interaction,
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        seed=seed,
+        steps=steps,
+        model_name=model
     )
 
 

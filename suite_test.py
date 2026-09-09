@@ -2204,6 +2204,62 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(modal.duration_input.default, "10")
         self.assertEqual(modal.smoothness_input.default, "fast")
 
+    def test_module42_bertflow_workflow_and_command(self):
+        """Test Bertflow workflow generation, aspect ratio resolver, UNET detection, and button controls."""
+        from parsers import (
+            resolve_bertflow_dimensions,
+            get_bertflow_unet_model,
+            prepare_bertflow_workflow,
+            BERTFLOW_ASPECT_RATIOS
+        )
+        from views import BertflowButtons
+
+        # 1. Test aspect ratio resolution
+        self.assertEqual(resolve_bertflow_dimensions("a portrait", "1:1")[1:], (1224, 1224))
+        self.assertEqual(resolve_bertflow_dimensions("a landscape", "16:9")[1:], (1632, 920))
+        self.assertEqual(resolve_bertflow_dimensions("a tall portrait", "9:16")[1:], (920, 1632))
+        self.assertEqual(resolve_bertflow_dimensions("an ultrawide", "21:9")[1:], (1872, 800))
+
+        # Dynamic --ar flag
+        p_clean, w, h = resolve_bertflow_dimensions("a cinematic shot --ar 16:9", None)
+        self.assertEqual(p_clean, "a cinematic shot")
+        self.assertEqual((w, h), (1632, 920))
+
+        # 2. Test UNET model detection
+        active_unet = get_bertflow_unet_model()
+        self.assertTrue(active_unet.endswith(".safetensors"))
+        self.assertIn(active_unet, ["museByStableYogi_v35Int8Extended.safetensors", "pornmasterKrea2_v1FP8.safetensors"])
+
+        # 3. Test prepare_bertflow_workflow
+        wf = prepare_bertflow_workflow(
+            prompt="Scott kneeling in living room",
+            width=1224,
+            height=1224,
+            seed=424242,
+            steps=8,
+            unet_model="pornmasterKrea2_v1FP8.safetensors"
+        )
+        self.assertEqual(wf["627"]["inputs"]["text"], "Scott kneeling in living room")
+        self.assertEqual(wf["649"]["inputs"]["seed"], 424242)
+        self.assertEqual(wf["698"]["inputs"]["width"], 1224)
+        self.assertEqual(wf["698"]["inputs"]["height"], 1224)
+        self.assertEqual(wf["599"]["inputs"]["steps"], 8)
+        self.assertEqual(wf["761"]["inputs"]["unet_name"], "pornmasterKrea2_v1FP8.safetensors")
+        self.assertEqual(wf["822"]["inputs"]["lora_1"]["strength"], -2.0)
+        self.assertEqual(wf["763"]["class_type"], "ConditioningZeroOut")
+
+        # 4. Test BertflowButtons
+        view = BertflowButtons(generation_id="bert_test_123")
+        self.assertEqual(len(view.children), 2)
+        btn_ids = [c.custom_id for c in view.children]
+        self.assertIn("bertflow_reroll:bert_test_123", btn_ids)
+        self.assertIn("bertflow_remix:bert_test_123", btn_ids)
+
+        # 5. Test command registration
+        from bot import bot
+        commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
+        self.assertIn("bertflow", commands)
+
 
 if __name__ == "__main__":
     unittest.main()

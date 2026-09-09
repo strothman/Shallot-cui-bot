@@ -7,6 +7,12 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-09]
 
 ### Added
+* 📸 **`/bertflow` Photorealism Slash Command**: Added dedicated `/bertflow` slash command implementing Bert's 11-node Krea 2 Turbo flow-matching pipeline:
+  * **Zero Glossy AI Skin**: Leverages `wetness_krea2_loraholic` with `-2.0` negative slider strength to actively strip oily plastic sheen in favor of natural matte skin pores and believable lighting.
+  * **Turbo Flow-Matching**: Fast 8-step generation with CFG 1.0, Euler / Simple scheduler, and `ConditioningZeroOut` flow-matching negative setup.
+  * **Dual Model Support**: Auto-detects and supports both `Muse v3.5 Extended` (Stable Yogi) and `Pornmaster v2` (Krea 2 FP8).
+  * **Resolution Presets**: Supports 1:1 (`1224x1224` native), 16:9, 9:16, 21:9, 3:4, 4:3, and 16:9.3, plus custom `--ar` flag parsing.
+  * **Interactive Action Controls (`BertflowButtons`)**: Interactive `[ 🔄 Re-roll ]` with fresh seed and `[ ✏️ Remix ]` modal to tweak prompt in-place.
 * 🎛️ **Interactive Video Action Controls (`VideoActionView`)**: Added interactive Discord button controls below completed `/video` generations:
   * **`[ 🔄 Re-roll ]`**: Re-animates the exact same uploaded image with a fresh random seed.
   * **`[ ✏️ Remix Motion ]`**: Reopens `VideoPromptModal` with previous prompt, duration (5s/10s), and smoothness mode pre-filled for rapid prompt iteration.

@@ -1602,5 +1602,132 @@ def parse_video_motion_flags(prompt: str) -> tuple:
     return cleaned, badges, augmented
 
 
+# =========================================================================
+# Bertflow (Krea 2 Turbo) Helpers
+# =========================================================================
 
+BERTFLOW_ASPECT_RATIOS = {
+    "1:1": (1224, 1224),
+    "16:9": (1632, 920),
+    "9:16": (920, 1632),
+    "21:9": (1872, 800),
+    "3:4": (1056, 1408),
+    "4:3": (1408, 1056),
+    "16:9.3": (1632, 880),
+}
 
+def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tuple[str, int, int]:
+    """
+    Resolves dimensions for Bertflow (Krea 2 Turbo).
+    Target base resolution is ~1.5M pixels (1224x1224).
+    Returns (cleaned_prompt, width, height).
+    """
+    clean_p = prompt
+    if aspect_ratio_str and aspect_ratio_str in BERTFLOW_ASPECT_RATIOS:
+        w, h = BERTFLOW_ASPECT_RATIOS[aspect_ratio_str]
+        return clean_p, w, h
+
+    matches = list(RE_ASPECT_RATIO.finditer(prompt))
+    if matches:
+        ar_match = matches[-1]
+        try:
+            x = float(ar_match.group(1))
+            y_val = ar_match.group(2)
+            y = float(y_val) if y_val else 1.0
+            clean_p = RE_ASPECT_RATIO.sub('', prompt)
+            clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
+            if x > 0 and y > 0:
+                ratio = x / y
+                base_area = 1498176  # 1224 * 1224
+                target_h = math.sqrt(base_area / ratio)
+                target_w = ratio * target_h
+                w = int(round(target_w / 8) * 8)
+                h = int(round(target_h / 8) * 8)
+                w = max(512, min(w, 2048))
+                h = max(512, min(h, 2048))
+                return clean_p, w, h
+        except Exception as e:
+            logger.error(f"Error parsing Bertflow aspect ratio: {e}")
+
+    return clean_p, 1224, 1224
+
+def get_bertflow_unet_model(preferred_model: str = None) -> str:
+    """
+    Finds the available Krea 2 UNET model in ComfyUI models/unet or models/diffusion_models directory.
+    Prefers museByStableYogi_v35Int8Extended.safetensors, then pornmasterKrea2_v1FP8.safetensors.
+    """
+    import os
+    search_dirs = [
+        r"C:\ComfyUI\ComfyUI\models\unet",
+        r"C:\ComfyUI\ComfyUI\models\diffusion_models",
+    ]
+    if preferred_model:
+        for d in search_dirs:
+            if os.path.exists(os.path.join(d, preferred_model)):
+                return preferred_model
+
+    # Check for Muse first
+    muse_candidates = [
+        "museByStableYogi_v35Int8Extended.safetensors",
+        "museByStableYogi_v30TurboInt8.safetensors",
+        "museByStableYogi_v10TurboFP8.safetensors",
+    ]
+    for m in muse_candidates:
+        for d in search_dirs:
+            if os.path.exists(os.path.join(d, m)):
+                return m
+
+    # Check for Pornmaster
+    pm_candidates = [
+        "pornmasterKrea2_v1FP8.safetensors",
+    ]
+    for pm in pm_candidates:
+        for d in search_dirs:
+            if os.path.exists(os.path.join(d, pm)):
+                return pm
+
+    # Scan directories for any file containing krea2 or muse
+    for d in search_dirs:
+        if os.path.isdir(d):
+            for fname in os.listdir(d):
+                fl = fname.lower()
+                if ("krea2" in fl or "muse" in fl) and (fl.endswith(".safetensors") or fl.endswith(".gguf")):
+                    return fname
+
+    return "museByStableYogi_v35Int8Extended.safetensors"
+
+def prepare_bertflow_workflow(
+    prompt: str,
+    width: int = 1224,
+    height: int = 1224,
+    seed: int = None,
+    steps: int = 8,
+    unet_model: str = None
+) -> dict:
+    """
+    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, and model.
+    """
+    import json
+    import random
+    wf_path = "workflows/bertflow.json"
+    with open(wf_path, "r", encoding="utf-8") as f:
+        wf = json.load(f)
+
+    final_seed = seed if seed is not None else random.randint(1, 1125899906842624)
+    model_name = unet_model or get_bertflow_unet_model()
+
+    if "627" in wf:
+        wf["627"]["inputs"]["text"] = prompt
+    if "649" in wf:
+        wf["649"]["inputs"]["seed"] = final_seed
+    if "698" in wf:
+        wf["698"]["inputs"]["width"] = width
+        wf["698"]["inputs"]["height"] = height
+    if "599" in wf:
+        wf["599"]["inputs"]["steps"] = steps
+        wf["599"]["inputs"]["end_at_step"] = steps
+        wf["599"]["inputs"]["noise_seed"] = ["649", 0]
+    if "761" in wf:
+        wf["761"]["inputs"]["unet_name"] = model_name
+
+    return wf
