@@ -85,9 +85,10 @@ Turn any still image into a smooth, animated video:
 
 ## 🔍 3. Image Tools & Vision Studio
 
-* **`/describe` (AI Vision)**: Upload any image and the AI will analyze it, write a prompt description for you, and give you 1-click buttons to remake it in different styles or shapes!
+* **`/describe` (AI Vision & Krea 2 Descriptor)**: Upload any image and Florence-2 will analyze it, write standard captions, detailed descriptions, and an optimized **Krea 2 natural language prompt**, plus 1-click buttons to remake it with Hyphoria NAI or immediately send to **`/bertflow` (Krea 2 Turbo)**!
 * **`/study` (Read Hidden Prompts)**: Upload any AI picture you found on the web. The bot inspects the hidden file data and extracts the exact prompt used to make it!
 * **`/blend` (Image Blend Studio)**: Upload an image to mix it with new styles, checkpoints, and text ideas.
+* **`/blend-krea` (Krea 2 Photorealism Blend)**: Upload an image to remix it with Florence-2 vision analysis and Bert's photorealistic Krea 2 Turbo flow-matching pipeline! Features an optional **Direct Composition** toggle (`Off`, `Medium 70%`, `Strong 50%`) to lock subject silhouettes and poses via VAE latent encoding.
 * **`/upscale` (1920px AI Upscaler)**: Upload any picture to make it sharp and high-resolution.
 
 ---

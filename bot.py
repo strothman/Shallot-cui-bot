@@ -52,6 +52,8 @@ from parsers import (
     parse_video_motion_flags,
     apply_face_detailer_to_workflow,
     resolve_bertflow_dimensions,
+    format_krea2_prompt,
+    fuse_krea2_blend_prompt,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,
 )
@@ -81,6 +83,9 @@ from views import (
     build_blend_complete_embed,
     build_blended_image_embed,
     EditBlendPromptModal,
+    build_blend_krea_embed,
+    EditBlendKreaModal,
+    BlendKreaButtons,
     StasisControlsView,
     StasisPausedView,
     CustomSrefModal,
@@ -1686,7 +1691,12 @@ async def handle_remix(interaction: discord.Interaction, generation_id: str):
         )
 
     modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
-    await interaction.response.send_modal(modal)
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_modal(modal)
+    except discord.HTTPException as e:
+        if e.code != 40060:
+            logger.warning(f"Failed to send Remix modal: {e}")
 async def handle_outpaint(interaction: discord.Interaction, generation_id: str, index: int, target_ratio: str):
     """Outpaint an image to expanding aspect ratio (16:9, 21:9) or Zoom Out (1.5x, 2.0x)."""
     await safe_defer(interaction, thinking=True)
@@ -2487,7 +2497,58 @@ async def on_interaction(interaction: discord.Interaction):
                     new_oga = False
                     new_model = "hyphoria"
                     new_model = "hyphoria"
-                await handle_update_describe_view(interaction, generation_id, new_ar=new_ar, new_sr=new_sr, new_oga=new_oga, new_model=new_model)
+        elif custom_id.startswith("set_blend_krea_ar:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 3:
+                gen_id = parts[1]
+                val = parts[2]
+                await handle_update_blend_krea_view(interaction, gen_id, new_ar=val)
+        elif custom_id.startswith("toggle_blend_krea_model:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                gen_data = get_generation(gen_id) or {}
+                cur_model = gen_data.get("model_choice", "muse")
+                next_model = "pornmaster" if "muse" in cur_model.lower() else "muse"
+                await handle_update_blend_krea_view(interaction, gen_id, new_model=next_model)
+        elif custom_id.startswith("toggle_blend_krea_wetness:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                gen_data = get_generation(gen_id) or {}
+                cur_wet = float(gen_data.get("wetness", -2.0))
+                next_wet = 0.0 if cur_wet == -2.0 else (1.0 if cur_wet == 0.0 else -2.0)
+                await handle_update_blend_krea_view(interaction, gen_id, new_wetness=next_wet)
+        elif custom_id.startswith("toggle_blend_krea_composition:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                gen_data = get_generation(gen_id) or {}
+                cur_comp = gen_data.get("composition", "off")
+                next_comp = "medium" if cur_comp == "off" else ("strong" if cur_comp == "medium" else ("subtle" if cur_comp == "strong" else "off"))
+                await handle_update_blend_krea_view(interaction, gen_id, new_comp=next_comp)
+        elif custom_id.startswith("edit_blend_krea_prompt:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                gen_data = get_generation(gen_id) or {}
+                cur_prompt = gen_data.get("user_prompt", "")
+                modal = EditBlendKreaModal(
+                    generation_id=gen_id,
+                    current_prompt=cur_prompt,
+                    on_submit_callback=handle_submit_edit_blend_krea_prompt
+                )
+                try:
+                    if not interaction.response.is_done():
+                        await interaction.response.send_modal(modal)
+                except discord.HTTPException as e:
+                    if e.code != 40060:
+                        logger.warning(f"Failed to send EditBlendKreaModal: {e}")
+        elif custom_id.startswith("gen_blend_krea:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                await handle_generate_blend_krea(interaction, gen_id)
         elif custom_id.startswith("edit_blend_prompt:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:
@@ -3738,9 +3799,12 @@ async def execute_bertflow(
     seed: int = None,
     steps: int = 8,
     model_name: str = None,
-    status_msg_ref: list = None
+    wetness_strength: float = -2.0,
+    status_msg_ref: list = None,
+    init_image_name: str = None,
+    comp_strength: str = "off"
 ):
-    """Executes Bert's photorealistic Krea 2 workflow."""
+    """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference."""
     global _active_architecture
     target_arch = "KREA2"
     if _active_architecture is not None and _active_architecture != target_arch:
@@ -3752,7 +3816,8 @@ async def execute_bertflow(
     actual_seed = seed if seed is not None else random.randint(1, 1125899906842624)
     active_unet = get_bertflow_unet_model(model_name)
 
-    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Seed: {actual_seed}")
+    comp_info = f" | Comp: {comp_strength} ({init_image_name})" if init_image_name and comp_strength != "off" else ""
+    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Wetness: {wetness_strength}{comp_info} | Seed: {actual_seed}")
 
     try:
         workflow = prepare_bertflow_workflow(
@@ -3761,7 +3826,10 @@ async def execute_bertflow(
             height=height,
             seed=actual_seed,
             steps=steps,
-            unet_model=active_unet
+            unet_model=active_unet,
+            wetness_strength=wetness_strength,
+            init_image=init_image_name,
+            comp_strength=comp_strength
         )
     except Exception as e:
         logger.error(f"Error preparing Bertflow workflow: {e}")
@@ -3773,6 +3841,7 @@ async def execute_bertflow(
     last_update_time = [0.0]
 
     init_bar = create_progress_bar(0, steps)
+    comp_line = f" | **Comp:** `{comp_strength.title()}`" if init_image_name and comp_strength != "off" else ""
     init_embed = discord.Embed(
         title="📸 Generating with Bertflow...",
         description=(
@@ -3780,7 +3849,7 @@ async def execute_bertflow(
             f"**Progress:** {init_bar}\n"
             f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
             f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
-            f"**Steps:** {steps} | **Seed:** `{actual_seed}`"
+            f"**Steps:** {steps}{comp_line} | **Seed:** `{actual_seed}`"
         ),
         color=discord.Color.from_rgb(235, 140, 52)
     )
@@ -3946,7 +4015,12 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
         )
 
     modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
-    await interaction.response.send_modal(modal)
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_modal(modal)
+    except discord.HTTPException as e:
+        if e.code != 40060:
+            logger.warning(f"Failed to send Bertflow Remix modal: {e}")
 
 
 @bot.tree.command(name="bertflow", description="📸 Generate ultra-photorealistic images using Bert's Krea 2 workflow!")
@@ -4983,6 +5057,14 @@ async def handle_generate_described(interaction: discord.Interaction, generation
         await interaction.followup.send("Could not find description session data. It may have expired.", ephemeral=True)
         return
 
+    if desc_type == "krea2":
+        krea2_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption") or gen_data.get("caption")
+        if not krea2_prompt:
+            await interaction.followup.send("No Krea 2 prompt found in session.", ephemeral=True)
+            return
+        await execute_bertflow(interaction, prompt=krea2_prompt, aspect_ratio=ar)
+        return
+
     base_prompt = gen_data.get("caption") if desc_type == "caption" else gen_data.get("detailed_caption")
     if not base_prompt:
         await interaction.followup.send(f"No {desc_type} prompt found in session.", ephemeral=True)
@@ -5161,6 +5243,90 @@ async def handle_reblend(interaction: discord.Interaction, generation_id: str):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
+async def handle_update_blend_krea_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_model: str = None, new_wetness: float = None, new_comp: str = None):
+    """Updates interactive buttons and embed for a /blend-krea session."""
+    gen_data = get_generation(generation_id)
+    if not gen_data:
+        await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
+        return
+
+    if new_ar:
+        gen_data["ar"] = new_ar
+    if new_model:
+        gen_data["model_choice"] = new_model
+    if new_wetness is not None:
+        gen_data["wetness"] = float(new_wetness)
+    if new_comp:
+        gen_data["composition"] = new_comp
+
+    gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
+    active_generations[generation_id] = gen_data
+    db.save_generation(generation_id, gen_data)
+
+    embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
+    view = BlendKreaButtons(
+        generation_id=generation_id,
+        ar=gen_data.get("ar", "16:9"),
+        model_choice=gen_data.get("model_choice", "muse"),
+        wetness=gen_data.get("wetness", -2.0),
+        composition=gen_data.get("composition", "off")
+    )
+    try:
+        await interaction.response.edit_message(embed=embed, view=view)
+    except (discord.NotFound, discord.HTTPException) as e:
+        logger.debug(f"Ignored update error: {e}")
+
+
+async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction, generation_id: str, new_user_prompt: str):
+    """Handles modal submission for updating the remix prompt in a /blend-krea session."""
+    gen_data = get_generation(generation_id)
+    if not gen_data:
+        await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
+        return
+
+    gen_data["user_prompt"] = new_user_prompt
+    gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), new_user_prompt)
+    active_generations[generation_id] = gen_data
+    db.save_generation(generation_id, gen_data)
+
+    embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
+    view = BlendKreaButtons(
+        generation_id=generation_id,
+        ar=gen_data.get("ar", "16:9"),
+        model_choice=gen_data.get("model_choice", "muse"),
+        wetness=gen_data.get("wetness", -2.0),
+        composition=gen_data.get("composition", "off")
+    )
+    await interaction.response.edit_message(embed=embed, view=view)
+
+
+async def handle_generate_blend_krea(interaction: discord.Interaction, generation_id: str):
+    """Executes Bertflow generation for a /blend-krea session."""
+    await safe_defer(interaction)
+    gen_data = get_generation(generation_id)
+    if not gen_data:
+        await interaction.followup.send("Could not find blend session data. It may have expired.", ephemeral=True)
+        return
+
+    fused_prompt = gen_data.get("fused_prompt") or gen_data.get("krea2_prompt")
+    ar = gen_data.get("ar", "16:9")
+    model_choice = gen_data.get("model_choice", "muse")
+    wetness = float(gen_data.get("wetness", -2.0))
+    comp = gen_data.get("composition", "off")
+    uploaded_image_name = gen_data.get("uploaded_image_name")
+
+    unet_name = "museByStableYogi_v35Int8Extended.safetensors" if "muse" in model_choice.lower() else "pornmasterKrea2_v1FP8.safetensors"
+    await execute_bertflow(
+        interaction,
+        prompt=fused_prompt,
+        aspect_ratio=ar,
+        model_name=unet_name,
+        wetness_strength=wetness,
+        init_image_name=uploaded_image_name if comp != "off" else None,
+        comp_strength=comp
+    )
+
+
 async def handle_generate_blended(interaction: discord.Interaction, generation_id: str, desc_type: str, ar: str = "16:9", use_sr = True, use_oga: bool = False, model_choice: str = "wai", comp_strength: str = "style", use_sref_rand = "nosref", char_choice: str = None):
     """Generates blended image grid(s) using stored caption/detailed description + uploaded base image with chosen settings."""
     await safe_defer(interaction)
@@ -5168,6 +5334,29 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
     gen_data = get_generation(generation_id)
     if not gen_data:
         await interaction.followup.send("Could not find blend session data. It may have expired.", ephemeral=True)
+        return
+
+    if desc_type == "krea2" or model_choice in ["muse", "pornmaster"]:
+        vision_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption") or gen_data.get("caption") or ""
+        extra_details = gen_data.get("extra_details", "").strip() or gen_data.get("user_prompt", "").strip()
+        fused = fuse_krea2_blend_prompt(vision_prompt, extra_details)
+        if not fused:
+            await interaction.followup.send("No prompt found in blend session.", ephemeral=True)
+            return
+        unet_name = "pornmasterKrea2_v1FP8.safetensors" if "pornmaster" in model_choice.lower() else "museByStableYogi_v35Int8Extended.safetensors"
+        uploaded_image_name = gen_data.get("uploaded_image_name")
+        krea_comp = "off"
+        if comp_strength != "style":
+            krea_comp = "strong" if comp_strength == "strong" else "medium"
+
+        await execute_bertflow(
+            interaction,
+            prompt=fused,
+            aspect_ratio=ar,
+            model_name=unet_name,
+            init_image_name=uploaded_image_name if krea_comp != "off" else None,
+            comp_strength=krea_comp
+        )
         return
 
     base_prompt = gen_data.get("caption") if desc_type == "caption" else gen_data.get("detailed_caption")
@@ -5915,8 +6104,10 @@ async def describe(interaction: discord.Interaction, image: discord.Attachment):
         # Extract text outputs from results
         # Node "9" has standard caption (title: caption)
         # Node "10" has detailed caption (title: detailed_caption)
+        # Node "11" has Krea 2 prompt (title: krea2_prompt)
         caption = "No caption generated"
         detailed_caption = "No detailed caption generated"
+        krea2_prompt = "No Krea 2 prompt generated"
         
         if isinstance(results, dict):
             # Extract from Node "9"
@@ -5929,24 +6120,36 @@ async def describe(interaction: discord.Interaction, image: discord.Attachment):
                 text_list = results["10"]["text"]
                 if text_list:
                     detailed_caption = text_list[0]
+            # Extract from Node "11"
+            if "11" in results and "text" in results["11"] and results["11"]["text"]:
+                krea2_prompt = results["11"]["text"][0]
+            elif detailed_caption and detailed_caption != "No detailed caption generated":
+                krea2_prompt = detailed_caption
+            elif caption and caption != "No caption generated":
+                krea2_prompt = caption
         else:
             await edit_original_fallback(interaction, content="❌ ComfyUI did not return the expected text description outputs.")
             return
             
         raw_caption = caption
         raw_detailed_caption = detailed_caption
+        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
 
         # Truncate descriptions to fit within Discord's 1024-character limit for embed fields
         if len(caption) > 1024:
             caption = caption[:1021] + "..."
         if len(detailed_caption) > 1024:
             detailed_caption = detailed_caption[:1021] + "..."
+        display_krea2_prompt = raw_krea2_prompt
+        if len(display_krea2_prompt) > 1024:
+            display_krea2_prompt = display_krea2_prompt[:1021] + "..."
 
         # Store in active generations cache for interactive button clicks
         generation_id = str(random.randint(100000, 999999))
         active_generations[generation_id] = {
             "caption": raw_caption,
-            "detailed_caption": raw_detailed_caption
+            "detailed_caption": raw_detailed_caption,
+            "krea2_prompt": raw_krea2_prompt
         }
         save_generations()
 
@@ -5958,6 +6161,7 @@ async def describe(interaction: discord.Interaction, image: discord.Attachment):
         embed.set_thumbnail(url=image.url)
         embed.add_field(name="📝 Caption", value=caption, inline=False)
         embed.add_field(name="🔍 Detailed Description", value=detailed_caption, inline=False)
+        embed.add_field(name="📸 Krea 2 Prompt", value=display_krea2_prompt, inline=False)
         embed.set_footer(text=f"Analyzed using Florence-2 model • Requested by {interaction.user.name}")
         
         view = DescribeButtons(generation_id, ar="16:9")
@@ -6134,6 +6338,7 @@ async def execute_blend_core(
         # Extract text outputs from results
         caption = "No caption generated"
         detailed_caption = "No detailed caption generated"
+        krea2_prompt = "No Krea 2 prompt generated"
         
         if isinstance(results, dict):
             if "9" in results and "text" in results["9"]:
@@ -6144,12 +6349,17 @@ async def execute_blend_core(
                 text_list = results["10"]["text"]
                 if text_list:
                     detailed_caption = text_list[0]
+            if "11" in results and "text" in results["11"] and results["11"]["text"]:
+                krea2_prompt = results["11"]["text"][0]
+            else:
+                krea2_prompt = detailed_caption
         else:
             await edit_original_fallback(interaction, content="❌ ComfyUI did not return the expected text description outputs.")
             return
             
         raw_caption = caption
         raw_detailed_caption = detailed_caption
+        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
 
         # Free Florence-2 vision model weights from GPU memory to give SDXL maximum VRAM
         try:
@@ -6178,6 +6388,7 @@ async def execute_blend_core(
         gen_data = {
             "caption": raw_caption,
             "detailed_caption": raw_detailed_caption,
+            "krea2_prompt": raw_krea2_prompt,
             "extra_details": prompt or "",
             "uploaded_image_name": uploaded_name,
             "image_url": image_url,
@@ -6344,6 +6555,160 @@ async def blend(
         )
     except Exception as e:
         logger.error(f"Error reading image for blend: {e}")
+        await edit_original_fallback(interaction, content=f"❌ Failed to read uploaded image: {e}")
+
+
+async def execute_blend_krea_core(
+    interaction: discord.Interaction,
+    image_bytes: bytes,
+    filename: str,
+    image_url: str,
+    prompt: str = None,
+    aspect_ratio: str = "16:9",
+    model: str = "muse",
+    wetness: float = -2.0,
+    composition: str = "off"
+):
+    """Core logic to analyze an image with Florence-2 and initialize the Krea 2 Blend Studio dashboard."""
+    try:
+        safe_filename = filename or f"blend_krea_{random.randint(100000, 999999)}.png"
+        logger.info(f"Uploading image {safe_filename} to ComfyUI for Krea 2 blend...")
+        upload_result = await comfy_client.upload_image(image_bytes, safe_filename)
+        uploaded_name = upload_result.get("name")
+        if not uploaded_name:
+            await edit_original_fallback(interaction, content="❌ Failed to upload the image to ComfyUI server.")
+            return
+
+        workflow_path = "workflows/DESCRIBE_cuibot.json"
+        with open(workflow_path, "r", encoding="utf-8") as f:
+            workflow = json.load(f)
+
+        workflow["1"]["inputs"]["image"] = uploaded_name
+
+        logger.info(f"Executing Florence-2 description workflow for Krea 2 blend on {uploaded_name}...")
+        results = await comfy_client.generate(workflow, timeout=14400)
+
+        detailed_caption = "No detailed caption generated"
+        krea2_prompt = "No Krea 2 prompt generated"
+        if isinstance(results, dict):
+            if "10" in results and "text" in results["10"] and results["10"]["text"]:
+                detailed_caption = results["10"]["text"][0]
+            if "11" in results and "text" in results["11"] and results["11"]["text"]:
+                krea2_prompt = results["11"]["text"][0]
+            elif detailed_caption:
+                krea2_prompt = detailed_caption
+
+        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
+
+        try:
+            await comfy_client.free_memory(unload_models=True)
+            logger.info("Florence-2 vision model VRAM successfully freed.")
+        except Exception as e:
+            logger.debug(f"Could not free VRAM after Florence-2: {e}")
+
+        resolved_ar = aspect_ratio or "16:9"
+        if not aspect_ratio:
+            try:
+                with Image.open(io.BytesIO(image_bytes)) as pil_img:
+                    resolved_ar = detect_closest_aspect_ratio(pil_img.width, pil_img.height)
+            except Exception as e:
+                logger.debug(f"Could not auto-detect AR: {e}")
+
+        fused_prompt = fuse_krea2_blend_prompt(raw_krea2_prompt, prompt)
+
+        generation_id = str(random.randint(100000, 999999))
+        gen_data = {
+            "caption": detailed_caption,
+            "detailed_caption": detailed_caption,
+            "krea2_prompt": raw_krea2_prompt,
+            "user_prompt": prompt or "",
+            "fused_prompt": fused_prompt,
+            "uploaded_image_name": uploaded_name,
+            "image_url": image_url,
+            "ar": resolved_ar,
+            "model_choice": model or "muse",
+            "wetness": float(wetness if wetness is not None else -2.0),
+            "composition": composition or "off",
+            "author_str": interaction.user.name
+        }
+        active_generations[generation_id] = gen_data
+        db.save_generation(generation_id, gen_data)
+        save_generations()
+
+        embed = build_blend_krea_embed(gen_data, author_str=interaction.user.name, image_url=image_url)
+        view = BlendKreaButtons(
+            generation_id=generation_id,
+            ar=resolved_ar,
+            model_choice=gen_data["model_choice"],
+            wetness=gen_data["wetness"],
+            composition=gen_data["composition"]
+        )
+        await edit_original_fallback(interaction, content=None, embed=embed, view=view)
+
+    except Exception as e:
+        logger.error(f"Error executing blend-krea workflow: {e}")
+        await edit_original_fallback(interaction, content=f"❌ An error occurred during Krea 2 blend: {e}")
+
+
+@bot.tree.command(name="blend-krea", description="📸 Blend and remix an image using Florence-2 and Bert's Krea 2 photorealism workflow!")
+@app_commands.describe(
+    image="The image file you want to analyze and blend",
+    prompt="Optional remix instructions or extra details to blend into the image",
+    aspect_ratio="The aspect ratio for the Krea 2 render",
+    model="Select Krea 2 UNET Checkpoint (Defaults to auto-detecting Muse v3.5)",
+    wetness="Anti-sheen skin matte strength (-2.0 default, 0.0 normal, 1.0 glossy)",
+    composition="Optional direct physical composition/pose locking (Off default, Medium 70%, Strong 50%)"
+)
+@app_commands.choices(
+    aspect_ratio=[
+        app_commands.Choice(name="16:9 Landscape (1632x920)", value="16:9"),
+        app_commands.Choice(name="1:1 Square (1224x1224)", value="1:1"),
+        app_commands.Choice(name="21:9 Ultra-Wide (1872x800)", value="21:9"),
+        app_commands.Choice(name="9:16 Tall Portrait (920x1632)", value="9:16"),
+        app_commands.Choice(name="3:4 Standard Portrait (1056x1408)", value="3:4"),
+        app_commands.Choice(name="4:3 Standard Landscape (1408x1056)", value="4:3"),
+    ],
+    model=BERTFLOW_MODEL_CHOICES,
+    composition=[
+        app_commands.Choice(name="Off (Semantic Vision Only - Default)", value="off"),
+        app_commands.Choice(name="Medium (70% Denoise - Locks Pose & Silhouette)", value="medium"),
+        app_commands.Choice(name="Strong (50% Denoise - Maximum Structural Reference)", value="strong"),
+        app_commands.Choice(name="Subtle (85% Denoise - Loose Composition Guide)", value="subtle"),
+    ]
+)
+async def blend_krea(
+    interaction: discord.Interaction, 
+    image: discord.Attachment, 
+    prompt: str = None,
+    aspect_ratio: str = "16:9",
+    model: app_commands.Choice[str] = None,
+    wetness: float = -2.0,
+    composition: app_commands.Choice[str] = None
+):
+    await safe_defer(interaction, thinking=False, ephemeral=False)
+    await edit_original_fallback(interaction, content="Analyzing image with Florence-2 for Krea 2 photorealism blend...")
+
+    if not image.content_type or not image.content_type.startswith("image/"):
+        await edit_original_fallback(interaction, content="❌ Please upload a valid image file (PNG/JPG).")
+        return
+
+    try:
+        image_bytes = await image.read()
+        selected_model = model.value if model else "muse"
+        comp_val = composition.value if composition else "off"
+        await execute_blend_krea_core(
+            interaction=interaction,
+            image_bytes=image_bytes,
+            filename=image.filename,
+            image_url=image.url,
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            model=selected_model,
+            wetness=wetness,
+            composition=comp_val
+        )
+    except Exception as e:
+        logger.error(f"Error reading image for blend-krea: {e}")
         await edit_original_fallback(interaction, content=f"❌ Failed to read uploaded image: {e}")
 
 

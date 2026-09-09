@@ -2,8 +2,8 @@
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
 > **Current Version:** `v2.4.0`  
-> **Last Updated:** September 4, 2026  
-> **Status:** 🟢 Stable & Healthy (56/56 Automated Tests Passing)  
+> **Last Updated:** September 9, 2026  
+> **Status:** 🟢 Stable & Healthy (66/66 Automated Tests Passing)  
 
 ---
 
@@ -61,7 +61,9 @@ Here is a simple breakdown of the main files in the project and what each one is
 * **`/ltx`**: Creates a fast 35-second animation using **LTX-Video**.
 
 ### 🔍 Vision & Image Tools
-* **`/describe`**: Upload any picture and AI will analyze it and write a prompt for you.
+* **`/describe`**: Upload any picture and Florence-2 AI will generate captions, detailed descriptions, and a tailored Krea 2 prompt with a 1-click **Generate Krea 2** button.
+* **`/blend`**: Image Blend Studio to mix pictures with new styles, models, and text prompts.
+* **`/blend-krea`**: Dedicated Krea 2 Photorealism Blend Studio with Florence-2 vision fusion, optional Direct Composition locking (VAE latent), and 1-click Bertflow generation.
 * **`/study`**: Upload an AI image found online to extract the secret prompt used to make it.
 * **`/upscale`**: Makes any picture bigger and sharper with extra detail.
 
@@ -95,7 +97,7 @@ Under every 4-image grid, you get 1-click buttons:
 ## 🧪 5. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **54 / 54 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **66 / 66 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

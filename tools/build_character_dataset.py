@@ -23,12 +23,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("DatasetBuilder")
 
 # Diverse prompt templates to ensure the character LoRA learns identity, not a specific scene
-FRAMING_STYLES = [
-    "close-up portrait shot of {trigger}, sharp facial features, detailed eyes and expression",
-    "medium shot of {trigger}, upper body framing, natural relaxed posture",
-    "full-body portrait of {trigger}, head to toe shot, standing gracefully",
-    "three-quarter angle portrait of {trigger}, dramatic side profile, expressive look",
-    "cinematic candid photograph of {trigger}, natural eye contact with camera",
+# Structured framing categories to guarantee strong character body and physique representation
+FRAMINGS_FULL_BODY = [
+    "full-body fashion modeling photoshoot of {trigger}, head to toe shot, standing gracefully, slender toned physique, posing confidently",
+    "full-body portrait of {trigger}, head to toe shot, elegant modeling posture, visible silhouette and proportions",
+    "full-body runway fashion shoot of {trigger}, walking gracefully, full view of outfit and physique",
+    "full-body seated modeling shot of {trigger}, posing on a minimalist chair, head to toe composition, long slender legs",
+]
+
+FRAMINGS_MEDIUM_BODY = [
+    "medium shot of {trigger}, waist-up framing, natural relaxed posture, showing torso and arms",
+    "three-quarter angle fashion editorial of {trigger}, slender waist and hips, expressive modeling look",
+    "cowboy shot of {trigger}, mid-thigh to head framing, stylish modeling pose",
+    "medium close-up candid photograph of {trigger}, upper body framing, natural posture and eye contact",
+]
+
+FRAMINGS_PORTRAIT = [
+    "close-up portrait shot of {trigger}, sharp facial features, detailed eyes and natural expression",
+    "dramatic beauty portrait of {trigger}, shoulders and face framing, expressive look",
+    "cinematic candid close-up photograph of {trigger}, soft focus on hair, natural eye contact with camera",
 ]
 
 LIGHTING_CONDITIONS = [
@@ -36,40 +49,72 @@ LIGHTING_CONDITIONS = [
     "golden hour outdoor lighting, warm sunbeams, beautiful backlit rim glow",
     "professional photo studio lighting, high-key clean softbox illumination",
     "moody cinematic chiaroscuro lighting, deep shadows, focused single keylight",
-    "overcast diffused daylight, clean neutral color balance, soft skin tones",
+    "bright tropical sunlit poolside light, warm ambient glow, clean highlights",
+    "overcast diffused daylight, clean neutral color balance, soft natural skin tones",
 ]
 
 BACKGROUND_ENVIRONMENTS = [
     "simple minimalist neutral studio backdrop, completely uncluttered",
-    "bright cozy contemporary living room, softly blurred interior in background",
-    "lush outdoor garden, dappled foliage, gentle bokeh in background",
-    "urban street sidewalk, soft architectural elements, bokeh city background",
-    "quiet cafe interior, warm ambient background, clean composition",
+    "sunlit luxury beach resort, ocean waves softly blurred in background",
+    "bright cozy contemporary modern penthouse interior, floor-to-ceiling windows",
+    "lush outdoor Mediterranean garden, dappled sunlit foliage, gentle bokeh",
+    "modern minimalist fashion studio with white floor and subtle shadows",
+    "urban street sidewalk with soft architectural elements and bokeh city background",
 ]
 
-OUTFIT_VARIETIES = [
-    "wearing a casual beige knitted crewneck sweater",
-    "wearing a classic white cotton button-up shirt",
-    "wearing a dark fitted casual jacket over a black t-shirt",
-    "wearing a simple elegant summer dress",
-    "wearing a cozy oversized dark hoodie",
+OUTFITS_MODELING_BODY = [
+    "wearing a stylish fitted crop top and denim shorts, visible toned midriff",
+    "wearing an elegant form-fitting bodycon dress, sleek silhouette",
+    "wearing a fashionable two-piece swimsuit bikini, beach fashion shoot, natural skin texture",
+    "wearing a sleek two-piece athletic sports bra and yoga leggings, toned physique",
+    "wearing a classic white ribbed tank top and form-fitting casual jeans",
+    "wearing a chic summer sundress with thin spaghetti straps, feminine silhouette",
+    "wearing a high-fashion lingerie silk camisole and shorts",
+    "wearing an off-shoulder fitted knitted sweater and mini skirt",
+]
+
+OUTFITS_CASUAL = [
+    "wearing a classic white cotton button-up shirt slightly unbuttoned",
+    "wearing a stylish tailored dark blazer over a fitted white top",
+    "wearing a casual beige knitted crewneck sweater and jeans",
+    "wearing a comfortable casual t-shirt and shorts",
 ]
 
 
 def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
-    """Generates a diverse set of prompts for training dataset creation."""
+    """Generates a diverse set of prompts with a guaranteed ratio of full-body, medium-body, and portrait shots."""
     prompts = []
-    used_combos = set()
+    
+    # Target distribution: ~35% Full-body, ~35% Medium-body, ~30% Portrait
+    num_full = max(1, int(count * 0.35))
+    num_med = max(1, int(count * 0.35))
+    num_port = max(1, count - num_full - num_med)
 
-    for i in range(count):
-        framing = random.choice(FRAMING_STYLES)
+    # 1. Full-body modeling shots
+    for _ in range(num_full):
+        framing = random.choice(FRAMINGS_FULL_BODY)
+        outfit = random.choice(OUTFITS_MODELING_BODY)
         lighting = random.choice(LIGHTING_CONDITIONS)
         env = random.choice(BACKGROUND_ENVIRONMENTS)
-        outfit = random.choice(OUTFIT_VARIETIES)
+        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
-        p = f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph"
-        prompts.append(p)
+    # 2. Medium body modeling shots
+    for _ in range(num_med):
+        framing = random.choice(FRAMINGS_MEDIUM_BODY)
+        outfit = random.choice(OUTFITS_MODELING_BODY + OUTFITS_CASUAL)
+        lighting = random.choice(LIGHTING_CONDITIONS)
+        env = random.choice(BACKGROUND_ENVIRONMENTS)
+        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
+    # 3. Portrait & facial feature shots
+    for _ in range(num_port):
+        framing = random.choice(FRAMINGS_PORTRAIT)
+        outfit = random.choice(OUTFITS_CASUAL + OUTFITS_MODELING_BODY)
+        lighting = random.choice(LIGHTING_CONDITIONS)
+        env = random.choice(BACKGROUND_ENVIRONMENTS)
+        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
+
+    random.shuffle(prompts)
     return prompts
 
 
@@ -118,12 +163,30 @@ async def run_dataset_builder(
             with open(desc_wf_path, "r", encoding="utf-8") as f:
                 florence_wf = json.load(f)
 
-        prompts = generate_prompt_matrix(trigger, count)
-        logger.info(f"Generated {len(prompts)} distinct generation prompts.")
+        # Check existing files so we can resume gracefully
+        existing_indices = set()
+        if os.path.exists(output_dir):
+            for f in os.listdir(output_dir):
+                if f.startswith(f"{character_id}_") and f.endswith(".png"):
+                    try:
+                        num_part = f[len(character_id)+1:-4]
+                        existing_indices.add(int(num_part))
+                    except ValueError:
+                        pass
 
-        for idx, prompt_text in enumerate(prompts, start=1):
+        start_num = max(existing_indices) + 1 if existing_indices else 1
+        needed = max(0, count - len(existing_indices))
+        if needed <= 0:
+            logger.info(f"Target count of {count} already met in {output_dir} ({len(existing_indices)} images found). Generating {count} additional samples starting at index {start_num:03d}...")
+            needed = count
+
+        prompts = generate_prompt_matrix(trigger, needed)[:needed]
+        logger.info(f"Generating {len(prompts)} samples to reach target dataset count (starting at index {start_num:03d}).")
+
+        for i, prompt_text in enumerate(prompts):
+            curr_idx = start_num + i
             sample_seed = random.randint(1, 1125899906842624)
-            logger.info(f"[{idx}/{count}] Generating image (Seed: {sample_seed})...")
+            logger.info(f"[{i+1}/{len(prompts)}] (Sample {curr_idx:03d}) Generating image (Seed: {sample_seed})...")
 
             # Configure Flux workflow
             wf = json.loads(json.dumps(base_flux_wf))
@@ -146,7 +209,7 @@ async def run_dataset_builder(
             try:
                 outputs = await comfy.generate(wf, timeout=600)
             except Exception as e:
-                logger.error(f"Error generating sample {idx}: {e}")
+                logger.error(f"Error generating sample {curr_idx}: {e}")
                 continue
 
             image_bytes = None
@@ -166,10 +229,10 @@ async def run_dataset_builder(
                         break
 
             if not image_bytes:
-                logger.error(f"Failed to retrieve image bytes for sample {idx}")
+                logger.error(f"Failed to retrieve image bytes for sample {curr_idx}")
                 continue
 
-            file_base = f"{character_id}_{idx:03d}"
+            file_base = f"{character_id}_{curr_idx:03d}"
             img_path = os.path.join(output_dir, f"{file_base}.png")
             txt_path = os.path.join(output_dir, f"{file_base}.txt")
 
@@ -188,14 +251,28 @@ async def run_dataset_builder(
                         if "1" in cap_wf:
                             cap_wf["1"]["inputs"]["image"] = uploaded_name
                         cap_outputs = await comfy.generate(cap_wf, timeout=300)
-                        for n_id, n_out in cap_outputs.items():
-                            if "text" in n_out and n_out["text"]:
-                                raw_cap = n_out["text"][0] if isinstance(n_out["text"], list) else str(n_out["text"])
-                                raw_cap = raw_cap.replace("The image shows", "").replace("This is", "").strip()
-                                caption_text = f"{trigger}, {raw_cap}"
-                                break
+                        raw_cap = None
+                        if isinstance(cap_outputs, dict):
+                            if "11" in cap_outputs and "text" in cap_outputs["11"] and cap_outputs["11"]["text"]:
+                                raw_cap = cap_outputs["11"]["text"][0]
+                            elif "10" in cap_outputs and "text" in cap_outputs["10"] and cap_outputs["10"]["text"]:
+                                raw_cap = cap_outputs["10"]["text"][0]
+                            elif "9" in cap_outputs and "text" in cap_outputs["9"] and cap_outputs["9"]["text"]:
+                                raw_cap = cap_outputs["9"]["text"][0]
+                            else:
+                                for n_id, n_out in cap_outputs.items():
+                                    if "text" in n_out and n_out["text"]:
+                                        raw_cap = n_out["text"][0] if isinstance(n_out["text"], list) else str(n_out["text"])
+                                        break
+                        if raw_cap:
+                            raw_cap = str(raw_cap).replace("The image shows", "").replace("This is", "").strip()
+                            caption_text = f"{trigger}, {raw_cap}"
+                        try:
+                            await comfy.free_memory(unload_models=True)
+                        except Exception:
+                            pass
                 except Exception as cap_err:
-                    logger.warning(f"Florence-2 captioning failed for {idx}: {cap_err}")
+                    logger.warning(f"Florence-2 captioning failed for sample {curr_idx}: {cap_err}")
 
             # Fallback to prompt text if captioning was not available
             if not caption_text:

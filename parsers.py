@@ -1651,6 +1651,38 @@ def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tu
 
     return clean_p, 1224, 1224
 
+RE_FLORENCE_BOILERPLATE = re.compile(
+    r"^(the image shows|the image depicts|the photo shows|the photo depicts|this is an image of|this image features|in this image,|in this photo,|a photo of|an image of|a picture of)\s*",
+    re.IGNORECASE
+)
+
+def format_krea2_prompt(raw_text: str) -> str:
+    """
+    Formats a raw vision description (e.g. from Florence-2) into an optimized
+    natural prose prompt for Krea 2 Turbo flow-matching and Qwen3-VL text encoder.
+    Strips robotic prefixes and cleans composition phrasing.
+    """
+    if not raw_text:
+        return ""
+
+    text = raw_text.strip()
+
+    # Repeatedly strip typical vision AI prefixes
+    while True:
+        cleaned = RE_FLORENCE_BOILERPLATE.sub("", text).strip()
+        if cleaned == text:
+            break
+        text = cleaned
+
+    # Clean up any leftover leading punctuation
+    text = text.lstrip(":,.- ")
+    if text:
+        text = text[0].upper() + text[1:]
+
+    # Normalize double spaces
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 def get_bertflow_unet_model(preferred_model: str = None) -> str:
     """
     Finds the available Krea 2 UNET model in ComfyUI models/unet or models/diffusion_models directory.
@@ -1696,16 +1728,44 @@ def get_bertflow_unet_model(preferred_model: str = None) -> str:
 
     return "museByStableYogi_v35Int8Extended.safetensors"
 
+def fuse_krea2_blend_prompt(vision_prompt: str, remix_prompt: str = None) -> str:
+    """
+    Fuses Florence-2 vision analysis with user remix instructions into an
+    optimized natural prose prompt for Krea 2 Turbo flow-matching.
+    """
+    cleaned_vision = format_krea2_prompt(vision_prompt or "")
+    if not remix_prompt:
+        return cleaned_vision
+
+    remix = remix_prompt.strip().strip(",").strip()
+    if not remix:
+        return cleaned_vision
+
+    if not cleaned_vision:
+        return remix
+
+    # If remix prompt doesn't end with punctuation, append comma
+    if not remix.endswith(('.', '!', '?')):
+        remix += ","
+    fused = f"{remix} {cleaned_vision}"
+    fused = fused.lstrip(":,.- ")
+    return re.sub(r"\s+", " ", fused).strip()
+
 def prepare_bertflow_workflow(
     prompt: str,
     width: int = 1224,
     height: int = 1224,
     seed: int = None,
     steps: int = 8,
-    unet_model: str = None
+    unet_model: str = None,
+    wetness_strength: float = -2.0,
+    init_image: str = None,
+    comp_strength: str = "off",
+    filename_prefix: str = None
 ) -> dict:
     """
-    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, and model.
+    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, and wetness strength.
+    Optionally injects direct compositional reference (img2img VAE latent) when init_image and comp_strength are specified.
     """
     import json
     import random
@@ -1729,5 +1789,58 @@ def prepare_bertflow_workflow(
         wf["599"]["inputs"]["noise_seed"] = ["649", 0]
     if "761" in wf:
         wf["761"]["inputs"]["unet_name"] = model_name
+    if "822" in wf and "inputs" in wf["822"] and "lora_1" in wf["822"]["inputs"]:
+        wf["822"]["inputs"]["lora_1"]["strength"] = float(wetness_strength)
+        wf["822"]["inputs"]["lora_1"]["on"] = (wetness_strength != 0.0)
+    if "830" in wf and "inputs" in wf["830"]:
+        try:
+            from image_utils import get_dated_save_prefix
+            wf["830"]["inputs"]["filename_prefix"] = filename_prefix or f"{get_dated_save_prefix('bertflow')}bertflow_seed{final_seed}"
+        except Exception:
+            wf["830"]["inputs"]["filename_prefix"] = filename_prefix or f"Discord Bot/bertflow/bertflow_seed{final_seed}"
+
+    # Optional direct compositional reference (img2img / VAE latent injection)
+    if init_image and comp_strength and str(comp_strength).lower() not in ["off", "none", "style", "false"]:
+        wf["900"] = {
+            "inputs": {
+                "image": init_image,
+                "upload": "image"
+            },
+            "class_type": "LoadImage",
+            "_meta": {"title": "Load Init Image for Composition"}
+        }
+        wf["901"] = {
+            "inputs": {
+                "image": ["900", 0],
+                "upscale_method": "bilinear",
+                "width": width,
+                "height": height,
+                "crop": "center"
+            },
+            "class_type": "ImageScale",
+            "_meta": {"title": "Scale Init Image"}
+        }
+        wf["902"] = {
+            "inputs": {
+                "pixels": ["901", 0],
+                "vae": ["757", 0]
+            },
+            "class_type": "VAEEncode",
+            "_meta": {"title": "VAE Encode Init Latent"}
+        }
+
+        c_str = str(comp_strength).lower()
+        if "strong" in c_str or "50" in c_str:
+            start_step = max(1, min(steps - 1, round(steps * 0.50)))
+        elif "subtle" in c_str or "85" in c_str:
+            start_step = max(1, min(steps - 1, round(steps * 0.15)))
+        else:  # default medium (~70% denoise)
+            start_step = max(1, min(steps - 1, round(steps * 0.30)))
+
+        if "599" in wf:
+            wf["599"]["inputs"]["latent_image"] = ["902", 0]
+            wf["599"]["inputs"]["start_at_step"] = start_step
+            wf["599"]["inputs"]["add_noise"] = "enable"
+            wf["599"]["inputs"]["return_with_leftover_noise"] = "disable"
 
     return wf

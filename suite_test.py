@@ -2260,6 +2260,237 @@ class TestCUIBotFunctions(unittest.TestCase):
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("bertflow", commands)
 
+    def test_module60_describe_krea2_workflow_and_buttons(self):
+        """Test Krea 2 prompt formatting, workflow nodes, and DescribeButtons integration."""
+        from parsers import format_krea2_prompt
+        from views import DescribeButtons
+        import json
+
+        # 1. Test format_krea2_prompt
+        sample1 = "The image shows a cinematic portrait of an astronaut on Mars."
+        self.assertEqual(format_krea2_prompt(sample1), "A cinematic portrait of an astronaut on Mars.")
+
+        sample2 = "In this photo, a woman in a red silk dress stands on a balcony overlooking the city."
+        self.assertEqual(format_krea2_prompt(sample2), "A woman in a red silk dress stands on a balcony overlooking the city.")
+
+        sample3 = "This is an image of a vintage analog synthesizer with glowing patch cables."
+        self.assertEqual(format_krea2_prompt(sample3), "A vintage analog synthesizer with glowing patch cables.")
+
+        sample4 = "the photo depicts a dense bamboo forest with morning sunbeams."
+        self.assertEqual(format_krea2_prompt(sample4), "A dense bamboo forest with morning sunbeams.")
+
+        self.assertEqual(format_krea2_prompt(""), "")
+        self.assertEqual(format_krea2_prompt(None), "")
+
+        # 2. Test workflows/DESCRIBE_cuibot.json
+        with open("workflows/DESCRIBE_cuibot.json", "r", encoding="utf-8") as f:
+            wf = json.load(f)
+
+        self.assertIn("5", wf, "Node 5 (Florence2Run for Krea 2) should exist in workflow")
+        self.assertEqual(wf["5"]["inputs"]["task"], "more_detailed_caption")
+        self.assertEqual(wf["5"]["class_type"], "Florence2Run")
+
+        self.assertIn("11", wf, "Node 11 (ShowText for krea2_prompt) should exist in workflow")
+        self.assertEqual(wf["11"]["_meta"]["title"], "krea2_prompt")
+
+        self.assertIn("21", wf, "Node 21 (CR Text Replace for Krea 2) should exist in workflow")
+
+        # 3. Test DescribeButtons view
+        view = DescribeButtons(generation_id="desc_test_888", ar="16:9")
+        btn_ids = [item.custom_id for item in view.children if hasattr(item, "custom_id")]
+        
+        # Verify krea2 button exists with correct custom_id structure
+        krea2_btns = [b for b in btn_ids if ":krea2:" in b]
+        self.assertEqual(len(krea2_btns), 1, "There should be exactly one Krea 2 button")
+        self.assertTrue(krea2_btns[0].startswith("gen_desc:desc_test_888:krea2:16:9:"))
+
+    def test_module61_blend_krea_integration(self):
+        """Test Krea 2 blend prompt fusion, workflow wetness tuning, view layouts, and command registration."""
+        from parsers import fuse_krea2_blend_prompt, prepare_bertflow_workflow
+        from views import BlendKreaButtons, build_blend_krea_embed, BlendButtons
+        from bot import bot
+
+        # 1. Test fuse_krea2_blend_prompt
+        vision = "A cinematic portrait of an astronaut on Mars"
+        remix = "wearing neon armor, golden hour lighting"
+        fused = fuse_krea2_blend_prompt(vision, remix)
+        self.assertEqual(fused, "wearing neon armor, golden hour lighting, A cinematic portrait of an astronaut on Mars")
+
+        # Test empty remix returns vision
+        self.assertEqual(fuse_krea2_blend_prompt(vision, ""), "A cinematic portrait of an astronaut on Mars")
+        self.assertEqual(fuse_krea2_blend_prompt(vision, None), "A cinematic portrait of an astronaut on Mars")
+        self.assertEqual(fuse_krea2_blend_prompt(vision, " , "), "A cinematic portrait of an astronaut on Mars")
+        self.assertEqual(fuse_krea2_blend_prompt(vision, ","), "A cinematic portrait of an astronaut on Mars")
+
+        # Test empty vision returns remix
+        self.assertEqual(fuse_krea2_blend_prompt("", remix), remix)
+
+        # 2. Test prepare_bertflow_workflow with custom wetness
+        wf = prepare_bertflow_workflow(
+            prompt="cyberpunk alley",
+            width=1632,
+            height=920,
+            seed=12345,
+            steps=8,
+            unet_model="pornmasterKrea2_v1FP8.safetensors",
+            wetness_strength=1.0
+        )
+        self.assertEqual(wf["822"]["inputs"]["lora_1"]["strength"], 1.0)
+        self.assertTrue(wf["822"]["inputs"]["lora_1"]["on"])
+
+        wf_zero = prepare_bertflow_workflow(
+            prompt="cyberpunk alley",
+            width=1632,
+            height=920,
+            wetness_strength=0.0
+        )
+        self.assertFalse(wf_zero["822"]["inputs"]["lora_1"]["on"])
+
+        # 3. Test BlendKreaButtons
+        view = BlendKreaButtons(generation_id="krea_blend_777", ar="16:9", model_choice="muse", wetness=-2.0)
+        btn_ids = [item.custom_id for item in view.children if hasattr(item, "custom_id")]
+        self.assertIn("set_blend_krea_ar:krea_blend_777:16:9", btn_ids)
+        self.assertIn("set_blend_krea_ar:krea_blend_777:21:9", btn_ids)
+        self.assertIn("toggle_blend_krea_model:krea_blend_777", btn_ids)
+        self.assertIn("toggle_blend_krea_wetness:krea_blend_777", btn_ids)
+        self.assertIn("edit_blend_krea_prompt:krea_blend_777", btn_ids)
+        self.assertIn("gen_blend_krea:krea_blend_777", btn_ids)
+
+        # 4. Test build_blend_krea_embed
+        gen_data = {
+            "krea2_prompt": "A close up photo of a cat",
+            "user_prompt": "wearing a tiny bowtie",
+            "fused_prompt": "wearing a tiny bowtie, A close up photo of a cat",
+            "ar": "1:1",
+            "model_choice": "muse",
+            "wetness": -2.0
+        }
+        embed = build_blend_krea_embed(gen_data, author_str="TestUser")
+        self.assertIn("Krea 2 Blend Studio", embed.title)
+        field_names = [f.name for f in embed.fields]
+        self.assertIn("👁️ Florence-2 Vision Analysis", field_names)
+        self.assertIn("📜 Fused Generation Prompt", field_names)
+
+        # 5. Test BlendButtons includes Krea 2 button and Krea 2 models in select dropdown
+        blend_view = BlendButtons(generation_id="blend_gen_123")
+        blend_btn_ids = [item.custom_id for item in blend_view.children if hasattr(item, "custom_id")]
+        self.assertIn("blend_desc:blend_gen_123:krea2", blend_btn_ids)
+
+        model_select = next(item for item in blend_view.children if getattr(item, "custom_id", "").startswith("set_blend_model:"))
+        model_values = [opt.value for opt in model_select.options]
+        self.assertIn("muse", model_values)
+        self.assertIn("pornmaster", model_values)
+
+        # 6. Test slash command registration
+        commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
+        self.assertIn("blend-krea", commands)
+
+    def test_bertflow_and_standard_remix_modals(self):
+        """Verify handle_bertflow_remix and handle_remix construct the RemixModal properly."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from bot import handle_bertflow_remix, handle_remix, db
+
+        # Seed mock generation into database
+        db.save_generation(
+            "test_remix_gen_123",
+            {
+                "prompt": "A beautiful sunrise in the mountains",
+                "seed": 42,
+                "aspect_ratio": "16:9",
+                "unet_model": "museByStableYogi_v35Int8Extended.safetensors",
+                "is_bertflow": True,
+            }
+        )
+
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = False
+        mock_interaction.response.send_modal = AsyncMock()
+
+        # Execute bertflow remix
+        asyncio.run(handle_bertflow_remix(mock_interaction, "test_remix_gen_123"))
+        mock_interaction.response.send_modal.assert_called_once()
+        modal_passed = mock_interaction.response.send_modal.call_args[0][0]
+        self.assertEqual(modal_passed.title, "✏️ Remix / Tweak Prompt")
+
+        # Execute standard remix
+        mock_interaction.reset_mock()
+        mock_interaction.response.is_done.return_value = False
+        db.save_generation(
+            "test_standard_remix_123",
+            {
+                "prompt": "A futuristic cyberpunk city",
+                "seed": 100,
+                "is_bertflow": False,
+            }
+        )
+        asyncio.run(handle_remix(mock_interaction, "test_standard_remix_123"))
+        mock_interaction.response.send_modal.assert_called_once()
+
+    def test_bertflow_composition_modes(self):
+        """Verify prepare_bertflow_workflow and BlendKreaButtons direct composition options."""
+        from parsers import prepare_bertflow_workflow
+        from views import BlendKreaButtons, build_blend_krea_embed
+
+        # 1. Test 'off' mode (pure txt2img default)
+        wf_off = prepare_bertflow_workflow(
+            prompt="A photorealistic mountain lake",
+            width=1632,
+            height=920,
+            init_image="test_input.png",
+            comp_strength="off"
+        )
+        self.assertNotIn("900", wf_off)
+        self.assertNotIn("901", wf_off)
+        self.assertNotIn("902", wf_off)
+        self.assertEqual(wf_off["599"]["inputs"]["latent_image"], ["698", 0])
+        self.assertEqual(wf_off["599"]["inputs"]["start_at_step"], 0)
+
+        # 2. Test 'medium' composition mode (70% denoise)
+        wf_med = prepare_bertflow_workflow(
+            prompt="A photorealistic mountain lake",
+            width=1632,
+            height=920,
+            init_image="test_input.png",
+            comp_strength="medium"
+        )
+        self.assertIn("900", wf_med)
+        self.assertEqual(wf_med["900"]["inputs"]["image"], "test_input.png")
+        self.assertIn("901", wf_med)
+        self.assertEqual(wf_med["901"]["inputs"]["width"], 1632)
+        self.assertEqual(wf_med["901"]["inputs"]["height"], 920)
+        self.assertEqual(wf_med["901"]["inputs"]["crop"], "center")
+        self.assertIn("902", wf_med)
+        self.assertEqual(wf_med["902"]["inputs"]["vae"], ["757", 0])
+        self.assertEqual(wf_med["599"]["inputs"]["latent_image"], ["902", 0])
+        self.assertEqual(wf_med["599"]["inputs"]["start_at_step"], 2)
+        self.assertEqual(wf_med["599"]["inputs"]["add_noise"], "enable")
+        self.assertEqual(wf_med["599"]["inputs"]["return_with_leftover_noise"], "disable")
+
+        # 3. Test 'strong' composition mode (50% denoise)
+        wf_strong = prepare_bertflow_workflow(
+            prompt="A photorealistic mountain lake",
+            width=1224,
+            height=1224,
+            init_image="test_input.png",
+            comp_strength="strong"
+        )
+        self.assertEqual(wf_strong["599"]["inputs"]["start_at_step"], 4)
+
+        # 4. Test BlendKreaButtons with composition toggle
+        view_off = BlendKreaButtons(generation_id="gen_krea_test", composition="off")
+        comp_btn_off = next(item for item in view_off.children if getattr(item, "custom_id", "") == "toggle_blend_krea_composition:gen_krea_test")
+        self.assertIn("Comp: Off", comp_btn_off.label)
+
+        view_med = BlendKreaButtons(generation_id="gen_krea_test", composition="medium")
+        comp_btn_med = next(item for item in view_med.children if getattr(item, "custom_id", "") == "toggle_blend_krea_composition:gen_krea_test")
+        self.assertIn("Comp: Med (70%)", comp_btn_med.label)
+
+        # 5. Test embed display with composition
+        embed = build_blend_krea_embed({"krea2_prompt": "Test", "composition": "medium"})
+        pipeline_field = next(f.value for f in embed.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("Direct Composition:** `Medium Silhouette / Pose (70% Denoise)`", pipeline_field)
+
 
 if __name__ == "__main__":
     unittest.main()

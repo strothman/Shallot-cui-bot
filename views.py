@@ -422,7 +422,7 @@ class DescribeButtons(discord.ui.View):
             row=2
         ))
 
-        # Row 3: Generation Targets (Caption vs Detailed)
+        # Row 3: Generation Targets (Caption, Detailed, Krea 2)
         self.add_item(discord.ui.Button(
             label="🎨 Generate Caption",
             style=discord.ButtonStyle.primary,
@@ -433,6 +433,12 @@ class DescribeButtons(discord.ui.View):
             label="🎨 Generate Detailed",
             style=discord.ButtonStyle.success,
             custom_id=f"gen_desc:{self.generation_id}:detailed:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
+            row=3
+        ))
+        self.add_item(discord.ui.Button(
+            label="⚡ Generate Krea 2",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"gen_desc:{self.generation_id}:krea2:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
             row=3
         ))
 
@@ -458,6 +464,8 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
         "ultra": "Ultra Realistic XL v2.5",
         "hyphoria": "Hyphoria NAI",
         "nova": "Nova Furry",
+        "muse": "Muse v3.5 Extended (Krea 2)",
+        "pornmaster": "Pornmaster v2 (Krea 2 FP8)",
         "default": "Wai Illustrious SDXL v1.70"
     }
     model_display = model_names.get(model_choice, model_choice)
@@ -977,6 +985,8 @@ class BlendButtons(discord.ui.View):
             "ultra": "Ultra",
             "hyphoria": "Hyphoria",
             "nova": "Nova",
+            "muse": "Muse v3.5",
+            "pornmaster": "Pornmaster v2",
         }.get(self.model_choice, self.model_choice)
         canvas_tab_peek = f"📐 Canvas & Model [{self.ar} • {model_short}] ⬅️"
 
@@ -1010,6 +1020,8 @@ class BlendButtons(discord.ui.View):
                 discord.SelectOption(label="Ultra Realistic XL v2.5 (Fine Details)", value="ultra", emoji="✨", default=(self.model_choice == "ultra")),
                 discord.SelectOption(label="Hyphoria NAI (Illustrious NAI)", value="hyphoria", emoji="🤖", default=(self.model_choice == "hyphoria")),
                 discord.SelectOption(label="Nova Furry (Stylized)", value="nova", emoji="🦊", default=(self.model_choice == "nova")),
+                discord.SelectOption(label="Muse v3.5 Extended (Krea 2 Turbo Photorealism)", value="muse", emoji="⚡", description="Stable Yogi flow-matching checkpoint", default=(self.model_choice == "muse")),
+                discord.SelectOption(label="Pornmaster v2 (Krea 2 FP8 Photorealism)", value="pornmaster", emoji="⚡", description="Krea 2 Turbo FP8 checkpoint", default=(self.model_choice == "pornmaster")),
             ]
             model_select = discord.ui.Select(
                 placeholder="🤖 Select Model Checkpoint...",
@@ -1156,6 +1168,12 @@ class BlendButtons(discord.ui.View):
             custom_id=f"blend_desc:{self.generation_id}:detailed",
             row=4
         ))
+        self.add_item(discord.ui.Button(
+            label="⚡ Blend in Krea 2",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"blend_desc:{self.generation_id}:krea2",
+            row=4
+        ))
 
 
 class EditBlendPromptModal(discord.ui.Modal, title="✏️ Edit & Refine Blend Prompts"):
@@ -1208,6 +1226,174 @@ class EditBlendPromptModal(discord.ui.Modal, title="✏️ Edit & Refine Blend P
             logger.error(f"Error in EditBlendPromptModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to update blend prompt: {e}")
 
+def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: str = None) -> discord.Embed:
+    """Builds a streamlined, photorealism-focused embed for /blend-krea sessions."""
+    vision_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption", "No description")
+    user_prompt = gen_data.get("user_prompt", "").strip()
+    fused_prompt = gen_data.get("fused_prompt") or vision_prompt
+    ar = gen_data.get("ar", "16:9")
+    model_choice = gen_data.get("model_choice", "muse")
+    wetness = float(gen_data.get("wetness", -2.0))
+    comp = gen_data.get("composition", "off")
+
+    model_display = "Muse v3.5 Extended (Stable Yogi)" if "muse" in model_choice.lower() else "Pornmaster v2 (Krea 2 FP8)"
+    if wetness == -2.0:
+        skin_display = "Matte Pores (-2.0 Anti-Sheen)"
+    elif wetness == 0.0:
+        skin_display = "Natural Baseline (0.0)"
+    elif wetness == 1.0:
+        skin_display = "Glossy / Dewy (+1.0)"
+    else:
+        skin_display = f"{wetness:+.1f}"
+
+    if comp == "medium":
+        comp_display = "Medium Silhouette / Pose (70% Denoise)"
+    elif comp == "strong":
+        comp_display = "Strong Direct Composition (50% Denoise)"
+    elif comp == "subtle":
+        comp_display = "Subtle Composition (85% Denoise)"
+    else:
+        comp_display = "Off (Semantic Vision Only)"
+
+    embed = discord.Embed(
+        title="📸 Krea 2 Blend Studio",
+        description="Blend and remix your uploaded image using Florence-2 AI vision and Bert's Krea 2 Turbo photorealism pipeline.",
+        color=discord.Color.from_rgb(220, 90, 40)
+    )
+    if image_url:
+        embed.set_thumbnail(url=image_url)
+
+    disp_vision = vision_prompt[:1020] + "..." if len(vision_prompt) > 1024 else vision_prompt
+    disp_fused = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
+
+    embed.add_field(name="👁️ Florence-2 Vision Analysis", value=disp_vision, inline=False)
+    if user_prompt:
+        disp_user = user_prompt[:1020] + "..." if len(user_prompt) > 1024 else user_prompt
+        embed.add_field(name="✏️ Your Remix Additions", value=disp_user, inline=False)
+    else:
+        embed.add_field(name="✏️ Your Remix Additions", value="*(None — click **Edit Remix Prompt** below to add changes)*", inline=False)
+
+    embed.add_field(name="📜 Fused Generation Prompt", value=disp_fused, inline=False)
+    embed.add_field(
+        name="⚙️ Pipeline Settings",
+        value=(
+            f"📐 **Aspect Ratio:** `{ar}`\n"
+            f"🤖 **Engine:** `{model_display}`\n"
+            f"💧 **Skin Finish:** `{skin_display}`\n"
+            f"🖼️ **Direct Composition:** `{comp_display}`"
+        ),
+        inline=False
+    )
+    embed.set_footer(text=f"Requested by {author_str} • Krea 2 Turbo Flow-Matching")
+    return embed
+
+
+class EditBlendKreaModal(discord.ui.Modal):
+    def __init__(self, generation_id: str, current_prompt: str = "", on_submit_callback=None):
+        super().__init__(title="✏️ Remix / Add Details to Blend")
+        self.generation_id = generation_id
+        self.on_submit_callback = on_submit_callback
+
+        self.remix_input = discord.ui.TextInput(
+            label="Remix / Extra Details to Blend In",
+            style=discord.TextStyle.paragraph,
+            default=current_prompt[:500] if current_prompt else "",
+            max_length=1000,
+            required=False,
+            placeholder="e.g. golden hour sunlight, laughing candidly, wearing leather jacket, 35mm photograph"
+        )
+        self.add_item(self.remix_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            if self.on_submit_callback:
+                await self.on_submit_callback(interaction, self.generation_id, self.remix_input.value.strip())
+        except Exception as e:
+            logger.error(f"Error in EditBlendKreaModal submit: {e}")
+            await send_error_fallback(interaction, f"Failed to update Krea 2 remix prompt: {e}")
+
+
+class BlendKreaButtons(discord.ui.View):
+    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off"):
+        super().__init__(timeout=None)
+        self.generation_id = generation_id
+        self.ar = ar
+        self.model_choice = model_choice
+        self.wetness = wetness
+        self.composition = composition
+
+        # Row 0: Aspect Ratios (21:9, 16:9, 1:1, 3:4, 9:16)
+        ar_options = [("21:9", "21:9"), ("16:9", "16:9"), ("1:1", "1:1"), ("3:4", "3:4"), ("9:16", "9:16")]
+        for label, val in ar_options:
+            is_selected = (self.ar == val)
+            style = discord.ButtonStyle.primary if is_selected else discord.ButtonStyle.secondary
+            self.add_item(discord.ui.Button(
+                label=f"📐 {label}",
+                style=style,
+                custom_id=f"set_blend_krea_ar:{self.generation_id}:{val}",
+                row=0
+            ))
+
+        # Row 1: UNET Model, Skin Finish, and Direct Composition Toggles
+        is_muse = ("muse" in self.model_choice.lower())
+        model_label = "🤖 Engine: Muse v3.5" if is_muse else "🤖 Engine: Pornmaster v2"
+        self.add_item(discord.ui.Button(
+            label=model_label,
+            style=discord.ButtonStyle.primary,
+            custom_id=f"toggle_blend_krea_model:{self.generation_id}",
+            row=1
+        ))
+
+        if self.wetness == -2.0:
+            wet_label = "💧 Skin: Matte (-2.0)"
+            wet_style = discord.ButtonStyle.primary
+        elif self.wetness == 0.0:
+            wet_label = "💧 Skin: Natural (0.0)"
+            wet_style = discord.ButtonStyle.secondary
+        else:
+            wet_label = "💧 Skin: Glossy (+1.0)"
+            wet_style = discord.ButtonStyle.secondary
+
+        self.add_item(discord.ui.Button(
+            label=wet_label,
+            style=wet_style,
+            custom_id=f"toggle_blend_krea_wetness:{self.generation_id}",
+            row=1
+        ))
+
+        if self.composition == "medium":
+            comp_label = "🖼️ Comp: Med (70%)"
+            comp_style = discord.ButtonStyle.primary
+        elif self.composition == "strong":
+            comp_label = "🖼️ Comp: Strong (50%)"
+            comp_style = discord.ButtonStyle.primary
+        elif self.composition == "subtle":
+            comp_label = "🖼️ Comp: Subtle (85%)"
+            comp_style = discord.ButtonStyle.primary
+        else:
+            comp_label = "🖼️ Comp: Off"
+            comp_style = discord.ButtonStyle.secondary
+
+        self.add_item(discord.ui.Button(
+            label=comp_label,
+            style=comp_style,
+            custom_id=f"toggle_blend_krea_composition:{self.generation_id}",
+            row=1
+        ))
+
+        # Row 2: Action Launchers
+        self.add_item(discord.ui.Button(
+            label="✏️ Edit Remix Prompt",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"edit_blend_krea_prompt:{self.generation_id}",
+            row=2
+        ))
+        self.add_item(discord.ui.Button(
+            label="⚡ Generate in Krea 2",
+            style=discord.ButtonStyle.danger,
+            custom_id=f"gen_blend_krea:{self.generation_id}",
+            row=2
+        ))
 
 
 class StasisControlsView(discord.ui.View):
