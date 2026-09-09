@@ -4,6 +4,32 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-09]
+
+### Added
+* 🎛️ **Interactive Video Action Controls (`VideoActionView`)**: Added interactive Discord button controls below completed `/video` generations:
+  * **`[ 🔄 Re-roll ]`**: Re-animates the exact same uploaded image with a fresh random seed.
+  * **`[ ✏️ Remix Motion ]`**: Reopens `VideoPromptModal` with previous prompt, duration (5s/10s), and smoothness mode pre-filled for rapid prompt iteration.
+  * **`[ ⚡ Fast / Smooth Toggle ]`**: Instantly switch between Ultra-Fast (16 FPS native) and Smooth (32 FPS RIFE) without re-uploading the image.
+* 🎥 **Camera Motion Directives & Prompt Flags**: Added `parse_video_motion_flags` in `parsers.py` supporting:
+  * Zoom: `--zoom`, `--zoom-in`, `--zoom-out`
+  * Pan: `--pan-left`, `--pan-right`, `--pan-up`, `--tilt-up`, `--pan-down`, `--tilt-down`
+  * Orbit: `--orbit`, `--rotate`
+  * Dynamics: `--cinematic`, `--subtle`, `--dynamic`, `--fast-motion`
+* 📊 **3-Column Video Studio Dashboard Embed**: Upgraded video completions with a structured inline 3-column dashboard (`🎬 Motion & Camera`, `⏱️ Video Specs`, `⚡ Engine & Render`) featuring camera directive badges, framing mapping, render timing breakdown, and `#5865F2` theme color.
+* ⚡ **Zero-Scroll In-Place Message Delivery**: Progress status messages now transform in-place directly into the completed video post, eliminating channel jumps and duplicate notifications.
+* 🧹 **Post-Generation VRAM Flush**: Automatically purges GPU VRAM cache immediately after video rendering to return 8GB GPUs to a clean idle state.
+
+### Changed
+* 🚀 **Decoupled MMAudio from `/video` for 8GB VRAM Stability**: Completely removed the heavy MMAudio Foley synthesis stack (~5.1 GB model footprint) from the `/video` workflow. Pervasive VRAM thrashing and PCIe shared memory paging on 8GB GPUs (e.g., RTX 5060 Ti) are fully eliminated.
+* 🎬 **Streamlined `/video` Slash Command**: Simplified `/video` parameters by removing unused `audio` and `audio_prompt` inputs and embed fields, returning Wan 2.2 Image-to-Video to a fast, rock-solid, and lightweight animation pipeline.
+* 🧹 **Settings & Workflow Pruning**: Cleaned `settings.json` (`enable_video_audio: false`, removed unused `mmaudio_*` model keys) and pruned nodes `150`, `151`, and `152` from `workflows/wan22_i2v.json`.
+
+### Maintenance
+* 🧪 **Automated Test Suite Expansion**: Added unit tests `test_module42_video_motion_flags` and `test_module43_video_dashboard_and_action_view` in `suite_test.py` covering motion flags, dashboard layouts, `VideoActionView`, and `VideoPromptModal` flexible defaults. All 61 unit tests pass cleanly.
+
+---
+
 ## [2026-09-08]
 
 ### Added

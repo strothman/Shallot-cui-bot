@@ -49,6 +49,7 @@ from parsers import (
     LOCKED_STYLE_PRESETS,
     build_scapes_prompt,
     calculate_wan_dimensions,
+    parse_video_motion_flags,
     apply_face_detailer_to_workflow,
 )
 from image_utils import (
@@ -65,6 +66,7 @@ from image_utils import (
     boost_image_vibrancy_and_contrast,
     get_checkpoint_abbrev,
     detect_closest_aspect_ratio,
+    QUADRANT_CACHE_DIR,
 )
 from views import (
     GridButtons,
@@ -89,6 +91,8 @@ from views import (
     AdoptButtons,
     EditAdoptPromptModal,
     VideoPromptModal,
+    build_video_complete_embed,
+    VideoActionView,
     CancelGenerationView,
     RemixModal,
 )
@@ -3843,9 +3847,10 @@ async def execute_video_core(
     prompt: str,
     duration: int = 5,
     smoothness: str = "smooth",
-    audio: bool = True,
+    seed: int = None,
+    audio: bool = False,
     audio_prompt: str = None,
-    seed: int = None
+    **kwargs
 ):
     """Core logic to generate a Wan 2.2 video from raw image bytes and user settings."""
     global _active_architecture
@@ -3855,13 +3860,46 @@ async def execute_video_core(
     _active_architecture = model_architecture.Architecture.WAN
 
     try:
+        # Parse motion flags and camera directives
+        clean_prompt, motion_badges, wan_prompt = parse_video_motion_flags(prompt)
+
         # Open image with Pillow to auto-detect original width & height (aspect ratio)
         with Image.open(io.BytesIO(image_bytes)) as img:
             orig_w, orig_h = img.size
 
+        # Resolve video generation parameters
+        video_seed = seed if seed is not None else random.randint(1, 1125899906842624)
+
+        # Generate unique generation ID and cache source image for Re-roll / Remix
+        gen_id = f"vid_{video_seed}_{int(time.time())}"
+        try:
+            os.makedirs(QUADRANT_CACHE_DIR, exist_ok=True)
+            src_cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{gen_id}_source.png")
+            with open(src_cache_path, "wb") as f_src:
+                f_src.write(image_bytes)
+        except Exception as cache_err:
+            logger.debug(f"Could not cache video source image: {cache_err}")
+
         # Calculate 8GB VRAM optimized dimensions carrying over original aspect ratio
         target_area = settings.get("wan_target_area", 399360)
         width, height = calculate_wan_dimensions(orig_w, orig_h, target_area=target_area)
+
+        # Save metadata to DB for interactive action buttons
+        db.save_generation(gen_id, {
+            "type": "video",
+            "prompt": clean_prompt,
+            "raw_prompt": prompt,
+            "duration": duration,
+            "smoothness": smoothness,
+            "seed": video_seed,
+            "user_id": interaction.user.id if (interaction and interaction.user) else 0,
+            "user_name": interaction.user.name if (interaction and interaction.user) else "User",
+            "filename": filename,
+            "orig_w": orig_w,
+            "orig_h": orig_h,
+            "width": width,
+            "height": height
+        })
 
         # Upload image to ComfyUI
         logger.info(f"Uploading image {filename} ({orig_w}x{orig_h}) to ComfyUI for video generation...")
@@ -3881,8 +3919,6 @@ async def execute_video_core(
             await send_followup_fallback(interaction, content="Failed to load Wan 2.2 workflow template.")
             return
 
-        # Resolve video generation parameters
-        video_seed = seed if seed is not None else random.randint(1, 1125899906842624)
         wan_high_gguf = settings.get("wan_high_gguf", r"gguf\dasiwaWAN22I2V14B_midnightflirtHigh-Q3_K_M.gguf")
         wan_low_gguf = settings.get("wan_low_gguf", r"gguf\dasiwaWAN22I2V14B_midnightflirtLow-Q3_K_M.gguf")
         wan_clip = settings.get("wan_clip", "nsfw_wan_umt5-xxl_fp8_scaled.safetensors")
@@ -3946,7 +3982,7 @@ async def execute_video_core(
         if "5" in workflow:
             workflow["5"]["inputs"]["vae_name"] = wan_vae
         if "6" in workflow:
-            workflow["6"]["inputs"]["text"] = prompt
+            workflow["6"]["inputs"]["text"] = wan_prompt
         if "7" in workflow:
             workflow["7"]["inputs"]["text"] = DEFAULT_NEGATIVE_PROMPT
         if "8" in workflow:
@@ -3984,44 +4020,12 @@ async def execute_video_core(
                 if "frame_rate" in workflow["9"]["inputs"]:
                     workflow["9"]["inputs"]["frame_rate"] = out_fps
 
-        # Configure MMAudio Video-to-Audio Foley Synthesis if enabled
-        enable_audio = settings.get("enable_video_audio", True) if audio is None else audio
-        if enable_audio and "150" in workflow and "151" in workflow and "152" in workflow:
-            mmaudio_model = settings.get("mmaudio_model", "mmaudio_large_44k_v2_fp16.safetensors")
-            mmaudio_vae = settings.get("mmaudio_vae", "mmaudio_vae_44k_fp16.safetensors")
-            mmaudio_synch = settings.get("mmaudio_synchformer", "mmaudio_synchformer_fp16.safetensors")
-            mmaudio_clip = settings.get("mmaudio_clip", "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors")
-            mmaudio_steps = settings.get("mmaudio_steps", 25)
-            mmaudio_cfg = settings.get("mmaudio_cfg", 4.5)
-
-            workflow["150"]["inputs"]["mmaudio_model"] = mmaudio_model
-            workflow["151"]["inputs"]["vae_model"] = mmaudio_vae
-            workflow["151"]["inputs"]["synchformer_model"] = mmaudio_synch
-            workflow["151"]["inputs"]["clip_model"] = mmaudio_clip
-
-            # Foley prompt: use custom audio_prompt if provided, else use motion prompt
-            foley_text = audio_prompt.strip() if audio_prompt and audio_prompt.strip() else prompt
-            workflow["152"]["inputs"]["prompt"] = foley_text
-            workflow["152"]["inputs"]["duration"] = float(duration_sec)
-            workflow["152"]["inputs"]["seed"] = video_seed
-            workflow["152"]["inputs"]["steps"] = mmaudio_steps
-            workflow["152"]["inputs"]["cfg"] = mmaudio_cfg
-            
-            # Connect image source for MMAudio based on smoothness mode
-            if not use_rife:
-                workflow["152"]["inputs"]["images"] = ["10", 0]
-            else:
-                workflow["152"]["inputs"]["images"] = ["75", 0]
-
-            if "9" in workflow:
-                workflow["9"]["inputs"]["audio"] = ["152", 0]
-        else:
-            # Clean up MMAudio nodes if audio disabled
-            for nid in ["150", "151", "152"]:
-                if nid in workflow:
-                    del workflow[nid]
-            if "9" in workflow and "audio" in workflow["9"]["inputs"]:
-                del workflow["9"]["inputs"]["audio"]
+        # Ensure any residual audio nodes are stripped to keep video workflow lightweight
+        for nid in ["150", "151", "152"]:
+            if nid in workflow:
+                del workflow[nid]
+        if "9" in workflow and "audio" in workflow["9"]["inputs"]:
+            del workflow["9"]["inputs"]["audio"]
 
         # Setup live progress callback for Discord server presence status & chat embed updates
         last_update_time = [0.0]
@@ -4032,10 +4036,12 @@ async def execute_video_core(
 
         # Send immediate initial progress embed so user sees instant feedback
         init_bar = create_progress_bar(0, expected_total)
+        badges_line = f"**Directives:** {' • '.join(motion_badges)}\n" if motion_badges else ""
         init_embed = discord.Embed(
             title="🎬 Generating Wan 2.2 Video...",
             description=(
-                f"**Motion Prompt:** {prompt}\n"
+                f"**Motion Prompt:** {clean_prompt}\n"
+                f"{badges_line}"
                 f"**Progress:** {init_bar}\n"
                 f"**Duration:** {duration_sec:.1f}s ({wan_frames} frames @ {wan_fps} FPS)\n"
                 f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
@@ -4050,33 +4056,6 @@ async def execute_video_core(
             pass
 
         async def on_video_progress(val, max_val):
-            # Handle audio synthesis stage (Flow Matching 25 steps)
-            if max_val == 25:
-                presence_str = f"🔊 Video Audio: Step {val}/25"
-                asyncio.create_task(update_bot_presence(presence_str))
-                now = asyncio.get_event_loop().time()
-                if now - last_update_time[0] >= 1.2 or val == max_val:
-                    last_update_time[0] = now
-                    audio_bar = create_progress_bar(val, max_val)
-                    prog_embed = discord.Embed(
-                        title="🎬 Generating Wan 2.2 Video (Audio Foley)...",
-                        description=(
-                            f"**Motion Prompt:** {prompt}\n"
-                            f"**Progress:** {audio_bar}\n"
-                            f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
-                            f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
-                            f"**Model:** `{os.path.basename(wan_high_gguf)}`"
-                        ),
-                        color=discord.Color.gold()
-                    )
-                    prog_embed.set_footer(text="🔊 Synthesizing synchronized Foley audio track...")
-                    try:
-                        if status_msg[0]:
-                            await status_msg[0].edit(embed=prog_embed)
-                    except Exception:
-                        pass
-                return
-
             # Detect transition from Stage 1 (High Noise KSampler) to Stage 2 (Low Noise KSampler)
             if val < last_val[0]:
                 total_steps_done[0] += last_val[0]
@@ -4098,7 +4077,8 @@ async def execute_video_core(
                 prog_embed = discord.Embed(
                     title="🎬 Generating Wan 2.2 Video...",
                     description=(
-                        f"**Motion Prompt:** {prompt}\n"
+                        f"**Motion Prompt:** {clean_prompt}\n"
+                        f"{badges_line}"
                         f"**Progress:** {bar}\n"
                         f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
                         f"**Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
@@ -4157,11 +4137,10 @@ async def execute_video_core(
             raise
         finally:
             await update_bot_presence(None)
-            if status_msg[0]:
-                try:
-                    await status_msg[0].delete()
-                except Exception:
-                    pass
+            try:
+                await comfy_client.free_memory()
+            except Exception:
+                pass
 
         if not outputs or not isinstance(outputs, list):
             await send_followup_fallback(interaction, content="ComfyUI did not return any video output.")
@@ -4172,39 +4151,150 @@ async def execute_video_core(
         
         file = discord.File(fp=video_file_io, filename=format_image_filename("wan22_video", video_seed, "mp4"))
 
-        audio_info = "🔊 `MMAudio (44.1kHz Synced Foley)`" if (enable_audio and "152" in workflow) else "🔇 `Disabled`"
-
-        embed = discord.Embed(
-            title="🎬 Wan 2.2 Fast GGUF Video Generation Complete",
-            description=(
-                f"**Motion Prompt:** {prompt}\n"
-                f"**Duration:** {duration_sec:.1f}s ({total_output_frames} frames @ {out_fps} FPS)\n"
-                f"**Audio Track:** {audio_info}\n"
-                f"**Render Time:** `{elapsed_time:.1f}s` (Init: `{init_sec:.1f}s` | Sample: `{sample_sec:.1f}s` | Post: `{post_sec:.1f}s`)\n"
-                f"**Original Size:** {orig_w}x{orig_h}\n"
-                f"**8GB VRAM Scaled Size:** {width}x{height} (Aspect Ratio Preserved)\n"
-                f"**High/Low GGUF Models:** Q3_K_M (Shift 8.0, 6 Steps, CFG 1.0)\n"
-                f"**Seed:** {video_seed}"
-            ),
-            color=discord.Color.blue()
+        view = VideoActionView(
+            generation_id=gen_id,
+            on_reroll_cb=handle_video_reroll,
+            on_remix_cb=handle_video_remix,
+            on_toggle_fps_cb=handle_video_toggle_fps,
+            smoothness=smoothness
         )
-        embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id}) • Rendered in {elapsed_time:.1f}s")
+
+        embed = build_video_complete_embed(
+            prompt=clean_prompt,
+            duration_sec=duration_sec,
+            total_output_frames=total_output_frames,
+            out_fps=out_fps,
+            orig_w=orig_w,
+            orig_h=orig_h,
+            width=width,
+            height=height,
+            video_seed=video_seed,
+            elapsed_time=elapsed_time,
+            init_sec=init_sec,
+            sample_sec=sample_sec,
+            post_sec=post_sec,
+            motion_badges=motion_badges,
+            smoothness=smoothness,
+            user_name=interaction.user.name if (interaction and interaction.user) else "User",
+            user_id=interaction.user.id if (interaction and interaction.user) else 0
+        )
 
         tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-        await send_followup_fallback(interaction, content=tag, embed=embed, file=file)
+        delivered = False
+        if status_msg[0]:
+            try:
+                await status_msg[0].edit(content=tag, embed=embed, attachments=[file], view=view)
+                delivered = True
+            except Exception as edit_err:
+                logger.debug(f"Could not edit video status message in-place: {edit_err}")
+                try:
+                    await status_msg[0].delete()
+                except Exception:
+                    pass
+        if not delivered:
+            await send_followup_fallback(interaction, content=tag, embed=embed, file=file, view=view)
     except Exception as e:
         logger.error(f"Error executing video core generation: {e}")
+        if status_msg[0]:
+            try:
+                await status_msg[0].delete()
+            except Exception:
+                pass
         await send_error_fallback(interaction, f"An error occurred during video generation: {e}")
 
 
-@bot.tree.command(name="video", description="Generate a 5s or 10s video with synced audio from an image using Wan 2.2.")
+async def handle_video_reroll(interaction: discord.Interaction, generation_id: str):
+    """Re-runs a video generation on the same source image with a new random seed."""
+    await safe_defer(interaction, thinking=True)
+    gen_data = db.get_generation(generation_id) or {}
+    src_cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}_source.png")
+    if not os.path.exists(src_cache_path):
+        await send_error_fallback(interaction, "Original source image has expired from cache. Please re-upload via `/video`.")
+        return
+
+    with open(src_cache_path, "rb") as f_src:
+        image_bytes = f_src.read()
+
+    new_seed = random.randint(1, 1125899906842624)
+    await execute_video_core(
+        interaction=interaction,
+        image_bytes=image_bytes,
+        filename=gen_data.get("filename", "reroll_video.png"),
+        prompt=gen_data.get("raw_prompt", gen_data.get("prompt", "")),
+        duration=gen_data.get("duration", 5),
+        smoothness=gen_data.get("smoothness", "smooth"),
+        seed=new_seed
+    )
+
+
+async def handle_video_remix(interaction: discord.Interaction, generation_id: str):
+    """Opens VideoPromptModal pre-filled with settings for remixing motion/duration."""
+    gen_data = db.get_generation(generation_id) or {}
+    src_cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}_source.png")
+    if not os.path.exists(src_cache_path):
+        await send_error_fallback(interaction, "Original source image has expired from cache. Please re-upload via `/video`.")
+        return
+
+    async def on_remix_submit(modal_inter, new_prompt, dur_str, smooth_str, seed_str):
+        await safe_defer(modal_inter, thinking=True)
+        with open(src_cache_path, "rb") as f_src:
+            image_bytes = f_src.read()
+
+        dur_val = 10 if str(dur_str).strip() == "10" else 5
+        smooth_val = "fast" if str(smooth_str).strip().lower() in ("fast", "16", "native") else "smooth"
+        seed_val = int(seed_str) if (seed_str and str(seed_str).strip().isdigit()) else random.randint(1, 1125899906842624)
+
+        await execute_video_core(
+            interaction=modal_inter,
+            image_bytes=image_bytes,
+            filename=gen_data.get("filename", "remix_video.png"),
+            prompt=new_prompt,
+            duration=dur_val,
+            smoothness=smooth_val,
+            seed=seed_val
+        )
+
+    modal = VideoPromptModal(
+        default_prompt=gen_data.get("raw_prompt", gen_data.get("prompt", "")),
+        default_duration=str(gen_data.get("duration", "5")),
+        default_smoothness=gen_data.get("smoothness", "smooth"),
+        on_submit_callback=on_remix_submit
+    )
+    await interaction.response.send_modal(modal)
+
+
+async def handle_video_toggle_fps(interaction: discord.Interaction, generation_id: str):
+    """Toggles between Smooth (32 FPS via RIFE) and Ultra Fast (16 FPS native) on the same image."""
+    await safe_defer(interaction, thinking=True)
+    gen_data = db.get_generation(generation_id) or {}
+    src_cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}_source.png")
+    if not os.path.exists(src_cache_path):
+        await send_error_fallback(interaction, "Original source image has expired from cache. Please re-upload via `/video`.")
+        return
+
+    with open(src_cache_path, "rb") as f_src:
+        image_bytes = f_src.read()
+
+    current_smoothness = gen_data.get("smoothness", "smooth")
+    new_smoothness = "fast" if current_smoothness == "smooth" else "smooth"
+
+    await execute_video_core(
+        interaction=interaction,
+        image_bytes=image_bytes,
+        filename=gen_data.get("filename", "toggle_fps_video.png"),
+        prompt=gen_data.get("raw_prompt", gen_data.get("prompt", "")),
+        duration=gen_data.get("duration", 5),
+        smoothness=new_smoothness,
+        seed=gen_data.get("seed", random.randint(1, 1125899906842624))
+    )
+
+
+@bot.tree.command(name="video", description="Generate a 5s or 10s video from an image using Wan 2.2.")
 @app_commands.describe(
     image="The source image file you want to animate",
     prompt="Text prompt describing the desired video motion or action",
     duration="Video duration in seconds (5 or 10 seconds, default 5)",
     smoothness="Motion smoothing speed mode (Smooth 32 FPS vs Fast 16 FPS)",
-    audio="Generate synchronized audio/sound effects (default: True)",
-    audio_prompt="Optional custom sound effects / Foley prompt (defaults to motion prompt)",
     seed="Optional seed for generation reproducibility"
 )
 @app_commands.choices(
@@ -4223,8 +4313,6 @@ async def video_command(
     prompt: str,
     duration: int = 5,
     smoothness: str = "smooth",
-    audio: bool = True,
-    audio_prompt: str = None,
     seed: int = None
 ):
     # Defer response since video generation takes time
@@ -4244,8 +4332,6 @@ async def video_command(
             prompt=prompt,
             duration=duration,
             smoothness=smoothness,
-            audio=audio,
-            audio_prompt=audio_prompt,
             seed=seed
         )
     except Exception as e:

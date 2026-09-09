@@ -697,12 +697,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(wf["76"]["class_type"], "easy cleanGpuUsed")
         self.assertEqual(wf["75"]["class_type"], "RIFE VFI")
         self.assertEqual(wf["75"]["inputs"]["ckpt_name"], "rife49.pth")
-        self.assertEqual(wf["150"]["class_type"], "MMAudioModelLoader")
-        self.assertEqual(wf["151"]["class_type"], "MMAudioFeatureUtilsLoader")
-        self.assertEqual(wf["152"]["class_type"], "MMAudioSampler")
         self.assertEqual(wf["9"]["class_type"], "VHS_VideoCombine")
         self.assertEqual(wf["9"]["inputs"]["frame_rate"], 32)
-        self.assertEqual(wf["9"]["inputs"]["audio"], ["152", 0])
+        self.assertNotIn("audio", wf["9"]["inputs"])
+        self.assertNotIn("150", wf)
+        self.assertNotIn("151", wf)
+        self.assertNotIn("152", wf)
 
     def test_module16_progress_bar(self):
         """Test progress bar rendering formatting."""
@@ -2092,6 +2092,117 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(len(r0_no), 4)
         self.assertEqual(len(r1_no), 4) # fav_prompt, copy_prompt, remix, reblend
         self.assertEqual(len(r2_no), 0) # Only 2 rows!
+
+    def test_module42_video_motion_flags(self):
+        """Test parse_video_motion_flags parsing camera directives, badges, and prompt augmentation."""
+        from parsers import parse_video_motion_flags
+
+        # 1. Test zoom flags
+        clean, badges, aug = parse_video_motion_flags("a majestic dragon --zoom-in")
+        self.assertEqual(clean, "a majestic dragon")
+        self.assertIn("🎥 Zoom In", badges)
+        self.assertIn("slow cinematic camera zoom in", aug)
+
+        # 2. Test multi-flag combinations: pan, orbit, cinematic
+        clean2, badges2, aug2 = parse_video_motion_flags("cyberpunk sports car drifting in neon rain --pan-right --orbit --cinematic")
+        self.assertEqual(clean2, "cyberpunk sports car drifting in neon rain")
+        self.assertIn("🎥 Pan Right", badges2)
+        self.assertIn("🎥 Orbit", badges2)
+        self.assertIn("✨ Cinematic", badges2)
+        self.assertIn("smooth cinematic camera pan to the right", aug2)
+        self.assertIn("orbital camera movement", aug2)
+
+        # 3. Test subtle and tilt flags
+        clean3, badges3, aug3 = parse_video_motion_flags("close up portrait of a warrior --subtle --tilt-up")
+        self.assertEqual(clean3, "close up portrait of a warrior")
+        self.assertIn("🍃 Subtle", badges3)
+        self.assertIn("🎥 Tilt Up", badges3)
+
+        # 4. Test prompt with no motion flags
+        clean4, badges4, aug4 = parse_video_motion_flags("a cozy cabin in snowy woods")
+        self.assertEqual(clean4, "a cozy cabin in snowy woods")
+        self.assertEqual(badges4, [])
+        self.assertEqual(aug4, "a cozy cabin in snowy woods")
+
+        # 5. Test empty or None input
+        clean5, badges5, aug5 = parse_video_motion_flags(None)
+        self.assertEqual(clean5, "")
+        self.assertEqual(badges5, [])
+        self.assertEqual(aug5, "")
+
+    def test_module43_video_dashboard_and_action_view(self):
+        """Test build_video_complete_embed 3-column dashboard, VideoActionView, and VideoPromptModal defaults."""
+        from views import build_video_complete_embed, VideoActionView, VideoPromptModal
+
+        # 1. Test build_video_complete_embed fields and layout
+        embed = build_video_complete_embed(
+            prompt="futuristic hovercraft speeding over water",
+            duration_sec=5.0,
+            total_output_frames=162,
+            out_fps=32,
+            orig_w=1920,
+            orig_h=1080,
+            width=832,
+            height=480,
+            video_seed=99887766,
+            elapsed_time=45.2,
+            init_sec=2.1,
+            sample_sec=38.0,
+            post_sec=5.1,
+            motion_badges=["🎥 Zoom In", "✨ Cinematic"],
+            smoothness="smooth",
+            user_name="Alice",
+            user_id=123456789
+        )
+
+        self.assertIn("Wan 2.2 Studio Video Generation Complete", embed.title)
+        self.assertEqual(embed.color.value, 0x5865F2)
+        self.assertIn("Alice", embed.footer.text)
+        self.assertIn("45.2s", embed.footer.text)
+
+        fields = {f.name: f.value for f in embed.fields}
+        self.assertIn("🎬 Motion & Camera", fields)
+        self.assertIn("⏱️ Video Specs", fields)
+        self.assertIn("⚡ Engine & Render", fields)
+
+        self.assertIn("futuristic hovercraft", fields["🎬 Motion & Camera"])
+        self.assertIn("🎥 Zoom In • ✨ Cinematic", fields["🎬 Motion & Camera"])
+        self.assertIn("1920x1080` → `832x480", fields["🎬 Motion & Camera"])
+
+        self.assertIn("5.0s", fields["⏱️ Video Specs"])
+        self.assertIn("32 FPS", fields["⏱️ Video Specs"])
+        self.assertIn("162 frames", fields["⏱️ Video Specs"])
+
+        self.assertIn("Wan 2.2 14B GGUF", fields["⚡ Engine & Render"])
+        self.assertIn("99887766", fields["⚡ Engine & Render"])
+
+        # 2. Test VideoActionView buttons
+        view = VideoActionView("vid_test_123", smoothness="smooth")
+        self.assertEqual(len(view.children), 3)
+        btn_ids = [c.custom_id for c in view.children]
+        self.assertIn("video_reroll:vid_test_123", btn_ids)
+        self.assertIn("video_remix:vid_test_123", btn_ids)
+        self.assertIn("video_toggle_fps:vid_test_123", btn_ids)
+
+        labels = [c.label for c in view.children]
+        self.assertIn("🔄 Re-roll", labels)
+        self.assertIn("✏️ Remix Motion", labels)
+        self.assertIn("⚡ Switch to Fast (16 FPS)", labels)
+
+        # Fast mode toggle label
+        view_fast = VideoActionView("vid_test_456", smoothness="fast")
+        labels_fast = [c.label for c in view_fast.children]
+        self.assertIn("🎬 Switch to Smooth (32 FPS)", labels_fast)
+
+        # 3. Test VideoPromptModal with pre-filled defaults
+        modal = VideoPromptModal(
+            default_prompt="golden retriever running in park",
+            default_duration="10",
+            default_smoothness="fast"
+        )
+        self.assertEqual(modal.prompt_input.default, "golden retriever running in park")
+        self.assertEqual(modal.duration_input.default, "10")
+        self.assertEqual(modal.smoothness_input.default, "fast")
 
 
 if __name__ == "__main__":

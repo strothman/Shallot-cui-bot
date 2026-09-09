@@ -1545,4 +1545,62 @@ def build_scapes_prompt(
     }
 
 
+def parse_video_motion_flags(prompt: str) -> tuple:
+    """
+    Parses camera and motion directive shorthand flags from a /video prompt.
+    Supported flags:
+      --zoom / --zoom-in: slow cinematic zoom in
+      --zoom-out: slow cinematic zoom out
+      --pan-left: smooth camera pan to the left
+      --pan-right: smooth camera pan to the right
+      --pan-up / --tilt-up: smooth camera tilt upwards
+      --pan-down / --tilt-down: smooth camera tilt downwards
+      --orbit / --rotate: slow orbital camera movement around subject
+      --cinematic: cinematic steadycam motion, dramatic lighting
+      --subtle: subtle gentle movement, calm steady shot
+      --dynamic / --fast-motion: energetic dynamic motion, dramatic camera angle
+    
+    Returns:
+      tuple: (cleaned_prompt: str, badges: list[str], augmented_prompt: str)
+    """
+    if not prompt or not isinstance(prompt, str):
+        return "", [], ""
+
+    text = prompt
+    badges = []
+    cues = []
+
+    FLAG_RULES = [
+        (r'[-—–]{1,2}zoom(?:-in)?\b', "🎥 Zoom In", "slow cinematic camera zoom in, forward push in"),
+        (r'[-—–]{1,2}zoom-out\b', "🎥 Zoom Out", "slow cinematic camera zoom out, backward pull out"),
+        (r'[-—–]{1,2}pan-left\b', "🎥 Pan Left", "smooth cinematic camera pan to the left"),
+        (r'[-—–]{1,2}pan-right\b', "🎥 Pan Right", "smooth cinematic camera pan to the right"),
+        (r'[-—–]{1,2}(?:pan-up|tilt-up)\b', "🎥 Tilt Up", "smooth camera tilt upwards, upward crane motion"),
+        (r'[-—–]{1,2}(?:pan-down|tilt-down)\b', "🎥 Tilt Down", "smooth camera tilt downwards"),
+        (r'[-—–]{1,2}(?:orbit|rotate)\b', "🎥 Orbit", "slow orbital camera movement, 360 rotation around subject"),
+        (r'[-—–]{1,2}cinematic\b', "✨ Cinematic", "cinematic steadycam motion, high production value, dramatic lighting"),
+        (r'[-—–]{1,2}subtle\b', "🍃 Subtle", "subtle gentle movement, delicate breathing, calm steady shot"),
+        (r'[-—–]{1,2}(?:dynamic|fast-motion)\b', "⚡ Dynamic", "energetic dynamic motion, fast action, dramatic camera movement"),
+    ]
+
+    for pattern, badge_label, cue_text in FLAG_RULES:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+            badges.append(badge_label)
+            cues.append(cue_text)
+
+    # Clean up double spaces, stray commas, and extra whitespace
+    cleaned = re.sub(r'\s*,\s*,+', ',', text)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip().strip(',').strip()
+
+    if cues:
+        cue_suffix = ", ".join(cues)
+        augmented = f"{cleaned}, {cue_suffix}" if cleaned else cue_suffix
+    else:
+        augmented = cleaned
+
+    return cleaned, badges, augmented
+
+
+
 

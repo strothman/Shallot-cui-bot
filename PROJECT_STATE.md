@@ -57,7 +57,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 * 🛡️ **Privacy Shield:** Characters based on real persons automatically disguise private trigger names so real identities are never exposed in Discord.
 
 ### 🎬 Video & Animation
-* **`/video`**: Turns any still picture into an animated video with matching sound effects (using **Wan 2.2** + **MMAudio**).
+* **`/video`**: Turns any still picture into an animated video using **Wan 2.2** (14B GGUF + RIFE frame interpolation). Fast, lightweight, and rock-solid on 8GB VRAM GPUs.
 * **`/ltx`**: Creates a fast 35-second animation using **LTX-Video**.
 
 ### 🔍 Vision & Image Tools

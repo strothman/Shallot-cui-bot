@@ -1947,14 +1947,14 @@ class AdoptButtons(discord.ui.View):
 
 class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
     """Modal allowing the user to configure motion prompt and Wan 2.2 settings before queuing video generation."""
-    def __init__(self, default_prompt: str = "", on_submit_callback=None):
+    def __init__(self, default_prompt: str = "", default_duration: str = "5", default_smoothness: str = "smooth", on_submit_callback=None):
         super().__init__()
         self.on_submit_callback = on_submit_callback
 
         self.prompt_input = discord.ui.TextInput(
             label="Motion Prompt",
             style=discord.TextStyle.paragraph,
-            placeholder="Describe the desired video motion (e.g. hair flowing in wind, subtle smile, slow zoom)",
+            placeholder="Describe desired motion or use flags (e.g. hair flowing, --zoom-in, --cinematic)",
             default=default_prompt[:800] if default_prompt else "",
             max_length=1000,
             required=True
@@ -1965,7 +1965,7 @@ class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
             label="Duration in Seconds (5 or 10)",
             style=discord.TextStyle.short,
             placeholder="5 or 10 (default: 5)",
-            default="5",
+            default=str(default_duration) if default_duration else "5",
             max_length=2,
             required=False
         )
@@ -1975,7 +1975,7 @@ class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
             label="Smoothness Mode (smooth / fast)",
             style=discord.TextStyle.short,
             placeholder="smooth (32 FPS) or fast (16 FPS)",
-            default="smooth",
+            default=str(default_smoothness) if default_smoothness else "smooth",
             max_length=10,
             required=False
         )
@@ -2004,6 +2004,138 @@ class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
         except Exception as e:
             logger.error(f"Error in VideoPromptModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to queue video animation: {e}")
+
+
+def build_video_complete_embed(
+    prompt: str,
+    duration_sec: float,
+    total_output_frames: int,
+    out_fps: int,
+    orig_w: int,
+    orig_h: int,
+    width: int,
+    height: int,
+    video_seed: int,
+    elapsed_time: float,
+    init_sec: float = 0.0,
+    sample_sec: float = 0.0,
+    post_sec: float = 0.0,
+    motion_badges: list = None,
+    smoothness: str = "smooth",
+    user_name: str = "User",
+    user_id: int = 0
+) -> discord.Embed:
+    """Builds a polished, 3-column inline studio dashboard embed for completed Wan 2.2 video animations."""
+    badges_str = " • ".join(motion_badges) if motion_badges else "🎬 Natural Motion"
+    mode_str = "Smooth (32 FPS • RIFE 2x)" if smoothness == "smooth" else "Fast (16 FPS • Native)"
+
+    embed = discord.Embed(
+        title="🎬 Wan 2.2 Studio Video Generation Complete",
+        color=discord.Color.from_rgb(88, 101, 242)
+    )
+
+    # Column 1: Motion & Camera
+    col1_val = (
+        f"**Prompt:** {prompt[:180]}{'...' if len(prompt) > 180 else ''}\n"
+        f"**Cues:** `{badges_str}`\n"
+        f"**Framing:** `{orig_w}x{orig_h}` → `{width}x{height}`"
+    )
+    embed.add_field(name="🎬 Motion & Camera", value=col1_val, inline=True)
+
+    # Column 2: Video Specs
+    col2_val = (
+        f"**Duration:** `{duration_sec:.1f}s`\n"
+        f"**Framerate:** `{out_fps} FPS`\n"
+        f"**Frames:** `{total_output_frames} frames`\n"
+        f"**Mode:** `{mode_str}`"
+    )
+    embed.add_field(name="⏱️ Video Specs", value=col2_val, inline=True)
+
+    # Column 3: Engine & Render
+    col3_val = (
+        f"**Model:** `Wan 2.2 14B GGUF`\n"
+        f"**Sampling:** `6 Steps (Shift 8.0)`\n"
+        f"**Render Time:** `{elapsed_time:.1f}s`\n"
+        f"**Seed:** `{video_seed}`"
+    )
+    embed.add_field(name="⚡ Engine & Render", value=col3_val, inline=True)
+
+    user_info = f"Requested by {user_name}" if user_name else "Requested"
+    id_info = f" (ID: {user_id})" if user_id else ""
+    embed.set_footer(text=f"{user_info}{id_info} • Sample: {sample_sec:.1f}s | Total: {elapsed_time:.1f}s")
+
+    return embed
+
+
+class VideoActionView(discord.ui.View):
+    """Interactive action view attached to completed /video generations."""
+    def __init__(
+        self,
+        generation_id: str,
+        on_reroll_cb=None,
+        on_remix_cb=None,
+        on_toggle_fps_cb=None,
+        smoothness: str = "smooth"
+    ):
+        super().__init__(timeout=1800)
+        self.generation_id = generation_id
+        self.on_reroll_cb = on_reroll_cb
+        self.on_remix_cb = on_remix_cb
+        self.on_toggle_fps_cb = on_toggle_fps_cb
+        self.smoothness = smoothness
+
+        # [ 🔄 Re-roll ]
+        self.reroll_btn = discord.ui.Button(
+            label="🔄 Re-roll",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"video_reroll:{generation_id}"
+        )
+        self.reroll_btn.callback = self._on_reroll
+        self.add_item(self.reroll_btn)
+
+        # [ ✏️ Remix Motion ]
+        self.remix_btn = discord.ui.Button(
+            label="✏️ Remix Motion",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"video_remix:{generation_id}"
+        )
+        self.remix_btn.callback = self._on_remix
+        self.add_item(self.remix_btn)
+
+        # [ ⚡ Switch FPS Mode ]
+        toggle_label = "⚡ Switch to Fast (16 FPS)" if smoothness == "smooth" else "🎬 Switch to Smooth (32 FPS)"
+        self.toggle_btn = discord.ui.Button(
+            label=toggle_label,
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"video_toggle_fps:{generation_id}"
+        )
+        self.toggle_btn.callback = self._on_toggle_fps
+        self.add_item(self.toggle_btn)
+
+    async def _on_reroll(self, interaction: discord.Interaction):
+        try:
+            if self.on_reroll_cb:
+                await self.on_reroll_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in VideoActionView reroll: {e}")
+            await send_error_fallback(interaction, f"Failed to re-roll video: {e}")
+
+    async def _on_remix(self, interaction: discord.Interaction):
+        try:
+            if self.on_remix_cb:
+                await self.on_remix_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in VideoActionView remix: {e}")
+            await send_error_fallback(interaction, f"Failed to open remix modal: {e}")
+
+    async def _on_toggle_fps(self, interaction: discord.Interaction):
+        try:
+            if self.on_toggle_fps_cb:
+                await self.on_toggle_fps_cb(interaction, self.generation_id)
+        except Exception as e:
+            logger.error(f"Error in VideoActionView toggle fps: {e}")
+            await send_error_fallback(interaction, f"Failed to toggle FPS mode: {e}")
+
 
 
 
