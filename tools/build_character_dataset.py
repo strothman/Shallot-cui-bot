@@ -1,7 +1,8 @@
 """
 Character Synthetic Dataset Generator & Auto-Captioner for Krea 2 / OneTrainer.
-Generates diverse, high-fidelity images of a registered character using their Flux LoRA,
-then auto-captions each image with Florence-2 to produce a ready-to-train dataset (.png + .txt).
+Generates diverse, high-fidelity images of a registered character using their Flux or SDXL LoRA,
+then auto-captions each image with Florence-2 to produce a ready-to-train dataset (.png + .txt)
+and an AI-Toolkit training YAML config.
 """
 
 import os
@@ -9,6 +10,7 @@ import sys
 import json
 import time
 import random
+import shutil
 import asyncio
 import argparse
 import logging
@@ -23,7 +25,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("DatasetBuilder")
 
 # Diverse prompt templates to ensure the character LoRA learns identity, not a specific scene
-# Structured framing categories to guarantee strong character body and physique representation
 FRAMINGS_FULL_BODY = [
     "full-body fashion modeling photoshoot of {trigger}, head to toe shot, standing gracefully, slender toned physique, posing confidently",
     "full-body portrait of {trigger}, head to toe shot, elegant modeling posture, visible silhouette and proportions",
@@ -90,7 +91,6 @@ def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
     num_med = max(1, int(count * 0.35))
     num_port = max(1, count - num_full - num_med)
 
-    # 1. Full-body modeling shots
     for _ in range(num_full):
         framing = random.choice(FRAMINGS_FULL_BODY)
         outfit = random.choice(OUTFITS_MODELING_BODY)
@@ -98,7 +98,6 @@ def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
         env = random.choice(BACKGROUND_ENVIRONMENTS)
         prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
-    # 2. Medium body modeling shots
     for _ in range(num_med):
         framing = random.choice(FRAMINGS_MEDIUM_BODY)
         outfit = random.choice(OUTFITS_MODELING_BODY + OUTFITS_CASUAL)
@@ -106,7 +105,6 @@ def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
         env = random.choice(BACKGROUND_ENVIRONMENTS)
         prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
-    # 3. Portrait & facial feature shots
     for _ in range(num_port):
         framing = random.choice(FRAMINGS_PORTRAIT)
         outfit = random.choice(OUTFITS_CASUAL + OUTFITS_MODELING_BODY)
@@ -118,12 +116,76 @@ def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
     return prompts
 
 
+def write_ai_toolkit_config(trigger: str, dataset_dir: str, output_yaml_path: str):
+    """Writes an AI-Toolkit configuration for training a Krea 2 LoRA on the generated dataset."""
+    abs_dataset = os.path.abspath(dataset_dir).replace("\\", "/")
+    yaml_content = f"""---
+job: extension
+config:
+  name: "{trigger}_krea2"
+  process:
+    - type: "sd_trainer"
+      training_folder: "output"
+      device: cuda:0
+      trigger_word: "{trigger}"
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+      save:
+        dtype: float16
+        save_every: 250
+        max_step_saves_to_keep: 4
+      datasets:
+        - folder_path: "{abs_dataset}"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          is_reg: false
+      train:
+        batch_size: 1
+        steps: 1500
+        gradient_accumulation_steps: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        optimizer: "adamw8bit"
+        lr: 0.0001
+        dtype: bf16
+      model:
+        name_or_path: "krea/Krea-2-Raw"
+        arch: "krea2"
+        quantize: true
+        quantize_te: true
+        low_vram: true
+      sample:
+        sampler: "euler"
+        sample_every: 250
+        width: 1024
+        height: 1024
+        neg: ""
+        prompts:
+          - "close-up beauty portrait of {trigger}, detailed eyes, natural morning light, 35mm photo"
+          - "full-body modeling shot of {trigger}, casual summer dress, poolside, soft natural lighting"
+        seed: 42
+        guidance_scale: 3.5
+        sample_steps: 20
+"""
+    with open(output_yaml_path, "w", encoding="utf-8") as f:
+        f.write(yaml_content.strip() + "\n")
+    logger.info(f"Generated AI-Toolkit Krea 2 training config: {os.path.abspath(output_yaml_path)}")
+
+
 async def run_dataset_builder(
     character_id: str = "ogarla",
-    count: int = 25,
-    output_dir: str = "datasets/ogarla_krea2",
+    count: int = 30,
+    output_dir: str = None,
+    engine: str = "auto",
+    checkpoint: str = "RealVisXL_V4.0.safetensors",
     resolution: int = 1024,
-    steps: int = 25,
+    steps: int = None,
+    overwrite: bool = False,
     server_address: str = "127.0.0.1:8188"
 ):
     char = get_character(character_id)
@@ -131,14 +193,45 @@ async def run_dataset_builder(
         logger.error(f"Character '{character_id}' not found in registry! Available: {list(CHARACTERS.keys())}")
         return
 
-    trigger = char.trained_trigger
+    # Determine default output directory
+    if not output_dir:
+        output_dir = f"datasets/{character_id}_krea2"
+
+    gen_trigger = char.trained_trigger
+    train_trigger = char.id  # Trigger to write in Florence-2 captions (e.g. 'valerie')
     flux_lora = char.lora_flux
-    if not flux_lora:
-        logger.warning(f"No Flux LoRA registered for '{character_id}'. Checking SDXL LoRA: {char.lora_sdxl}")
+    sdxl_lora = char.lora_sdxl
+
+    # Determine generation engine (flux vs sdxl)
+    active_engine = engine.lower()
+    if active_engine == "auto":
+        if flux_lora:
+            active_engine = "flux"
+        elif sdxl_lora:
+            active_engine = "sdxl"
+        else:
+            logger.error(f"Character '{character_id}' has neither Flux nor SDXL LoRA registered!")
+            return
+
+    if active_engine == "flux" and not flux_lora:
+        logger.warning(f"Engine set to 'flux', but no Flux LoRA found for '{character_id}'. Checking SDXL LoRA...")
+        if sdxl_lora:
+            active_engine = "sdxl"
+        else:
+            logger.error(f"Cannot generate: no LoRA available for character '{character_id}'.")
+            return
+
+    if steps is None:
+        steps = 25 if active_engine == "flux" else 28
+
+    if overwrite and os.path.exists(output_dir):
+        logger.info(f"Overwrite requested. Cleaning existing dataset folder: {output_dir}")
+        shutil.rmtree(output_dir)
 
     os.makedirs(output_dir, exist_ok=True)
     logger.info(f"Target dataset directory: {os.path.abspath(output_dir)}")
-    logger.info(f"Character: {char.display_name} (Trigger: '{trigger}', LoRA: '{flux_lora}')")
+    logger.info(f"Character: {char.display_name} (Gen Trigger: '{gen_trigger}', Train Caption Trigger: '{train_trigger}')")
+    logger.info(f"Engine: {active_engine.upper()} | LoRA: {flux_lora if active_engine == 'flux' else sdxl_lora}")
 
     comfy = ComfyClient(server_address=server_address)
     online = await comfy.is_online()
@@ -148,13 +241,16 @@ async def run_dataset_builder(
 
     await comfy.start()
     try:
-        # Load base Flux workflow
-        flux_wf_path = "workflows/com_flux_gguf.json"
-        if not os.path.exists(flux_wf_path):
-            flux_wf_path = "workflows/flux_lowres.json"
+        # Load Base Workflow depending on chosen engine
+        if active_engine == "flux":
+            wf_path = "workflows/com_flux_gguf.json"
+            if not os.path.exists(wf_path):
+                wf_path = "workflows/flux_lowres.json"
+        else:
+            wf_path = "workflows/txt2img_lowres.json"
 
-        with open(flux_wf_path, "r", encoding="utf-8") as f:
-            base_flux_wf = json.load(f)
+        with open(wf_path, "r", encoding="utf-8") as f:
+            base_wf = json.load(f)
 
         # Load Florence-2 describe workflow for captioning
         desc_wf_path = "workflows/DESCRIBE_cuibot.json"
@@ -177,33 +273,73 @@ async def run_dataset_builder(
         start_num = max(existing_indices) + 1 if existing_indices else 1
         needed = max(0, count - len(existing_indices))
         if needed <= 0:
-            logger.info(f"Target count of {count} already met in {output_dir} ({len(existing_indices)} images found). Generating {count} additional samples starting at index {start_num:03d}...")
-            needed = count
+            logger.info(f"Target count of {count} already met in {output_dir} ({len(existing_indices)} images found).")
+            # Ensure AI-Toolkit config is up to date
+            config_yaml_path = os.path.join("datasets", f"{character_id}_krea2_ai_toolkit_config.yaml")
+            write_ai_toolkit_config(train_trigger, output_dir, config_yaml_path)
+            return
 
-        prompts = generate_prompt_matrix(trigger, needed)[:needed]
+        prompts = generate_prompt_matrix(gen_trigger, needed)[:needed]
         logger.info(f"Generating {len(prompts)} samples to reach target dataset count (starting at index {start_num:03d}).")
 
         for i, prompt_text in enumerate(prompts):
             curr_idx = start_num + i
             sample_seed = random.randint(1, 1125899906842624)
-            logger.info(f"[{i+1}/{len(prompts)}] (Sample {curr_idx:03d}) Generating image (Seed: {sample_seed})...")
+            logger.info(f"[{i+1}/{len(prompts)}] (Sample {curr_idx:03d}) Generating image ({active_engine.upper()} Seed: {sample_seed})...")
 
-            # Configure Flux workflow
-            wf = json.loads(json.dumps(base_flux_wf))
-            if "5" in wf:
-                wf["5"]["inputs"]["width"] = resolution
-                wf["5"]["inputs"]["height"] = resolution
-                wf["5"]["inputs"]["batch_size"] = 1
-            if "6" in wf:
-                wf["6"]["inputs"]["text"] = prompt_text
-            if "11" in wf:
-                wf["11"]["inputs"]["seed"] = sample_seed
-                wf["11"]["inputs"]["steps"] = steps
+            wf = json.loads(json.dumps(base_wf))
 
-            # Inject character LoRA if available
-            if flux_lora and "76" in wf:
-                wf["76"]["inputs"]["lora_name"] = flux_lora
-                wf["76"]["inputs"]["strength_model"] = char.default_weight
+            if active_engine == "flux":
+                # Configure Flux workflow
+                if "5" in wf:
+                    wf["5"]["inputs"]["width"] = resolution
+                    wf["5"]["inputs"]["height"] = resolution
+                    wf["5"]["inputs"]["batch_size"] = 1
+                if "6" in wf:
+                    wf["6"]["inputs"]["text"] = prompt_text
+                if "11" in wf:
+                    wf["11"]["inputs"]["seed"] = sample_seed
+                    wf["11"]["inputs"]["steps"] = steps
+
+                # Inject Flux character LoRA
+                if flux_lora and "76" in wf:
+                    wf["76"]["inputs"]["lora_name"] = flux_lora
+                    wf["76"]["inputs"]["strength_model"] = char.default_weight
+
+            else:
+                # Configure SDXL workflow
+                if "4" in wf:
+                    wf["4"]["inputs"]["ckpt_name"] = checkpoint
+                if "5" in wf:
+                    wf["5"]["inputs"]["width"] = resolution
+                    wf["5"]["inputs"]["height"] = resolution
+                    wf["5"]["inputs"]["batch_size"] = 1
+                if "6" in wf:
+                    wf["6"]["inputs"]["text"] = f"masterpiece, best quality, ultra-detailed, photorealistic, 8k uhd, 35mm photograph, {prompt_text}"
+                if "7" in wf:
+                    wf["7"]["inputs"]["text"] = (
+                        "low quality, blurry, bad hands, extra fingers, distorted hands, deformed anatomy, "
+                        "bad face, malformed eyes, extra limbs, duplicate subject, signature, text, watermark, "
+                        "logo, cartoon, anime, illustration, 3d render, painting, drawing, ugly, bad proportions, "
+                        "unnatural skin, oversaturated"
+                    )
+                if "3" in wf:
+                    wf["3"]["inputs"]["seed"] = sample_seed
+                    wf["3"]["inputs"]["steps"] = steps
+                    wf["3"]["inputs"]["cfg"] = 4.5
+                    wf["3"]["inputs"]["sampler_name"] = "dpmpp_2m"
+                    wf["3"]["inputs"]["scheduler"] = "karras"
+
+                # Disable static node 75
+                if "75" in wf:
+                    wf["75"]["inputs"]["strength_model"] = 0.0
+                    wf["75"]["inputs"]["strength_clip"] = 0.0
+
+                # Inject SDXL character LoRA
+                if sdxl_lora and "76" in wf:
+                    wf["76"]["inputs"]["lora_name"] = sdxl_lora
+                    wf["76"]["inputs"]["strength_model"] = char.default_weight
+                    wf["76"]["inputs"]["strength_clip"] = char.default_weight
 
             # Generate image via ComfyUI
             try:
@@ -266,7 +402,7 @@ async def run_dataset_builder(
                                         break
                         if raw_cap:
                             raw_cap = str(raw_cap).replace("The image shows", "").replace("This is", "").strip()
-                            caption_text = f"{trigger}, {raw_cap}"
+                            caption_text = f"{train_trigger}, {raw_cap}"
                         try:
                             await comfy.free_memory(unload_models=True)
                         except Exception:
@@ -276,14 +412,21 @@ async def run_dataset_builder(
 
             # Fallback to prompt text if captioning was not available
             if not caption_text:
-                caption_text = prompt_text
+                caption_text = f"{train_trigger}, {prompt_text}"
 
             with open(txt_path, "w", encoding="utf-8") as f:
                 f.write(caption_text.strip())
 
             logger.info(f"Saved: {file_base}.png + {file_base}.txt")
 
+        # Automatically output AI-Toolkit training config
+        config_yaml_path = os.path.join("datasets", f"{character_id}_krea2_ai_toolkit_config.yaml")
+        write_ai_toolkit_config(train_trigger, output_dir, config_yaml_path)
+
+        logger.info("==================================================================")
         logger.info(f"🎉 Dataset generation complete! {count} pairs created in {os.path.abspath(output_dir)}")
+        logger.info(f"⚙️ AI-Toolkit Config: {os.path.abspath(config_yaml_path)}")
+        logger.info("==================================================================")
     finally:
         await comfy.stop()
 
@@ -291,9 +434,13 @@ async def run_dataset_builder(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic character dataset for Krea 2 training")
     parser.add_argument("--character", type=str, default="ogarla", help="Character ID from characters.py (default: ogarla)")
-    parser.add_argument("--count", type=int, default=25, help="Number of image+caption pairs to generate (default: 25)")
-    parser.add_argument("--output-dir", type=str, default="datasets/ogarla_krea2", help="Destination folder")
+    parser.add_argument("--count", type=int, default=30, help="Number of image+caption pairs to generate (default: 30)")
+    parser.add_argument("--output-dir", type=str, default=None, help="Destination folder (defaults to datasets/<character>_krea2)")
+    parser.add_argument("--engine", type=str, choices=["auto", "flux", "sdxl"], default="auto", help="Engine to use: 'auto', 'flux', or 'sdxl'")
+    parser.add_argument("--checkpoint", type=str, default="RealVisXL_V4.0.safetensors", help="SDXL checkpoint (default: RealVisXL_V4.0.safetensors)")
     parser.add_argument("--resolution", type=int, default=1024, help="Image resolution width & height (default: 1024)")
+    parser.add_argument("--steps", type=int, default=None, help="Sampling steps (default: 25 for Flux, 28 for SDXL)")
+    parser.add_argument("--overwrite", action="store_true", help="Clear existing directory before starting")
     parser.add_argument("--server", type=str, default="127.0.0.1:8188", help="ComfyUI server address")
 
     args = parser.parse_args()
@@ -301,6 +448,10 @@ if __name__ == "__main__":
         character_id=args.character,
         count=args.count,
         output_dir=args.output_dir,
+        engine=args.engine,
+        checkpoint=args.checkpoint,
         resolution=args.resolution,
+        steps=args.steps,
+        overwrite=args.overwrite,
         server_address=args.server
     ))

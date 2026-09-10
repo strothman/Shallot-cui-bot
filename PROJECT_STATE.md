@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.4.0`  
-> **Last Updated:** September 9, 2026  
-> **Status:** 🟢 Stable & Healthy (66/66 Automated Tests Passing)  
+> **Current Version:** `v2.4.1`  
+> **Last Updated:** September 10, 2026  
+> **Status:** 🟢 Stable & Healthy (67/67 Automated Tests Passing)  
 
 ---
 
@@ -117,21 +117,22 @@ The tool is built with **automatic state resumption**:
 
 ## 🌟 5. What's New in v2.4.0 & Latest Updates
 
-1. **Character Dataset Builder from Photos (`tools/create_character_dataset_from_photos.py`)**: Generate full 30-sample training datasets from just 1–12 reference photos with IP-Adapter identity locking, automated prompt matrix, Florence-2 auto-captioning, and seamless resume support.
-2. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
-3. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
-4. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
-5. **New Character Presets:** Added **Valerie** and **Sully** with built-in privacy protection and automatic trait injection (e.g., glasses and hair).
-6. **Live Cancel Button (`🛑 Cancel`):** You can now stop any running render without having to open the ComfyUI console.
-7. **Grid Remix Modal (`✏️ Remix`):** One-click button to tweak prompts directly from Discord popups.
-8. **Automatic Memory Cleaning (VRAM Auto-Purge):** The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+1. **Dual-Engine Synthetic Dataset Builder (`tools/build_character_dataset.py`)**: Seamlessly supports both Flux GGUF and SDXL character LoRAs with auto-detection. Generated a diverse 30-sample 1024x1024 Krea 2 training dataset for Valerie (`datasets/valerie_krea2/` & `valerie_krea2.zip`) with Florence-2 auto-captioning and AI-Toolkit config. Includes 1-click batch runner `generate_valerie_dataset.bat`.
+2. **Character Dataset Builder from Photos (`tools/create_character_dataset_from_photos.py`)**: Generate full 30-sample training datasets from just 1–12 reference photos with IP-Adapter identity locking, automated prompt matrix, Florence-2 auto-captioning, and seamless resume support.
+3. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
+4. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
+5. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
+6. **New Character Presets:** Added **Valerie** and **Sully** with built-in privacy protection and automatic trait injection (e.g., glasses and hair).
+7. **Live Cancel Button (`🛑 Cancel`):** You can now stop any running render without having to open the ComfyUI console.
+8. **Grid Remix Modal (`✏️ Remix`):** One-click button to tweak prompts directly from Discord popups.
+9. **Automatic Memory Cleaning (VRAM Auto-Purge):** The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
 
 ---
 
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **66 / 66 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **67 / 67 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).
