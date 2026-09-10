@@ -90,10 +90,13 @@ If you only have **1 to 12 reference photos** of a person or character (and no e
 ### How It Works:
 1. **Drop Reference Images**: Place 1 to 12 clear photos (selfies, portraits, candids) into `inputs/reference_character/` (or specify a custom folder).
 2. **Identity Extraction**: The tool loads `IP-Adapter FaceID Plus v2` (`ip-adapter-plus_sdxl_vit-h.safetensors` / InsightFace) in ComfyUI to lock the person's exact facial structure and identity.
-3. **Structured Prompt Matrix**: Automatically generates a balanced, diverse 30-image set:
-   * **~35% Full-Body Modeling**: Walking, standing, silhouette, full-view outfits (swimwear, casual, dresses, athletic).
-   * **~35% Medium / Cowboy**: Waist-up, natural postures, cafe/street/resort environments.
-   * **~30% Close-Up Portraits**: Sharp facial focus, expressions, golden hour, and soft studio lighting.
+3. **High-Fashion Modeling Prompt Matrix**: Automatically scripts a balanced, publication-grade 30-image modeling dataset:
+   * **~25% High-Fashion Swimwear**: Bikinis, luxury monokinis, beach resort and poolside lighting, full-body head-to-toe shots.
+   * **~25% Glamour Couture & Evening Dresses**: Satin bodycon dresses, backless cocktail gowns, runway poses, and studio softbox lighting.
+   * **~20% Athletic & Fitness Apparel**: Sports bras, high-waisted leggings, athletic postures, gym and contemporary studio environments.
+   * **~15% Streetwear Chic**: Tailored blazers over crop tops, leather jackets, Parisian street fashion strides.
+   * **~15% High-End Beauty Portraits**: Flawless skin texture, expressive catchlights, studio ring light and chiaroscuro editorial lighting.
+   * *Anti-Bleed IP-Adapter Tuning:* Configured with `end_at: 0.65` and wardrobe negative prompts so reference sweaters/casual clothing do not bleed into fashion outfits.
 4. **Auto-Captioning via Florence-2**: Each generated picture is automatically analyzed by Florence-2, formatted with the trigger word (e.g. `samantha, a photo of...`), and saved as paired `.png` and `.txt` files.
 5. **AI-Toolkit Config Generation**: Produces a ready-to-run `.yaml` file for training your Krea 2 LoRA at 1024x1024.
 

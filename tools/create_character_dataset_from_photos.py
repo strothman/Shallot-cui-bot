@@ -25,89 +25,96 @@ from comfy_client import ComfyClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("PhotoDatasetBuilder")
 
-# Diverse prompt templates to guarantee rich variation in framing, attire, lighting, and environments
-FRAMINGS_FULL_BODY = [
-    "full-body fashion modeling photoshoot of a woman, head to toe shot, standing gracefully, slender toned physique, posing confidently",
-    "full-body portrait of a woman, head to toe shot, elegant modeling posture, visible silhouette and natural proportions",
-    "full-body runway fashion shoot of a woman, walking gracefully, full view of outfit and physique, 35mm film photograph",
-    "full-body seated modeling shot of a woman, posing on a minimalist designer chair, head to toe composition, long slender legs",
+# High-Fashion & Modeling Categories to guarantee diverse, publication-grade training images
+MODELING_SWIMWEAR = [
+    "high-fashion swimsuit modeling photoshoot of a woman, full-body head-to-toe shot, wearing a stylish designer two-piece bikini, sun-drenched beach, golden hour sun, toned fit physique, fashion catalog pose",
+    "full-body fashion modeling shoot of a woman, wearing a sleek luxury one-piece monokini swimsuit, leaning against a poolside cabana, glowing sunlit skin, elegant modeling posture, 35mm fashion magazine photo",
+    "fashion beachwear modeling portrait of a woman, full-body shot, standing in shallow ocean surf, wind in hair, natural athletic silhouette, tropical sunlight",
+    "editorial swimwear photoshoot of a woman, posing on a minimalist beach rock, head to toe framing, chic designer bikini, sunbeams",
 ]
 
-FRAMINGS_MEDIUM_BODY = [
-    "medium shot of a woman, waist-up framing, natural relaxed posture, showing torso and arms, natural eye contact",
-    "three-quarter angle fashion editorial of a woman, slender waist and hips, expressive modeling look",
-    "cowboy shot of a woman, mid-thigh to head framing, stylish modeling pose, editorial composition",
-    "medium close-up candid photograph of a woman, upper body framing, natural posture and soft smile",
+MODELING_GLAMOUR_COUTURE = [
+    "haute couture fashion modeling editorial of a woman, full-body shot, wearing an elegant form-fitting satin bodycon evening dress, sleek silhouette, hands on hips, dramatic studio softbox lighting",
+    "high-fashion red carpet modeling photoshoot of a woman, wearing a chic backless cocktail dress, over-the-shoulder gaze, elegant posture, minimalist architectural studio",
+    "full-body runway fashion shoot of a woman, wearing a tailored designer outfit, walking with confident runway stride, dramatic fashion lighting",
+    "high-fashion studio modeling photoshoot of a woman, wearing an off-shoulder silk dress with high leg slit, dramatic chiaroscuro studio lighting, Vogue editorial style",
+    "fashion catalog modeling shoot of a woman, wearing a chic form-fitting cocktail dress and strappy heels, posing on modern minimalist stairs",
 ]
 
-FRAMINGS_PORTRAIT = [
-    "close-up beauty portrait shot of a woman, sharp facial features, detailed expressive eyes and natural skin texture",
-    "dramatic studio beauty portrait of a woman, shoulders and face framing, soft catchlights in eyes",
-    "cinematic candid close-up photograph of a woman, soft depth of field, natural eye contact with camera",
+MODELING_FITNESS_ACTIVE = [
+    "fitness apparel catalog modeling photoshoot of a woman, wearing a sleek athletic sports bra and high-waisted yoga leggings, toned athletic physique, dynamic activewear pose, bright modern fitness studio",
+    "medium shot of a woman in stylish designer activewear, athletic crop top, confident posture, clean studio rim lighting, visible toned arms and midriff",
+    "full-body athletic modeling photoshoot of a woman, modern sportswear, posing confidently in a minimalist sunlit gym studio, healthy glowing skin",
+    "lifestyle fitness modeling photo of a woman, stylish running attire, dynamic posture, morning sunlight in contemporary park",
+]
+
+MODELING_STREETWEAR_CHIC = [
+    "urban streetwear fashion modeling shoot of a woman, wearing a tailored chic blazer over a fitted crop top and high-waisted trousers, walking down a modern city street, dynamic fashion stride",
+    "fashion editorial modeling photo of a woman, wearing a stylish cropped leather jacket and casual denim, posing against a sleek textured concrete wall",
+    "chic contemporary fashion shoot of a woman, wearing a classic crisp white button-up shirt slightly unbuttoned and fitted jeans, elegant relaxed modeling posture",
+    "high-fashion Parisian street modeling shoot of a woman, wearing an elegant trench coat over a fitted top, golden hour European architecture bokeh",
+]
+
+MODELING_BEAUTY_PORTRAITS = [
+    "high-end beauty cosmetics campaign photoshoot of a woman, close-up portrait, flawless glowing skin texture, detailed expressive eyes, studio beauty ring light, elegant poise",
+    "dramatic fashion beauty portrait of a woman, soft catchlights in eyes, bare shoulders, moody chiaroscuro editorial lighting, Harper's Bazaar style",
+    "cinematic beauty portrait of a woman, shoulders and face framing, soft natural window light, natural gentle smile and captivating eye contact",
 ]
 
 LIGHTING_CONDITIONS = [
-    "soft natural morning window light, gentle warm highlights and subtle shadows",
+    "professional photo studio lighting, high-key clean softbox illumination and subtle rim glow",
     "golden hour outdoor sunset lighting, warm sunbeams, beautiful backlit rim glow",
-    "professional photo studio lighting, high-key clean softbox illumination",
-    "moody cinematic chiaroscuro lighting, deep shadows, focused single keylight",
+    "moody cinematic chiaroscuro lighting, deep shadows, focused single keylight, Vogue editorial style",
+    "soft natural morning window light, gentle warm highlights and subtle shadows",
     "bright tropical sunlit poolside light, warm ambient glow, clean natural highlights",
     "overcast diffused daylight, clean neutral color balance, soft natural skin tones",
 ]
 
 BACKGROUND_ENVIRONMENTS = [
-    "simple minimalist neutral studio backdrop, completely uncluttered",
+    "simple minimalist neutral studio backdrop, completely uncluttered, clean high-fashion catalog aesthetic",
     "sunlit luxury beach resort, ocean waves softly blurred in background",
-    "bright cozy contemporary modern penthouse interior, floor-to-ceiling windows",
+    "bright contemporary modern penthouse interior with floor-to-ceiling windows",
     "lush outdoor Mediterranean garden, dappled sunlit foliage, gentle bokeh",
-    "modern minimalist fashion studio with white floor and subtle architectural shadows",
-    "urban city sidewalk with soft bokeh buildings in background",
-]
-
-OUTFITS_MODELING = [
-    "wearing a stylish fitted crop top and denim shorts, visible toned midriff",
-    "wearing an elegant form-fitting bodycon dress, sleek feminine silhouette",
-    "wearing a fashionable two-piece swimsuit bikini, beach fashion shoot, natural skin texture",
-    "wearing a sleek two-piece athletic sports bra and yoga leggings, toned physique",
-    "wearing a classic white ribbed tank top and form-fitting casual jeans",
-    "wearing a chic summer sundress with thin spaghetti straps, feminine silhouette",
-    "wearing a high-fashion lingerie silk camisole and shorts",
-    "wearing an off-shoulder fitted knitted sweater and mini skirt",
-    "wearing a classic white cotton button-up shirt slightly unbuttoned",
-    "wearing a stylish tailored dark blazer over a fitted top",
+    "modern minimalist fashion studio with white polished floor and subtle architectural shadows",
+    "upscale city rooftop terrace overlooking a soft bokeh urban skyline",
 ]
 
 
 def generate_prompt_matrix(count: int = 30) -> List[str]:
-    """Generates a diverse set of prompts with a balanced distribution of full-body, medium, and portrait framings."""
+    """Generates a diverse set of high-fashion and modeling prompts across swimwear, glamour, activewear, streetwear, and beauty portraits."""
     prompts = []
-    num_full = max(1, int(count * 0.35))
-    num_med = max(1, int(count * 0.35))
-    num_port = max(1, count - num_full - num_med)
+    # Dedicated modeling distribution: ~25% Swimwear, ~25% Glamour/Dresses, ~20% Activewear, ~15% Streetwear, ~15% Beauty Portraits
+    num_swim = max(1, int(count * 0.25))
+    num_glam = max(1, int(count * 0.25))
+    num_active = max(1, int(count * 0.20))
+    num_street = max(1, int(count * 0.15))
+    num_beauty = max(1, count - num_swim - num_glam - num_active - num_street)
 
-    # 1. Full-body shots
-    for _ in range(num_full):
-        framing = random.choice(FRAMINGS_FULL_BODY)
-        outfit = random.choice(OUTFITS_MODELING)
+    for _ in range(num_swim):
+        framing = random.choice(MODELING_SWIMWEAR)
+        lighting = random.choice(LIGHTING_CONDITIONS)
+        prompts.append(f"{framing}, {lighting}, natural skin texture, realistic 35mm fashion photograph, 8k uhd")
+
+    for _ in range(num_glam):
+        framing = random.choice(MODELING_GLAMOUR_COUTURE)
         lighting = random.choice(LIGHTING_CONDITIONS)
         env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing}, {outfit}, {env}, {lighting}, natural skin texture, realistic 35mm photograph, 8k uhd")
+        prompts.append(f"{framing}, {env}, {lighting}, natural skin texture, realistic 35mm fashion photograph, 8k uhd")
 
-    # 2. Medium-body shots
-    for _ in range(num_med):
-        framing = random.choice(FRAMINGS_MEDIUM_BODY)
-        outfit = random.choice(OUTFITS_MODELING)
+    for _ in range(num_active):
+        framing = random.choice(MODELING_FITNESS_ACTIVE)
         lighting = random.choice(LIGHTING_CONDITIONS)
-        env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing}, {outfit}, {env}, {lighting}, natural skin texture, realistic 35mm photograph, 8k uhd")
+        prompts.append(f"{framing}, {lighting}, natural skin texture, realistic 35mm fashion photograph, 8k uhd")
 
-    # 3. Portrait & close-up shots
-    for _ in range(num_port):
-        framing = random.choice(FRAMINGS_PORTRAIT)
-        outfit = random.choice(OUTFITS_MODELING)
+    for _ in range(num_street):
+        framing = random.choice(MODELING_STREETWEAR_CHIC)
         lighting = random.choice(LIGHTING_CONDITIONS)
-        env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing}, {outfit}, {env}, {lighting}, natural skin texture, realistic 35mm photograph, 8k uhd")
+        prompts.append(f"{framing}, {lighting}, natural skin texture, realistic 35mm fashion photograph, 8k uhd")
+
+    for _ in range(num_beauty):
+        framing = random.choice(MODELING_BEAUTY_PORTRAITS)
+        lighting = random.choice(LIGHTING_CONDITIONS)
+        prompts.append(f"{framing}, {lighting}, natural skin texture, realistic 35mm fashion photograph, 8k uhd")
 
     random.shuffle(prompts)
     return prompts
@@ -166,7 +173,7 @@ def build_ipadapter_workflow(
         },
         "7": {
             "inputs": {
-                "text": "low quality, blurry, bad hands, extra fingers, distorted hands, deformed anatomy, bad face, malformed eyes, extra limbs, duplicate subject, signature, text, watermark, logo, cartoon, anime, illustration, 3d render",
+                "text": "low quality, blurry, bad hands, extra fingers, distorted hands, deformed anatomy, bad face, malformed eyes, extra limbs, duplicate subject, signature, text, watermark, logo, cartoon, anime, illustration, 3d render, baggy clothes, heavy sweater, wool shawl, casual snapshot",
                 "clip": ["4", 1]
             },
             "class_type": "CLIPTextEncode",
@@ -200,7 +207,7 @@ def build_ipadapter_workflow(
     # Chain IP-Adapter nodes for each reference image
     prev_model = ["20", 0]
     num_imgs = len(reference_image_names)
-    weight = 0.70 if num_imgs == 1 else max(0.40, min(0.65, 0.90 / num_imgs))
+    weight = 0.60 if num_imgs == 1 else round(max(0.20, min(0.35, 0.60 / num_imgs)), 2)
 
     for idx, img_name in enumerate(reference_image_names):
         load_id = f"ref_img_{idx}"
@@ -224,7 +231,7 @@ def build_ipadapter_workflow(
                 "weight_type": "linear",
                 "combine_embeds": "average",
                 "start_at": 0.0,
-                "end_at": 0.85,
+                "end_at": 0.65,
                 "embeds_scaling": "K+V"
             },
             "class_type": "IPAdapterAdvanced",

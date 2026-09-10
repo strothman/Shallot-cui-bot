@@ -8,6 +8,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ### Added
 * 🧬 **Character Dataset Generator from Reference Photos (`tools/create_character_dataset_from_photos.py`)**: Built an automated identity-expansion dataset generator allowing users to create full 30-image Krea 2 LoRA training datasets from just 1 to 12 reference photos using IP-Adapter identity projection, a balanced prompt matrix (full-body, medium, portrait), Florence-2 auto-captioning, and seamless resume/job continuation logic. Includes 1-click batch launcher `generate_dataset_from_photos.bat`.
+* 👗 **High-Fashion & Modeling Prompt Matrix**: Scripted dedicated modeling categories (~25% Swimwear, ~25% Glamour Couture/Evening Dresses, ~20% Athletic Activewear, ~15% Streetwear Chic, ~15% Beauty Portraits) to guarantee publication-grade versatility for LoRA training. Tuned IP-Adapter weights and steps (`end_at: 0.65`, dynamic weights) and added clothing-suppression negatives to prevent reference sweater/wardrobe bleed into modeling shots.
 * 🖼️ **`/blend-krea` Direct Composition Dropdown**: Replaced the cycling composition button with a dedicated 1-click dropdown select menu (`set_blend_krea_comp`), making all 4 pose-locking modes (`Off`, `Subtle`, `Medium`, `Strong`) immediately selectable with clear, intuitive labels.
 * 📜 **Streamlined `/blend-krea` Embed**: Removed redundant duplicate prompt displays; initial sessions show Florence-2 vision analysis once, displaying the fused generation prompt only when additive remix instructions are provided.
 
