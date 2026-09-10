@@ -4361,7 +4361,7 @@ async def execute_video_core(
     image_bytes: bytes,
     filename: str,
     prompt: str,
-    duration: int = 5,
+    duration: int = 10,
     smoothness: str = "smooth",
     seed: int = None,
     audio: bool = False,
@@ -4444,26 +4444,28 @@ async def execute_video_core(
         wan_cfg = settings.get("wan_cfg", 1.0)
         wan_shift = settings.get("wan_shift", 8.0)
         
-        # 8GB VRAM Safe Duration & Frame Scaling:
-        # Keep diffusion model frames bounded at 81 frames to avoid 64k token VRAM thrashing/freezing,
-        # using high-quality accelerated RIFE interpolation for extended durations (10s = 4x RIFE -> 324 frames @ 32 FPS).
-        wan_frames = settings.get("wan_video_frames", 81)
+        # Natural Speed Duration & Frame Scaling:
+        # 10s runs 161 frames natively in Wan 2.2 (161 frames @ 16 FPS = 10.06s real-time motion).
+        # 5s runs 81 frames natively in Wan 2.2 (81 frames @ 16 FPS = 5.06s real-time motion).
+        # Fast mode outputs native 16 FPS without RIFE. Smooth mode uses 2x RIFE for silky 32 FPS.
         rife_ckpt = settings.get("rife_ckpt", "rife49.pth")
         wan_fps = settings.get("wan_video_fps", 32)
 
         if duration == 10:
             duration_sec = 10.0
+            wan_frames = 161
             if smoothness == "fast":
-                rife_multiplier = 2
+                rife_multiplier = 1
                 out_fps = 16
-                use_rife = True
+                use_rife = False
             else:
-                rife_multiplier = 4
+                rife_multiplier = 2
                 out_fps = wan_fps
                 use_rife = True
             total_output_frames = wan_frames * rife_multiplier
         elif duration == 5:
             duration_sec = 5.0
+            wan_frames = 81
             if smoothness == "fast":
                 rife_multiplier = 1
                 out_fps = 16
@@ -4475,8 +4477,9 @@ async def execute_video_core(
             total_output_frames = wan_frames * rife_multiplier
         else:
             duration_sec = float(duration)
-            rife_multiplier = 2
-            out_fps = wan_fps
+            wan_frames = 161 if duration >= 10 else 81
+            rife_multiplier = 2 if smoothness != "fast" else 1
+            out_fps = wan_fps if smoothness != "fast" else 16
             use_rife = (smoothness != "fast")
             total_output_frames = wan_frames * rife_multiplier
 
@@ -4756,7 +4759,7 @@ async def handle_video_remix(interaction: discord.Interaction, generation_id: st
         with open(src_cache_path, "rb") as f_src:
             image_bytes = f_src.read()
 
-        dur_val = 10 if str(dur_str).strip() == "10" else 5
+        dur_val = 5 if str(dur_str).strip() == "5" else 10
         smooth_val = "fast" if str(smooth_str).strip().lower() in ("fast", "16", "native") else "smooth"
         seed_val = int(seed_str) if (seed_str and str(seed_str).strip().isdigit()) else random.randint(1, 1125899906842624)
 
@@ -4772,7 +4775,7 @@ async def handle_video_remix(interaction: discord.Interaction, generation_id: st
 
     modal = VideoPromptModal(
         default_prompt=gen_data.get("raw_prompt", gen_data.get("prompt", "")),
-        default_duration=str(gen_data.get("duration", "5")),
+        default_duration=str(gen_data.get("duration", "10")),
         default_smoothness=gen_data.get("smoothness", "smooth"),
         on_submit_callback=on_remix_submit
     )
@@ -4799,24 +4802,24 @@ async def handle_video_toggle_fps(interaction: discord.Interaction, generation_i
         image_bytes=image_bytes,
         filename=gen_data.get("filename", "toggle_fps_video.png"),
         prompt=gen_data.get("raw_prompt", gen_data.get("prompt", "")),
-        duration=gen_data.get("duration", 5),
+        duration=gen_data.get("duration", 10),
         smoothness=new_smoothness,
         seed=gen_data.get("seed", random.randint(1, 1125899906842624))
     )
 
 
-@bot.tree.command(name="video", description="Generate a 5s or 10s video from an image using Wan 2.2.")
+@bot.tree.command(name="video", description="Generate a 10s or 5s video from an image using Wan 2.2.")
 @app_commands.describe(
     image="The source image file you want to animate",
     prompt="Text prompt describing the desired video motion or action",
-    duration="Video duration in seconds (5 or 10 seconds, default 5)",
+    duration="Video duration in seconds (10s default, or 5s for quick tests)",
     smoothness="Motion smoothing speed mode (Smooth 32 FPS vs Fast 16 FPS)",
     seed="Optional seed for generation reproducibility"
 )
 @app_commands.choices(
     duration=[
-        app_commands.Choice(name="5 seconds (81 frames)", value=5),
-        app_commands.Choice(name="10 seconds (161 frames)", value=10),
+        app_commands.Choice(name="10 seconds (161 frames - Full Natural Motion)", value=10),
+        app_commands.Choice(name="5 seconds (81 frames - Quick Test)", value=5),
     ],
     smoothness=[
         app_commands.Choice(name="🎬 Smooth (32 FPS - Accelerated RIFE)", value="smooth"),
@@ -4827,7 +4830,7 @@ async def video_command(
     interaction: discord.Interaction,
     image: discord.Attachment,
     prompt: str,
-    duration: int = 5,
+    duration: int = 10,
     smoothness: str = "smooth",
     seed: int = None
 ):
@@ -4892,7 +4895,7 @@ async def execute_animate_message(interaction: discord.Interaction, message: dis
         await safe_defer(interaction, thinking=True)
         try:
             # Parse duration
-            duration = 10 if duration_str == "10" else 5
+            duration = 5 if duration_str == "5" else 10
             
             # Parse smoothness
             smoothness = "fast" if "fast" in smoothness_str.lower() else "smooth"

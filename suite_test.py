@@ -1249,7 +1249,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         # 2. Test VideoPromptModal initialization and defaults
         modal = VideoPromptModal(default_prompt="a majestic dragon flying over mountains")
         self.assertEqual(modal.prompt_input.default, "a majestic dragon flying over mountains")
-        self.assertEqual(modal.duration_input.default, "5")
+        self.assertEqual(modal.duration_input.default, "10")
         self.assertEqual(modal.smoothness_input.default, "smooth")
 
         # 3. Test on_submit callback invocation
@@ -2117,6 +2117,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(clean3, "close up portrait of a warrior")
         self.assertIn("🍃 Subtle", badges3)
         self.assertIn("🎥 Tilt Up", badges3)
+
+        # 3b. Test realtime / normal-speed flag
+        clean_rt, badges_rt, aug_rt = parse_video_motion_flags("a dancer performing a choreography --realtime")
+        self.assertEqual(clean_rt, "a dancer performing a choreography")
+        self.assertIn("⏱️ Real-Time", badges_rt)
+        self.assertIn("real-time motion, natural speed playback", aug_rt)
 
         # 4. Test prompt with no motion flags
         clean4, badges4, aug4 = parse_video_motion_flags("a cozy cabin in snowy woods")

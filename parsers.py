@@ -1581,6 +1581,7 @@ def parse_video_motion_flags(prompt: str) -> tuple:
         (r'[-—–]{1,2}cinematic\b', "✨ Cinematic", "cinematic steadycam motion, high production value, dramatic lighting"),
         (r'[-—–]{1,2}subtle\b', "🍃 Subtle", "subtle gentle movement, delicate breathing, calm steady shot"),
         (r'[-—–]{1,2}(?:dynamic|fast-motion)\b', "⚡ Dynamic", "energetic dynamic motion, fast action, dramatic camera movement"),
+        (r'[-—–]{1,2}(?:realtime|natural|normal-speed)\b', "⏱️ Real-Time", "real-time motion, natural speed playback, authentic lifelike movement"),
     ]
 
     for pattern, badge_label, cue_text in FLAG_RULES:

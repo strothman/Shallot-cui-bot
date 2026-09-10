@@ -42,17 +42,17 @@ MODELING_GLAMOUR_COUTURE = [
 ]
 
 MODELING_FITNESS_ACTIVE = [
-    "fitness apparel catalog modeling photoshoot of a woman, wearing a sleek athletic sports bra and high-waisted yoga leggings, toned athletic physique, dynamic activewear pose, bright modern fitness studio",
+    "fitness apparel catalog modeling photoshoot of a woman, medium shot, waist-up framing, wearing a sleek athletic sports bra and high-waisted yoga leggings, toned athletic physique, dynamic activewear pose, bright modern fitness studio",
     "medium shot of a woman in stylish designer activewear, athletic crop top, confident posture, clean studio rim lighting, visible toned arms and midriff",
     "full-body athletic modeling photoshoot of a woman, modern sportswear, posing confidently in a minimalist sunlit gym studio, healthy glowing skin",
-    "lifestyle fitness modeling photo of a woman, stylish running attire, dynamic posture, morning sunlight in contemporary park",
+    "lifestyle fitness modeling photo of a woman, medium shot, stylish running attire, dynamic posture, morning sunlight in contemporary park",
 ]
 
 MODELING_STREETWEAR_CHIC = [
-    "urban streetwear fashion modeling shoot of a woman, wearing a tailored chic blazer over a fitted crop top and high-waisted trousers, walking down a modern city street, dynamic fashion stride",
-    "fashion editorial modeling photo of a woman, wearing a stylish cropped leather jacket and casual denim, posing against a sleek textured concrete wall",
-    "chic contemporary fashion shoot of a woman, wearing a classic crisp white button-up shirt slightly unbuttoned and fitted jeans, elegant relaxed modeling posture",
-    "high-fashion Parisian street modeling shoot of a woman, wearing an elegant trench coat over a fitted top, golden hour European architecture bokeh",
+    "urban streetwear fashion modeling shoot of a woman, medium shot, waist-up framing, wearing a tailored chic blazer over a fitted crop top and high-waisted trousers, walking down a modern city street, dynamic fashion stride",
+    "fashion editorial modeling photo of a woman, medium shot, wearing a stylish cropped leather jacket and casual denim, posing against a sleek textured concrete wall",
+    "chic contemporary fashion shoot of a woman, medium shot, waist-up framing, wearing a classic crisp white button-up shirt slightly unbuttoned and fitted jeans, elegant relaxed modeling posture",
+    "high-fashion Parisian street modeling shoot of a woman, medium shot, wearing an elegant trench coat over a fitted top, golden hour European architecture bokeh",
 ]
 
 MODELING_BEAUTY_PORTRAITS = [

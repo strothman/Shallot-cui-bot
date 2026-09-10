@@ -2196,7 +2196,7 @@ class AdoptButtons(discord.ui.View):
 
 class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
     """Modal allowing the user to configure motion prompt and Wan 2.2 settings before queuing video generation."""
-    def __init__(self, default_prompt: str = "", default_duration: str = "5", default_smoothness: str = "smooth", on_submit_callback=None):
+    def __init__(self, default_prompt: str = "", default_duration: str = "10", default_smoothness: str = "smooth", on_submit_callback=None):
         super().__init__()
         self.on_submit_callback = on_submit_callback
 
@@ -2211,10 +2211,10 @@ class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
         self.add_item(self.prompt_input)
 
         self.duration_input = discord.ui.TextInput(
-            label="Duration in Seconds (5 or 10)",
+            label="Duration in Seconds (10 or 5)",
             style=discord.TextStyle.short,
-            placeholder="5 or 10 (default: 5)",
-            default=str(default_duration) if default_duration else "5",
+            placeholder="10 (default) or 5",
+            default=str(default_duration) if default_duration else "10",
             max_length=2,
             required=False
         )
