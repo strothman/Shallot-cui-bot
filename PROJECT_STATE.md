@@ -83,18 +83,49 @@ Under every 4-image grid, you get 1-click buttons:
 
 ---
 
-## 🌟 4. What's New in v2.4.0
+## 🧬 4. Character LoRA Dataset Creator (From 1–12 Reference Photos)
 
-1. **New Character Presets:** Added **Valerie** and **Sully** with built-in privacy protection and automatic trait injection (e.g., glasses and hair).
-2. **Live Cancel Button (`🛑 Cancel`):** You can now stop any running render without having to open the ComfyUI console.
-3. **Grid Remix Modal (`✏️ Remix`):** One-click button to tweak prompts directly from Discord popups.
-4. **Automatic Memory Cleaning (VRAM Auto-Purge):** The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
-5. **Simplified & Cleaner Menu:** Removed bloated, rarely-used tools (like the experimental LoRA builder) to keep the bot lean, fast, and easy to use.
-6. **Double-Launch Warning:** The bot alerts you if you accidentally start two bot windows, preventing double generations.
+If you only have **1 to 12 reference photos** of a person or character (and no existing Flux LoRA), you can use the **Synthetic Dataset Expansion Tool** to create a complete, high-quality, 30-image training dataset for Krea 2:
+
+### How It Works:
+1. **Drop Reference Images**: Place 1 to 12 clear photos (selfies, portraits, candids) into `inputs/reference_character/` (or specify a custom folder).
+2. **Identity Extraction**: The tool loads `IP-Adapter FaceID Plus v2` (`ip-adapter-plus_sdxl_vit-h.safetensors` / InsightFace) in ComfyUI to lock the person's exact facial structure and identity.
+3. **Structured Prompt Matrix**: Automatically generates a balanced, diverse 30-image set:
+   * **~35% Full-Body Modeling**: Walking, standing, silhouette, full-view outfits (swimwear, casual, dresses, athletic).
+   * **~35% Medium / Cowboy**: Waist-up, natural postures, cafe/street/resort environments.
+   * **~30% Close-Up Portraits**: Sharp facial focus, expressions, golden hour, and soft studio lighting.
+4. **Auto-Captioning via Florence-2**: Each generated picture is automatically analyzed by Florence-2, formatted with the trigger word (e.g. `samantha, a photo of...`), and saved as paired `.png` and `.txt` files.
+5. **AI-Toolkit Config Generation**: Produces a ready-to-run `.yaml` file for training your Krea 2 LoRA at 1024x1024.
+
+### ⏯️ Resume & Job Continuation (If You Run Out of Data / Interrupt):
+The tool is built with **automatic state resumption**:
+* If generation is interrupted, or if you close the terminal, you can resume at any time simply by re-running the script or batch file!
+* The script scans the output directory (`datasets/<trigger>_krea2/`), detects all existing completed `<trigger>_XXX.png` and `.txt` pairs, and seamlessly starts generating the remaining samples starting from the next index.
+* You never lose previously generated images or waste GPU time.
+
+### How to Run:
+* **One-Click Batch**: Double-click **`generate_dataset_from_photos.bat`**.
+* **Terminal**:
+  ```bash
+  python tools/create_character_dataset_from_photos.py --input_dir inputs/reference_character --trigger mychar --count 30
+  ```
 
 ---
 
-## 🧪 5. Testing & Quality Assurance
+## 🌟 5. What's New in v2.4.0 & Latest Updates
+
+1. **Character Dataset Builder from Photos (`tools/create_character_dataset_from_photos.py`)**: Generate full 30-sample training datasets from just 1–12 reference photos with IP-Adapter identity locking, automated prompt matrix, Florence-2 auto-captioning, and seamless resume support.
+2. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
+3. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
+4. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
+5. **New Character Presets:** Added **Valerie** and **Sully** with built-in privacy protection and automatic trait injection (e.g., glasses and hair).
+6. **Live Cancel Button (`🛑 Cancel`):** You can now stop any running render without having to open the ComfyUI console.
+7. **Grid Remix Modal (`✏️ Remix`):** One-click button to tweak prompts directly from Discord popups.
+8. **Automatic Memory Cleaning (VRAM Auto-Purge):** The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+
+---
+
+## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
 * **Automated Tests:** **66 / 66 tests passing** (`python suite_test.py`).
@@ -108,9 +139,9 @@ Every time you run the bot using `run_bot.bat`, it performs an automatic safety 
 
 ---
 
-## 🚀 6. How to Start Everything
+## 🚀 7. How to Start Everything
 
 1. Make sure your `.env` file has your `DISCORD_TOKEN`.
 2. Start ComfyUI on your computer (or run `/cui-start` in Discord).
 3. Double-click **`run_bot.bat`**.
-4. Head into Discord and type `/imagine` to start creating! 🎨
+4. Head into Discord and type `/imagine` or `/blend-krea` to start creating! 🎨

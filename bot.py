@@ -2532,13 +2532,20 @@ async def on_interaction(interaction: discord.Interaction):
                 cur_wet = float(gen_data.get("wetness", -2.0))
                 next_wet = 0.0 if cur_wet == -2.0 else (1.0 if cur_wet == 0.0 else -2.0)
                 await handle_update_blend_krea_view(interaction, gen_id, new_wetness=next_wet)
+        elif custom_id.startswith("set_blend_krea_comp:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                if interaction.data and "values" in interaction.data:
+                    val = interaction.data["values"][0]
+                    await handle_update_blend_krea_view(interaction, gen_id, new_comp=val)
         elif custom_id.startswith("toggle_blend_krea_composition:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:
                 gen_id = parts[1]
                 gen_data = get_generation(gen_id) or {}
                 cur_comp = gen_data.get("composition", "off")
-                next_comp = "medium" if cur_comp == "off" else ("strong" if cur_comp == "medium" else ("subtle" if cur_comp == "strong" else "off"))
+                next_comp = "subtle" if cur_comp == "off" else ("medium" if cur_comp == "subtle" else ("strong" if cur_comp == "medium" else "off"))
                 await handle_update_blend_krea_view(interaction, gen_id, new_comp=next_comp)
         elif custom_id.startswith("set_blend_krea_char:"):
             parts = custom_id.split(":")
@@ -3984,11 +3991,7 @@ async def execute_bertflow(
         file = discord.File(io.BytesIO(image_bytes), filename=f"{generation_id}.png")
         view = BertflowButtons(
             generation_id=generation_id,
-            on_reroll_cb=handle_bertflow_reroll,
-            on_remix_cb=handle_bertflow_remix,
-            character=character,
-            on_toggle_char_cb=handle_bertflow_toggle_char,
-            on_upscale_cb=handle_bertflow_upscale
+            character=character
         )
 
         try:
@@ -6837,9 +6840,9 @@ async def execute_blend_krea_core(
     model=BERTFLOW_MODEL_CHOICES,
     composition=[
         app_commands.Choice(name="Off (Semantic Vision Only - Default)", value="off"),
-        app_commands.Choice(name="Medium (70% Denoise - Locks Pose & Silhouette)", value="medium"),
-        app_commands.Choice(name="Strong (50% Denoise - Maximum Structural Reference)", value="strong"),
-        app_commands.Choice(name="Subtle (85% Denoise - Loose Composition Guide)", value="subtle"),
+        app_commands.Choice(name="Subtle (Loose Pose & Atmosphere - 85% Denoise)", value="subtle"),
+        app_commands.Choice(name="Medium (Balanced Silhouette & Pose - 70% Denoise)", value="medium"),
+        app_commands.Choice(name="Strong (Strict Silhouette Lock - 50% Denoise)", value="strong"),
     ]
 )
 async def blend_krea(

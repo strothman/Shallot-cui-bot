@@ -2529,19 +2529,76 @@ class TestCUIBotFunctions(unittest.TestCase):
         )
         self.assertEqual(wf_strong["599"]["inputs"]["start_at_step"], 4)
 
-        # 4. Test BlendKreaButtons with composition toggle
+        # 4. Test BlendKreaButtons with composition dropdown
         view_off = BlendKreaButtons(generation_id="gen_krea_test", composition="off")
-        comp_btn_off = next(item for item in view_off.children if getattr(item, "custom_id", "") == "toggle_blend_krea_composition:gen_krea_test")
-        self.assertIn("Comp: Off", comp_btn_off.label)
+        comp_select_off = next(item for item in view_off.children if getattr(item, "custom_id", "") == "set_blend_krea_comp:gen_krea_test")
+        self.assertEqual(comp_select_off.options[0].value, "off")
+        self.assertTrue(comp_select_off.options[0].default)
 
         view_med = BlendKreaButtons(generation_id="gen_krea_test", composition="medium")
-        comp_btn_med = next(item for item in view_med.children if getattr(item, "custom_id", "") == "toggle_blend_krea_composition:gen_krea_test")
-        self.assertIn("Comp: Med (70%)", comp_btn_med.label)
+        comp_select_med = next(item for item in view_med.children if getattr(item, "custom_id", "") == "set_blend_krea_comp:gen_krea_test")
+        self.assertEqual(comp_select_med.options[2].value, "medium")
+        self.assertTrue(comp_select_med.options[2].default)
 
         # 5. Test embed display with composition
         embed = build_blend_krea_embed({"krea2_prompt": "Test", "composition": "medium"})
         pipeline_field = next(f.value for f in embed.fields if f.name == "⚙️ Pipeline Settings")
-        self.assertIn("Direct Composition:** `Medium Silhouette / Pose (70% Denoise)`", pipeline_field)
+        self.assertIn("Direct Comp:** `Medium (Balanced Silhouette & Pose - 70% Denoise)`", pipeline_field)
+
+    def test_module64_photo_dataset_builder(self):
+        """Verify prompt matrix, IPAdapter multi-image workflow, and AI-Toolkit config generation."""
+        import tempfile
+        from tools.create_character_dataset_from_photos import (
+            generate_prompt_matrix,
+            build_ipadapter_workflow,
+            write_ai_toolkit_config
+        )
+
+        # 1. Prompt matrix generation
+        prompts = generate_prompt_matrix(count=20)
+        self.assertEqual(len(prompts), 20)
+        self.assertTrue(any("full-body" in p for p in prompts))
+        self.assertTrue(any("medium" in p or "waist-up" in p or "cowboy" in p for p in prompts))
+        self.assertTrue(any("portrait" in p or "close-up" in p for p in prompts))
+
+        # 2. IPAdapter workflow generation for 3 reference images
+        ref_images = ["photo1.png", "photo2.png", "photo3.png"]
+        wf = build_ipadapter_workflow(
+            reference_image_names=ref_images,
+            prompt_text="a fashion photoshoot of a woman",
+            seed=42,
+            checkpoint="RealVisXL_V4.0.safetensors",
+            resolution=1024
+        )
+        self.assertIn("20", wf)  # IPAdapterUnifiedLoader
+        self.assertEqual(wf["20"]["class_type"], "IPAdapterUnifiedLoader")
+        self.assertEqual(wf["20"]["inputs"]["preset"], "PLUS (high strength)")
+
+        # Verify load nodes for all 3 images
+        self.assertIn("ref_img_0", wf)
+        self.assertIn("ref_img_1", wf)
+        self.assertIn("ref_img_2", wf)
+        self.assertEqual(wf["ref_img_0"]["inputs"]["image"], "photo1.png")
+        self.assertEqual(wf["ref_img_2"]["inputs"]["image"], "photo3.png")
+
+        # Verify chained IPAdapterAdvanced nodes
+        self.assertIn("ref_ip_0", wf)
+        self.assertIn("ref_ip_1", wf)
+        self.assertIn("ref_ip_2", wf)
+        # KSampler model input points to the final IPAdapter in chain
+        self.assertEqual(wf["3"]["inputs"]["model"], ["ref_ip_2", 0])
+
+        # 3. AI-Toolkit config generation
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_yaml = os.path.join(tmpdir, "test_config.yaml")
+            write_ai_toolkit_config("my_test_char", tmpdir, out_yaml)
+            self.assertTrue(os.path.exists(out_yaml))
+            with open(out_yaml, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn('name: "my_test_char_krea2"', content)
+            self.assertIn('trigger_word: "my_test_char"', content)
+            self.assertIn('arch: "krea2"', content)
+            self.assertIn('noise_scheduler: "flowmatch"', content)
 
 
 if __name__ == "__main__":

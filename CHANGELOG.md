@@ -4,6 +4,18 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-10]
+
+### Added
+* 🧬 **Character Dataset Generator from Reference Photos (`tools/create_character_dataset_from_photos.py`)**: Built an automated identity-expansion dataset generator allowing users to create full 30-image Krea 2 LoRA training datasets from just 1 to 12 reference photos using IP-Adapter identity projection, a balanced prompt matrix (full-body, medium, portrait), Florence-2 auto-captioning, and seamless resume/job continuation logic. Includes 1-click batch launcher `generate_dataset_from_photos.bat`.
+* 🖼️ **`/blend-krea` Direct Composition Dropdown**: Replaced the cycling composition button with a dedicated 1-click dropdown select menu (`set_blend_krea_comp`), making all 4 pose-locking modes (`Off`, `Subtle`, `Medium`, `Strong`) immediately selectable with clear, intuitive labels.
+* 📜 **Streamlined `/blend-krea` Embed**: Removed redundant duplicate prompt displays; initial sessions show Florence-2 vision analysis once, displaying the fused generation prompt only when additive remix instructions are provided.
+
+### Fixed
+* 🐛 **Bertflow Duplicate Re-Roll Queuing**: Fixed an issue where clicking `[ 🔄 Re-roll ]` on Bertflow images dispatched two duplicate generation tasks to ComfyUI. Removed redundant view callbacks from `BertflowButtons` so actions are handled exclusively and persistently through `bot.py`'s `on_interaction` handler.
+* 🔄 **Direct Composition Order Progression**: Reordered composition toggle states in `bot.py` and slash command choices from `Off -> Subtle (85% denoise) -> Medium (70% denoise) -> Strong (50% denoise)` to ensure logical progressive strength.
+
+---
 ## [2026-09-09]
 
 ### Added

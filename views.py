@@ -1238,9 +1238,9 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     comp = gen_data.get("composition", "off")
     char_choice = gen_data.get("char_choice", "none")
 
-    model_display = "Muse v3.5 Extended (Stable Yogi)" if "muse" in model_choice.lower() else "Pornmaster v2 (Krea 2 FP8)"
+    model_display = "Muse v3.5 Extended" if "muse" in model_choice.lower() else "Pornmaster v2 (FP8)"
     if wetness == -2.0:
-        skin_display = "Matte Pores (-2.0 Anti-Sheen)"
+        skin_display = "Matte Pores (-2.0)"
     elif wetness == 0.0:
         skin_display = "Natural Baseline (0.0)"
     elif wetness == 1.0:
@@ -1249,11 +1249,11 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         skin_display = f"{wetness:+.1f}"
 
     if comp == "medium":
-        comp_display = "Medium Silhouette / Pose (70% Denoise)"
+        comp_display = "Medium (Balanced Silhouette & Pose - 70% Denoise)"
     elif comp == "strong":
-        comp_display = "Strong Direct Composition (50% Denoise)"
+        comp_display = "Strong (Strict Silhouette Lock - 50% Denoise)"
     elif comp == "subtle":
-        comp_display = "Subtle Composition (85% Denoise)"
+        comp_display = "Subtle (Loose Pose & Atmosphere - 85% Denoise)"
     else:
         comp_display = "Off (Semantic Vision Only)"
 
@@ -1273,23 +1273,21 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         embed.set_thumbnail(url=image_url)
 
     disp_vision = vision_prompt[:1020] + "..." if len(vision_prompt) > 1024 else vision_prompt
-    disp_fused = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
-
     embed.add_field(name="👁️ Florence-2 Vision Analysis", value=disp_vision, inline=False)
+
     if user_prompt:
         disp_user = user_prompt[:1020] + "..." if len(user_prompt) > 1024 else user_prompt
+        disp_fused = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
         embed.add_field(name="✏️ Your Remix Additions", value=disp_user, inline=False)
+        embed.add_field(name="📜 Fused Generation Prompt", value=disp_fused, inline=False)
     else:
         embed.add_field(name="✏️ Your Remix Additions", value="*(None — click **Edit Remix Prompt** below to add changes)*", inline=False)
 
-    embed.add_field(name="📜 Fused Generation Prompt", value=disp_fused, inline=False)
     embed.add_field(
         name="⚙️ Pipeline Settings",
         value=(
-            f"📐 **Aspect Ratio:** `{ar}`\n"
-            f"🤖 **Engine:** `{model_display}`\n"
-            f"💧 **Skin Finish:** `{skin_display}`\n"
-            f"🖼️ **Direct Composition:** `{comp_display}`\n"
+            f"📐 **Ratio:** `{ar}` • 🤖 **Engine:** `{model_display}` • 💧 **Skin:** `{skin_display}`\n"
+            f"🖼️ **Direct Comp:** `{comp_display}`\n"
             f"🎭 **Character:** `{char_display}`"
         ),
         inline=False
@@ -1307,10 +1305,10 @@ class EditBlendKreaModal(discord.ui.Modal):
         self.remix_input = discord.ui.TextInput(
             label="Remix / Extra Details to Blend In",
             style=discord.TextStyle.paragraph,
-            default=current_prompt[:500] if current_prompt else "",
-            placeholder="Add objects, lighting, attire, or scene changes...",
+            default=current_prompt[:1000] if current_prompt else "",
+            placeholder="Describe new attire, background, mood, lighting, or objects to fuse into the image...",
             required=False,
-            max_length=500
+            max_length=1000
         )
         self.add_item(self.remix_input)
 
@@ -1331,7 +1329,7 @@ class BlendKreaButtons(discord.ui.View):
         self.ar = ar
         self.model_choice = model_choice
         self.wetness = wetness
-        self.composition = composition
+        self.composition = composition or "off"
         self.character = character or "none"
 
         # Row 0: Aspect Ratios (21:9, 16:9, 1:1, 3:4, 9:16)
@@ -1346,50 +1344,43 @@ class BlendKreaButtons(discord.ui.View):
                 row=0
             ))
 
-        # Row 1: UNET Model, Skin Finish, and Direct Composition Toggles
-        is_muse = ("muse" in self.model_choice.lower())
-        model_label = "🤖 Engine: Muse v3.5" if is_muse else "🤖 Engine: Pornmaster v2"
-        self.add_item(discord.ui.Button(
-            label=model_label,
-            style=discord.ButtonStyle.primary,
-            custom_id=f"toggle_blend_krea_model:{self.generation_id}",
-            row=1
-        ))
-
-        if self.wetness == -2.0:
-            wet_label = "💧 Skin: Matte (-2.0)"
-            wet_style = discord.ButtonStyle.primary
-        elif self.wetness == 0.0:
-            wet_label = "💧 Skin: Natural (0.0)"
-            wet_style = discord.ButtonStyle.secondary
-        else:
-            wet_label = "💧 Skin: Glossy (+1.0)"
-            wet_style = discord.ButtonStyle.secondary
-
-        self.add_item(discord.ui.Button(
-            label=wet_label,
-            style=wet_style,
-            custom_id=f"toggle_blend_krea_wetness:{self.generation_id}",
-            row=1
-        ))
-
-        if self.composition == "medium":
-            comp_label = "🖼️ Comp: Med (70%)"
-            comp_style = discord.ButtonStyle.primary
-        elif self.composition == "strong":
-            comp_label = "🖼️ Comp: Strong (50%)"
-            comp_style = discord.ButtonStyle.primary
-        elif self.composition == "subtle":
-            comp_label = "🖼️ Comp: Subtle (85%)"
-            comp_style = discord.ButtonStyle.primary
-        else:
-            comp_label = "🖼️ Comp: Off"
-            comp_style = discord.ButtonStyle.secondary
-
-        self.add_item(discord.ui.Button(
-            label=comp_label,
-            style=comp_style,
-            custom_id=f"toggle_blend_krea_composition:{self.generation_id}",
+        # Row 1: Direct Composition Dropdown Selector
+        comp_options = [
+            discord.SelectOption(
+                label="Off (Semantic Vision Only)",
+                value="off",
+                emoji="🚫",
+                description="Full creative freedom without pose lock (Default)",
+                default=(self.composition in [None, "off", "none", "style"])
+            ),
+            discord.SelectOption(
+                label="Subtle (Loose Pose & Atmosphere)",
+                value="subtle",
+                emoji="🖼️",
+                description="Light structural guide (85% denoise)",
+                default=(self.composition in ["subtle", "85"])
+            ),
+            discord.SelectOption(
+                label="Medium (Balanced Silhouette & Pose)",
+                value="medium",
+                emoji="🖼️",
+                description="Preserves subject outline & pose (70% denoise)",
+                default=(self.composition in ["medium", "70"])
+            ),
+            discord.SelectOption(
+                label="Strong (Strict Silhouette & Pose Lock)",
+                value="strong",
+                emoji="🔒",
+                description="Locks silhouette & composition tightly (50% denoise)",
+                default=(self.composition in ["strong", "50"])
+            ),
+        ]
+        self.add_item(discord.ui.Select(
+            placeholder="🖼️ Select Composition / Pose Retention...",
+            options=comp_options,
+            min_values=1,
+            max_values=1,
+            custom_id=f"set_blend_krea_comp:{self.generation_id}",
             row=1
         ))
 
@@ -1426,18 +1417,45 @@ class BlendKreaButtons(discord.ui.View):
             row=2
         ))
 
-        # Row 3: Action Launchers
+        # Row 3: UNET Engine and Skin Finish Controls
+        is_muse = ("muse" in self.model_choice.lower())
+        model_label = "🤖 Engine: Muse v3.5" if is_muse else "🤖 Engine: Pornmaster v2"
+        self.add_item(discord.ui.Button(
+            label=model_label,
+            style=discord.ButtonStyle.primary,
+            custom_id=f"toggle_blend_krea_model:{self.generation_id}",
+            row=3
+        ))
+
+        if self.wetness == -2.0:
+            wet_label = "💧 Skin: Matte (-2.0)"
+            wet_style = discord.ButtonStyle.primary
+        elif self.wetness == 0.0:
+            wet_label = "💧 Skin: Natural (0.0)"
+            wet_style = discord.ButtonStyle.secondary
+        else:
+            wet_label = "💧 Skin: Glossy (+1.0)"
+            wet_style = discord.ButtonStyle.secondary
+
+        self.add_item(discord.ui.Button(
+            label=wet_label,
+            style=wet_style,
+            custom_id=f"toggle_blend_krea_wetness:{self.generation_id}",
+            row=3
+        ))
+
+        # Row 4: Action Launchers
         self.add_item(discord.ui.Button(
             label="✏️ Edit Remix Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"edit_blend_krea_prompt:{self.generation_id}",
-            row=3
+            row=4
         ))
         self.add_item(discord.ui.Button(
             label="⚡ Generate in Krea 2",
             style=discord.ButtonStyle.danger,
             custom_id=f"gen_blend_krea:{self.generation_id}",
-            row=3
+            row=4
         ))
 
 
@@ -2369,7 +2387,9 @@ class VideoActionView(discord.ui.View):
 
 
 class BertflowButtons(discord.ui.View):
-    """Buttons attached to /bertflow photorealism generations."""
+    """Buttons attached to /bertflow photorealism generations.
+    Actions are handled persistently via custom_id in bot.py on_interaction to prevent duplicate triggers.
+    """
     def __init__(
         self,
         generation_id: str,
@@ -2392,7 +2412,6 @@ class BertflowButtons(discord.ui.View):
             style=discord.ButtonStyle.primary,
             custom_id=f"bertflow_reroll:{generation_id}"
         )
-        self.reroll_btn.callback = self._on_reroll
         self.add_item(self.reroll_btn)
 
         self.remix_btn = discord.ui.Button(
@@ -2400,7 +2419,6 @@ class BertflowButtons(discord.ui.View):
             style=discord.ButtonStyle.secondary,
             custom_id=f"bertflow_remix:{generation_id}"
         )
-        self.remix_btn.callback = self._on_remix
         self.add_item(self.remix_btn)
 
         has_char = character and str(character).lower() not in ["none", "nochar", "off", "false"]
@@ -2411,7 +2429,6 @@ class BertflowButtons(discord.ui.View):
             style=char_style,
             custom_id=f"bertflow_toggle_char:{generation_id}"
         )
-        self.toggle_char_btn.callback = self._on_toggle_char
         self.add_item(self.toggle_char_btn)
 
         self.upscale_btn = discord.ui.Button(
@@ -2419,38 +2436,6 @@ class BertflowButtons(discord.ui.View):
             style=discord.ButtonStyle.secondary,
             custom_id=f"bertflow_upscale:{generation_id}"
         )
-        self.upscale_btn.callback = self._on_upscale
         self.add_item(self.upscale_btn)
 
-    async def _on_reroll(self, interaction: discord.Interaction):
-        try:
-            if self.on_reroll_cb:
-                await self.on_reroll_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in BertflowButtons reroll: {e}")
-            await send_error_fallback(interaction, f"Failed to re-roll: {e}")
-
-    async def _on_remix(self, interaction: discord.Interaction):
-        try:
-            if self.on_remix_cb:
-                await self.on_remix_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in BertflowButtons remix: {e}")
-            await send_error_fallback(interaction, f"Failed to remix: {e}")
-
-    async def _on_toggle_char(self, interaction: discord.Interaction):
-        try:
-            if self.on_toggle_char_cb:
-                await self.on_toggle_char_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in BertflowButtons toggle char: {e}")
-            await send_error_fallback(interaction, f"Failed to toggle character: {e}")
-
-    async def _on_upscale(self, interaction: discord.Interaction):
-        try:
-            if self.on_upscale_cb:
-                await self.on_upscale_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in BertflowButtons upscale: {e}")
-            await send_error_fallback(interaction, f"Failed to upscale: {e}")
 
