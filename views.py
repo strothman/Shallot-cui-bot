@@ -2,6 +2,7 @@ import logging
 import re
 import discord
 from core_helpers import send_error_fallback
+from characters import get_character_display_badge
 
 logger = logging.getLogger("DiscordBot")
 
@@ -482,19 +483,7 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
     if not char_choice:
         char_choice = "ogarla" if oga else "none"
 
-    char_names = {
-        "none": "None",
-        "ogarla": "🌿 Ogarla (--ogarla.70)",
-        "valerie": "👩 Valerie (--valerie.85)",
-        "sully": "👓 Sully (--sully.85)",
-        "cheri": "🌸 Cheri E6 (--cheri.85)",
-        "cheri_e4": "🌸 Cheri E4 (--cheri4.85)",
-        "mageill": "🔮 Mageill E5 (--mageill.85)",
-        "mageill_e6": "🔮 Mageill E6 (--mageill6.85)",
-        "mageill_e4": "🔮 Mageill E4 (--mageill4.85)",
-        "mageill_e3": "🔮 Mageill E3 (--mageill3.85)",
-    }
-    char_display = char_names.get(char_choice, char_choice)
+    char_display = get_character_display_badge(char_choice, architecture="sdxl")
 
     if sr is False or sr == "nosr":
         sr_display = "OFF"
@@ -626,42 +615,7 @@ def build_blend_complete_embed(
     comp_display = comp_map.get(comp_strength, comp_strength)
 
     # Resolve character badge
-    char_map = {
-        "ogarla": "🌿 Ogarla (--ogarla.70)",
-        "valerie": "👩 Valerie (--valerie.85)",
-        "sully": "👓 Sully (--sully.85)",
-        "cheri": "🌸 Cheri (Epoch 6)",
-        "cheri_e4": "🌸 Cheri (Epoch 4)",
-        "mageill": "🔮 Mageill (Epoch 5)",
-        "mageill_e6": "🔮 Mageill (Epoch 6)",
-        "mageill_e4": "🔮 Mageill (Epoch 4)",
-        "mageill_e3": "🔮 Mageill (Epoch 3)",
-        "none": "None",
-    }
-    if not char_choice or char_choice == "none":
-        p_lower = display_prompt.lower()
-        if "--valerie" in p_lower:
-            char_display = "👩 Valerie (--valerie.85)"
-        elif "--sully" in p_lower:
-            char_display = "👓 Sully (--sully.85)"
-        elif "--cheri4" in p_lower:
-            char_display = "🌸 Cheri (Epoch 4)"
-        elif "--cheri" in p_lower:
-            char_display = "🌸 Cheri (Epoch 6)"
-        elif "--mageill6" in p_lower:
-            char_display = "🔮 Mageill (Epoch 6)"
-        elif "--mageill4" in p_lower:
-            char_display = "🔮 Mageill (Epoch 4)"
-        elif "--mageill3" in p_lower:
-            char_display = "🔮 Mageill (Epoch 3)"
-        elif "--mageill" in p_lower or "mageill" in p_lower:
-            char_display = "🔮 Mageill (Epoch 5)"
-        elif "--ogarla" in p_lower or "ogarla" in p_lower:
-            char_display = "🌿 Ogarla (--ogarla.70)"
-        else:
-            char_display = "None"
-    else:
-        char_display = char_map.get(char_choice, char_choice)
+    char_display = get_character_display_badge(char_choice, architecture="sdxl", prompt=display_prompt)
 
     # Resolve semi-realism badge
     if not sr_choice or sr_choice in ["nosr", False]:
@@ -801,42 +755,7 @@ def build_blended_image_embed(
     comp_display = comp_map.get(comp_strength, comp_strength)
 
     # Resolve character badge
-    char_map = {
-        "ogarla": "🌿 Ogarla (--ogarla.70)",
-        "valerie": "👩 Valerie (--valerie.85)",
-        "sully": "👓 Sully (--sully.85)",
-        "cheri": "🌸 Cheri (Epoch 6)",
-        "cheri_e4": "🌸 Cheri (Epoch 4)",
-        "mageill": "🔮 Mageill (Epoch 5)",
-        "mageill_e6": "🔮 Mageill (Epoch 6)",
-        "mageill_e4": "🔮 Mageill (Epoch 4)",
-        "mageill_e3": "🔮 Mageill (Epoch 3)",
-        "none": "None",
-    }
-    if not char_choice or char_choice == "none":
-        p_lower = display_prompt.lower()
-        if "--valerie" in p_lower:
-            char_display = "👩 Valerie (--valerie.85)"
-        elif "--sully" in p_lower:
-            char_display = "👓 Sully (--sully.85)"
-        elif "--cheri4" in p_lower:
-            char_display = "🌸 Cheri (Epoch 4)"
-        elif "--cheri" in p_lower:
-            char_display = "🌸 Cheri (Epoch 6)"
-        elif "--mageill6" in p_lower:
-            char_display = "🔮 Mageill (Epoch 6)"
-        elif "--mageill4" in p_lower:
-            char_display = "🔮 Mageill (Epoch 4)"
-        elif "--mageill3" in p_lower:
-            char_display = "🔮 Mageill (Epoch 3)"
-        elif "--mageill" in p_lower or "mageill" in p_lower:
-            char_display = "🔮 Mageill (Epoch 5)"
-        elif "--ogarla" in p_lower or "ogarla" in p_lower:
-            char_display = "🌿 Ogarla (--ogarla.70)"
-        else:
-            char_display = "None"
-    else:
-        char_display = char_map.get(char_choice, char_choice)
+    char_display = get_character_display_badge(char_choice, architecture="sdxl", prompt=display_prompt)
 
     # Resolve semi-realism badge
     if not sr_choice or sr_choice in ["nosr", False]:
@@ -1257,12 +1176,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     else:
         comp_display = "Off (Semantic Vision Only)"
 
-    if char_choice in ["ogarla.85", "ogarla", "oga"]:
-        char_display = "🌿 Ogarla (.85 - Default)"
-    elif char_choice in ["ogarla.70", "ogarla_light"]:
-        char_display = "🌿 Ogarla (.70 - Light)"
-    else:
-        char_display = "None"
+    char_display = get_character_display_badge(char_choice, architecture="krea2")
 
     embed = discord.Embed(
         title="📸 Krea 2 Blend Studio",
@@ -1398,7 +1312,7 @@ class BlendKreaButtons(discord.ui.View):
                 value="ogarla.70",
                 emoji="🌿",
                 description="Subtle Krea 2 Character LoRA (Recommended Default)",
-                default=(self.character in ["ogarla", "ogarla.70", "oga", "ogarla_light", None])
+                default=(self.character in ["ogarla", "ogarla.70", "oga", "ogarla_light"])
             ),
             discord.SelectOption(
                 label="Ogarla (Krea 2 - 0.85)",
@@ -1413,6 +1327,13 @@ class BlendKreaButtons(discord.ui.View):
                 emoji="✨",
                 description="Valerie Krea 2 Character LoRA (Brunette, Brown Eyes)",
                 default=(self.character in ["valerie", "valerie.90", "val"])
+            ),
+            discord.SelectOption(
+                label="Valerie (Krea 2 Light - 0.70)",
+                value="valerie.70",
+                emoji="✨",
+                description="Subtle Valerie Krea 2 Character LoRA",
+                default=(self.character in ["valerie.70", "valerie_light"])
             ),
         ]
         self.add_item(discord.ui.Select(
@@ -2429,7 +2350,14 @@ class BertflowButtons(discord.ui.View):
         self.add_item(self.remix_btn)
 
         has_char = character and str(character).lower() not in ["none", "nochar", "off", "false"]
-        char_label = "🌿 Ogarla: ON" if has_char else "🌿 Ogarla: OFF"
+        if not has_char:
+            char_label = "🌿 Ogarla: OFF"
+        elif "valerie" in str(character).lower() or "val" in str(character).lower():
+            char_label = "✨ Valerie: ON"
+        elif "ogarla" in str(character).lower() or "oga" in str(character).lower():
+            char_label = "🌿 Ogarla: ON"
+        else:
+            char_label = f"🎭 {character}: ON"
         char_style = discord.ButtonStyle.success if has_char else discord.ButtonStyle.secondary
         self.toggle_char_btn = discord.ui.Button(
             label=char_label,

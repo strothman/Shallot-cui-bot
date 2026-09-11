@@ -117,15 +117,27 @@ The tool is built with **automatic state resumption**:
 
 ## 🌟 5. What's New in v2.4.0 & Latest Updates
 
-1. **Dual-Engine Synthetic Dataset Builder (`tools/build_character_dataset.py`)**: Seamlessly supports both Flux GGUF and SDXL character LoRAs with auto-detection. Generated a diverse 30-sample 1024x1024 Krea 2 training dataset for Valerie (`datasets/valerie_krea2/` & `valerie_krea2.zip`) with Florence-2 auto-captioning and AI-Toolkit config. Includes 1-click batch runner `generate_valerie_dataset.bat`.
-2. **Character Dataset Builder from Photos (`tools/create_character_dataset_from_photos.py`)**: Generate full 30-sample training datasets from just 1–12 reference photos with IP-Adapter identity locking, automated prompt matrix, Florence-2 auto-captioning, and seamless resume support.
-3. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
-4. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
-5. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
-6. **New Character Presets:** Added **Valerie** and **Sully** with built-in privacy protection and automatic trait injection (e.g., glasses and hair).
-7. **Live Cancel Button (`🛑 Cancel`):** You can now stop any running render without having to open the ComfyUI console.
-8. **Grid Remix Modal (`✏️ Remix`):** One-click button to tweak prompts directly from Discord popups.
-9. **Automatic Memory Cleaning (VRAM Auto-Purge):** The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+1. **Centralized Character Display Badges (`characters.get_character_display_badge`)**: Unified character badge formatting across all embed builders (`/describe`, `/blend`, `/blend-krea`, and prompt refine views). Replaced over 80 lines of duplicate manual mappings with a single source of truth.
+2. **Silent Singleton Lock for Automated Tests**: Added `silent: bool = False` to `acquire_instance_lock` in `bot.py` and `suite_test.py`. Unit testing collision detection now executes cleanly without false-alarm console warning banners.
+3. **Valerie Krea 2 Full System Integration**: Wired Valerie into `/bertflow` and `/blend-krea` choices, interactive select menus, session embeds, and smart toggle retention.
+4. **Dual-Engine Synthetic Dataset Builder (`tools/build_character_dataset.py`)**: Seamlessly supports both Flux GGUF and SDXL character LoRAs with auto-detection. Generated a diverse 30-sample 1024x1024 Krea 2 training dataset for Valerie (`datasets/valerie_krea2/` & `valerie_krea2.zip`) with Florence-2 auto-captioning and AI-Toolkit config. Includes 1-click batch runner `generate_valerie_dataset.bat`.
+5. **Character Dataset Builder from Photos (`tools/create_character_dataset_from_photos.py`)**: Generate full 30-sample training datasets from just 1–12 reference photos with IP-Adapter identity locking, automated prompt matrix, Florence-2 auto-captioning, and seamless resume support.
+6. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
+7. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
+8. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
+9. **Automatic Memory Cleaning (VRAM Auto-Purge)**: The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+
+---
+
+## 🗺️ Architectural Roadmap
+
+* **Phase 1: Zero-Risk Refinements [COMPLETED]**
+  * Centralized character display badge resolution in `characters.py`.
+  * Silenced test-induced multi-instance warning banner.
+* **Phase 2: Dynamic Character Autocomplete [COMPLETED]**
+  * Replaced static `app_commands.choices` arrays with dynamic `app_commands.autocomplete` querying `characters.py` and `scan_krea2_loras()`. Newly added LoRAs dropped into models folders immediately appear in Discord autocomplete without code edits or command re-syncing.
+* **Phase 3: Modular Cog Architecture [PLANNED]**
+  * Decompose monolithic `bot.py` into specialized Discord Cogs (`cogs/imagine.py`, `cogs/krea.py`, `cogs/video.py`, `cogs/admin.py`), reducing `bot.py` to lightweight lifecycle orchestration.
 
 ---
 

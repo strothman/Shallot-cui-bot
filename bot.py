@@ -20,6 +20,8 @@ from datetime import datetime
 from comfy_client import ComfyClient, StasisInterruptException
 from error_handler import error_handler, ErrorCategory, ErrorSeverity, AutoFixAction, AutoFixResult
 import db
+from characters import get_character_autocomplete_choices
+from model_architecture import Architecture
 
 # Refactored modular imports
 from parsers import (
@@ -194,6 +196,8 @@ CHARACTER_CHOICES_FLUX = [
 CHARACTER_CHOICES_KREA2 = [
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.85 - Default)", value="ogarla.85"),
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.70 - Light)", value="ogarla.70"),
+    app_commands.Choice(name="✨ Valerie Krea 2 (.90 - Default)", value="valerie.90"),
+    app_commands.Choice(name="✨ Valerie Krea 2 (.70 - Light)", value="valerie.70"),
 ]
 
 # Checkpoint-specific configurations & optimal generation parameters for photorealism and LoRA compatibility
@@ -3662,8 +3666,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         app_commands.Choice(name="10:7 (iPad)", value="10:7"),
         app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
         app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
-    ],
-    character=CHARACTER_CHOICES_SDXL
+    ]
 )
 async def imagine(
     interaction: discord.Interaction, 
@@ -3704,6 +3707,10 @@ async def imagine(
     await safe_defer(interaction, thinking=True)
     await execute_imagine(interaction, prompt, None, checkpoint, style_reference, favorite_style=favorite_style, semi_realism=semi_realism, aspect_ratio=aspect_ratio, character=character, enhancements=enhancements)
 
+@imagine.autocomplete('character')
+async def imagine_character_autocomplete(interaction: discord.Interaction, current: str):
+    return get_character_autocomplete_choices(current, Architecture.SDXL)
+
 @imagine.autocomplete('favorite_style')
 async def imagine_favorite_style_autocomplete(interaction: discord.Interaction, current: str):
     choices = []
@@ -3743,7 +3750,6 @@ async def imagine_favorite_prompt_autocomplete(interaction: discord.Interaction,
 )
 @app_commands.choices(
     model_type=FLUX_CHECKPOINT_CHOICES,
-    character=CHARACTER_CHOICES_FLUX,
     aspect_ratio=[
         app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
         app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
@@ -3808,6 +3814,10 @@ async def flux_command(
         guidance=guidance,
         smart=smart
     )
+
+@flux_command.autocomplete('character')
+async def flux_character_autocomplete(interaction: discord.Interaction, current: str):
+    return get_character_autocomplete_choices(current, Architecture.FLUX)
 
 
 # =========================================================================
@@ -4076,7 +4086,7 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
 
 
 async def handle_bertflow_toggle_char(interaction: discord.Interaction, generation_id: str):
-    """Toggles character LoRA (Ogarla) on/off for the given Bertflow generation."""
+    """Toggles character LoRA on/off for the given Bertflow generation."""
     await safe_defer(interaction, thinking=True)
     gen_data = db.get_generation(generation_id)
     if not gen_data:
@@ -4085,7 +4095,12 @@ async def handle_bertflow_toggle_char(interaction: discord.Interaction, generati
 
     curr_char = gen_data.get("character")
     has_char = curr_char and str(curr_char).lower() not in ["none", "nochar", "off", "false"]
-    new_char = None if has_char else "ogarla.85"
+    if has_char:
+        new_char = None
+        gen_data["last_character"] = curr_char
+        db.save_generation(generation_id, gen_data)
+    else:
+        new_char = gen_data.get("last_character") or "ogarla.85"
 
     await execute_bertflow(
         interaction=interaction,
@@ -4148,9 +4163,9 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
 
 @bot.tree.command(name="bertflow", description="📸 Generate ultra-photorealistic images using Bert's Krea 2 workflow!")
 @app_commands.describe(
-    prompt="Scene/subject description (supports natural language, --ar, and --ogarla)",
+    prompt="Scene/subject description (supports natural language, --ar, --ogarla, --valerie)",
     aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
-    character="Optional character LoRA preset (Ogarla Krea 2)",
+    character="Optional character LoRA preset (Ogarla / Valerie Krea 2)",
     model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",
     steps="Sampling steps (8 for Turbo, up to 20 for Extended)",
     seed="Optional fixed seed for reproducibility"
@@ -4165,20 +4180,19 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
         app_commands.Choice(name="4:3 (Classic Landscape - 1408x1056)", value="4:3"),
         app_commands.Choice(name="16:9.3 (Taskbar Fit - 1632x880)", value="16:9.3"),
     ],
-    character=CHARACTER_CHOICES_KREA2,
     model=BERTFLOW_MODEL_CHOICES
 )
 async def bertflow_command(
     interaction: discord.Interaction,
     prompt: str,
     aspect_ratio: str = "1:1",
-    character: app_commands.Choice[str] = None,
+    character: str = None,
     model: str = None,
     steps: int = 8,
     seed: int = None
 ):
     await safe_defer(interaction, thinking=True)
-    char_val = character.value if character else None
+    char_val = character.value if hasattr(character, "value") else character
     await execute_bertflow(
         interaction=interaction,
         prompt=prompt,
@@ -4188,6 +4202,10 @@ async def bertflow_command(
         model_name=model,
         character=char_val
     )
+
+@bertflow_command.autocomplete('character')
+async def bertflow_character_autocomplete(interaction: discord.Interaction, current: str):
+    return get_character_autocomplete_choices(current, Architecture.KREA2)
 
 
 # =========================================================================
@@ -6825,7 +6843,7 @@ async def execute_blend_krea_core(
     image="The image file you want to analyze and blend",
     prompt="Optional remix instructions or extra details to blend into the image",
     aspect_ratio="The aspect ratio for the Krea 2 render",
-    character="Optional character preset (Ogarla Krea 2)",
+    character="Optional character preset (Ogarla / Valerie Krea 2)",
     model="Select Krea 2 UNET Checkpoint (Defaults to auto-detecting Muse v3.5)",
     wetness="Anti-sheen skin matte strength (-2.0 default, 0.0 normal, 1.0 glossy)",
     composition="Optional direct physical composition/pose locking (Off default, Medium 70%, Strong 50%)"
@@ -6839,7 +6857,6 @@ async def execute_blend_krea_core(
         app_commands.Choice(name="3:4 Standard Portrait (1056x1408)", value="3:4"),
         app_commands.Choice(name="4:3 Standard Landscape (1408x1056)", value="4:3"),
     ],
-    character=CHARACTER_CHOICES_KREA2,
     model=BERTFLOW_MODEL_CHOICES,
     composition=[
         app_commands.Choice(name="Off (Semantic Vision Only - Default)", value="off"),
@@ -6853,7 +6870,7 @@ async def blend_krea(
     image: discord.Attachment, 
     prompt: str = None,
     aspect_ratio: str = "16:9",
-    character: app_commands.Choice[str] = None,
+    character: str = None,
     model: app_commands.Choice[str] = None,
     wetness: float = -2.0,
     composition: app_commands.Choice[str] = None
@@ -6869,7 +6886,7 @@ async def blend_krea(
         image_bytes = await image.read()
         selected_model = model.value if model else "muse"
         comp_val = composition.value if composition else "off"
-        char_val = character.value if character else "none"
+        char_val = character.value if hasattr(character, "value") else (character if character else "none")
         await execute_blend_krea_core(
             interaction=interaction,
             image_bytes=image_bytes,
@@ -6885,6 +6902,10 @@ async def blend_krea(
     except Exception as e:
         logger.error(f"Error reading image for blend-krea: {e}")
         await edit_original_fallback(interaction, content=f"❌ Failed to read uploaded image: {e}")
+
+@blend_krea.autocomplete('character')
+async def blend_krea_character_autocomplete(interaction: discord.Interaction, current: str):
+    return get_character_autocomplete_choices(current, Architecture.KREA2)
 
 
 
@@ -7613,7 +7634,7 @@ async def scan_models_command(interaction: discord.Interaction):
 
 _instance_lock_socket = None
 
-def acquire_instance_lock(port: int = 48123) -> bool:
+def acquire_instance_lock(port: int = 48123, silent: bool = False) -> bool:
     """
     Ensures only a single instance of the bot process can run on the machine at a time.
     Binds a localhost TCP socket on a dedicated lock port.
@@ -7632,13 +7653,14 @@ def acquire_instance_lock(port: int = 48123) -> bool:
             sock.close()
         except Exception:
             pass
-        logger.error(f"[!] Another instance of Shallot-CUI Bot is already running (port {port} in use). Startup aborted.")
-        print("\n" + "=" * 72)
-        print("[!] CRITICAL ERROR: Shallot-CUI Bot is ALREADY RUNNING!")
-        print("Running multiple bot instances causes all prompts and button clicks (like U1)")
-        print("to execute twice (duplicate generations/upscales).")
-        print("Please close any existing bot console windows before launching a new one.")
-        print("=" * 72 + "\n")
+        if not silent:
+            logger.error(f"[!] Another instance of Shallot-CUI Bot is already running (port {port} in use). Startup aborted.")
+            print("\n" + "=" * 72)
+            print("[!] CRITICAL ERROR: Shallot-CUI Bot is ALREADY RUNNING!")
+            print("Running multiple bot instances causes all prompts and button clicks (like U1)")
+            print("to execute twice (duplicate generations/upscales).")
+            print("Please close any existing bot console windows before launching a new one.")
+            print("=" * 72 + "\n")
         return False
 
 

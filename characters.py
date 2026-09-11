@@ -7,6 +7,8 @@ and silent trigger word translation for privacy masking.
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import re
+import discord
+from discord import app_commands
 
 @dataclass
 class CharacterProfile:
@@ -212,7 +214,7 @@ def scan_krea2_loras(lora_dir: Optional[str] = None) -> List[str]:
                     # Dynamic auto-registration if not already registered
                     stem = os.path.splitext(fname)[0].lower()
                     char_key = stem.replace("_krea2", "").replace("-krea2", "").replace("krea2_", "")
-                    if char_key not in CHARACTERS and char_key not in ["wetness", "de-oiler", "deoiler"]:
+                    if char_key not in CHARACTERS and not any(w in char_key for w in ["wetness", "de-oiler", "deoiler", "skin", "matte", "gloss", "lighting"]):
                         CHARACTERS[char_key] = CharacterProfile(
                             id=char_key,
                             display_name=char_key.capitalize(),
@@ -226,4 +228,186 @@ def scan_krea2_loras(lora_dir: Optional[str] = None) -> List[str]:
                             is_private=False
                         )
     return discovered
+
+
+CHARACTER_EMOJIS: Dict[str, str] = {
+    "ogarla": "🌿",
+    "valerie": "✨",
+    "sully": "👓",
+    "cheri": "🌸",
+    "cheri_e4": "🌸",
+    "mageill": "🔮",
+    "mageill_e3": "🔮",
+    "mageill_e4": "🔮",
+    "mageill_e6": "🔮",
+}
+
+def get_character_display_badge(
+    key: Optional[str] = None,
+    architecture: Optional[str] = None,
+    prompt: Optional[str] = None
+) -> str:
+    """
+    Returns a unified, beautifully-formatted user-facing character badge for Discord embeds and views.
+    Handles character IDs, weight suffixes, aliases, architecture context, and fallback prompt inspection.
+    """
+    if not key or str(key).lower() in ["none", "nochar", "off", "false"]:
+        if prompt:
+            p_lower = str(prompt).lower()
+            if "--valerie" in p_lower or "--val" in p_lower or "valerie" in p_lower:
+                key = "valerie"
+            elif "--sully" in p_lower or "--sul" in p_lower or "sully" in p_lower:
+                key = "sully"
+            elif "--cheri4" in p_lower:
+                key = "cheri_e4"
+            elif "--cheri" in p_lower or "cheri" in p_lower:
+                key = "cheri"
+            elif "--mageill6" in p_lower:
+                key = "mageill_e6"
+            elif "--mageill4" in p_lower:
+                key = "mageill_e4"
+            elif "--mageill3" in p_lower:
+                key = "mageill_e3"
+            elif "--mageill" in p_lower or "mageill" in p_lower:
+                key = "mageill"
+            elif "--ogarla" in p_lower or "--oga" in p_lower or "ogarla" in p_lower:
+                key = "ogarla"
+            else:
+                return "None"
+        else:
+            return "None"
+
+    k = str(key).lower().strip()
+    is_krea2 = architecture and ("krea" in str(architecture).lower())
+
+    if is_krea2:
+        if k in ["ogarla.85", "ogarla", "oga"]:
+            return "🌿 Ogarla (.85 - Default)"
+        elif k in ["ogarla.70", "ogarla_light"]:
+            return "🌿 Ogarla (.70 - Light)"
+        elif k in ["valerie.90", "valerie", "val"]:
+            return "✨ Valerie (.90 - Default)"
+        elif k in ["valerie.70", "valerie_light"]:
+            return "✨ Valerie (.70 - Light)"
+
+    # SDXL / General Presets
+    sdxl_map = {
+        "ogarla": "🌿 Ogarla (--ogarla.70)",
+        "ogarla.70": "🌿 Ogarla (--ogarla.70)",
+        "ogarla.85": "🌿 Ogarla (--ogarla.85)",
+        "valerie": "👩 Valerie (--valerie.85)",
+        "valerie.85": "👩 Valerie (--valerie.85)",
+        "valerie.70": "👩 Valerie (--valerie.70)",
+        "valerie.90": "✨ Valerie (.90 - Default)",
+        "sully": "👓 Sully (--sully.85)",
+        "sully.85": "👓 Sully (--sully.85)",
+        "sully.70": "👓 Sully (--sully.70)",
+        "cheri": "🌸 Cheri (Epoch 6)",
+        "cheri.85": "🌸 Cheri E6 (--cheri.85)",
+        "cheri_e4": "🌸 Cheri (Epoch 4)",
+        "cheri4": "🌸 Cheri (Epoch 4)",
+        "mageill": "🔮 Mageill (Epoch 5)",
+        "mageill.85": "🔮 Mageill E5 (--mageill.85)",
+        "mageill_e6": "🔮 Mageill (Epoch 6)",
+        "mageill6": "🔮 Mageill (Epoch 6)",
+        "mageill_e4": "🔮 Mageill (Epoch 4)",
+        "mageill4": "🔮 Mageill (Epoch 4)",
+        "mageill_e3": "🔮 Mageill (Epoch 3)",
+        "mageill3": "🔮 Mageill (Epoch 3)",
+    }
+    if k in sdxl_map:
+        return sdxl_map[k]
+
+    # Dynamic fallback lookup in CHARACTERS
+    char = get_character(k)
+    if char:
+        emoji = CHARACTER_EMOJIS.get(char.id, "🎭")
+        return f"{emoji} {char.display_name}"
+
+    return str(key)
+
+
+def get_character_autocomplete_choices(
+    current: str = "",
+    architecture: Any = None
+) -> List[app_commands.Choice[str]]:
+    """
+    Dynamically generates and filters Discord slash command choices based on registered characters
+    and newly-scanned LoRAs for the specified architecture.
+    """
+    arch_str = str(architecture).lower() if architecture else "sdxl"
+    choices: List[app_commands.Choice[str]] = []
+
+    if "krea" in arch_str:
+        try:
+            scan_krea2_loras()
+        except Exception:
+            pass
+
+        # Filter characters that have Krea 2 LoRAs
+        for char_id, char in CHARACTERS.items():
+            if not char.lora_krea2:
+                continue
+            emoji = CHARACTER_EMOJIS.get(char_id, "🎭")
+            def_wt = 0.85 if char_id == "ogarla" else (char.default_weight or 0.85)
+            def_wt_str = f"{int(round(def_wt * 100)):02d}"
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} Krea 2 (. {def_wt_str} - Default)".replace("(. ", "(."),
+                value=f"{char_id}.{def_wt_str}"
+            ))
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} Krea 2 (.70 - Light)",
+                value=f"{char_id}.70"
+            ))
+
+    elif "flux" in arch_str:
+        for char_id, char in CHARACTERS.items():
+            if not char.lora_flux:
+                continue
+            emoji = CHARACTER_EMOJIS.get(char_id, "🌿")
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} Flux (.85 - Default)",
+                value=f"{char_id}.85"
+            ))
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} Flux (.70 - Light)",
+                value=f"{char_id}.70"
+            ))
+
+    else:
+        # SDXL (Default)
+        # Order prioritized: Mageill, Ogarla, Valerie, Sully, Cheri
+        priority_order = ["mageill", "ogarla", "valerie", "sully", "cheri"]
+        seen = set()
+        ordered_chars = []
+        for pid in priority_order:
+            if pid in CHARACTERS and CHARACTERS[pid].lora_sdxl:
+                ordered_chars.append(CHARACTERS[pid])
+                seen.add(pid)
+        for cid, char in CHARACTERS.items():
+            if cid not in seen and char.lora_sdxl:
+                ordered_chars.append(char)
+
+        for char in ordered_chars:
+            emoji = CHARACTER_EMOJIS.get(char.id, "🎭")
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} (.85 - Default)",
+                value=f"{char.id}.85"
+            ))
+            choices.append(app_commands.Choice(
+                name=f"{emoji} {char.display_name} (.70 - Light)",
+                value=f"{char.id}.70"
+            ))
+
+    # Apply search filtering if user typed characters
+    if current:
+        cur_clean = current.lower().strip().lstrip("-")
+        filtered = [
+            c for c in choices
+            if cur_clean in c.name.lower() or cur_clean in c.value.lower()
+        ]
+        if filtered:
+            return filtered[:25]
+
+    return choices[:25]
 

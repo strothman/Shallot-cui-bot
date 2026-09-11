@@ -1580,7 +1580,7 @@ class TestCUIBotFunctions(unittest.TestCase):
             # First acquire on test port succeeds
             self.assertTrue(acquire_instance_lock(port=test_port))
             # Second acquire on the same port fails
-            self.assertFalse(acquire_instance_lock(port=test_port))
+            self.assertFalse(acquire_instance_lock(port=test_port, silent=True))
         finally:
             if bot._instance_lock_socket:
                 bot._instance_lock_socket.close()
@@ -1658,6 +1658,55 @@ class TestCUIBotFunctions(unittest.TestCase):
 
         masked_che = mask_character_in_prompt("cheri smiling in the sunlight")
         self.assertEqual(masked_che, "cheri smiling in the sunlight")
+
+        # Test unified character display badges
+        from characters import get_character_display_badge
+        self.assertEqual(get_character_display_badge("none"), "None")
+        self.assertEqual(get_character_display_badge(None), "None")
+        self.assertEqual(get_character_display_badge("valerie.90", architecture="krea2"), "✨ Valerie (.90 - Default)")
+        self.assertEqual(get_character_display_badge("valerie.70", architecture="krea2"), "✨ Valerie (.70 - Light)")
+        self.assertEqual(get_character_display_badge("ogarla.85", architecture="krea2"), "🌿 Ogarla (.85 - Default)")
+        self.assertEqual(get_character_display_badge("ogarla.70", architecture="krea2"), "🌿 Ogarla (.70 - Light)")
+        self.assertEqual(get_character_display_badge("ogarla", architecture="sdxl"), "🌿 Ogarla (--ogarla.70)")
+        self.assertEqual(get_character_display_badge("valerie", architecture="sdxl"), "👩 Valerie (--valerie.85)")
+        self.assertEqual(get_character_display_badge("sully", architecture="sdxl"), "👓 Sully (--sully.85)")
+        self.assertEqual(get_character_display_badge("none", architecture="sdxl", prompt="photo of a woman --valerie.85"), "👩 Valerie (--valerie.85)")
+        self.assertEqual(get_character_display_badge("none", architecture="sdxl", prompt="photo of a woman --sully"), "👓 Sully (--sully.85)")
+
+        # Test dynamic character autocomplete choices
+        from characters import get_character_autocomplete_choices
+        from model_architecture import Architecture
+
+        # 1. Krea 2 autocomplete
+        krea_choices = get_character_autocomplete_choices("", Architecture.KREA2)
+        krea_vals = [c.value for c in krea_choices]
+        self.assertIn("valerie.90", krea_vals)
+        self.assertIn("valerie.70", krea_vals)
+        self.assertIn("ogarla.85", krea_vals)
+        self.assertIn("ogarla.70", krea_vals)
+
+        # Krea 2 filtering
+        krea_filtered = get_character_autocomplete_choices("val", Architecture.KREA2)
+        self.assertTrue(all("valerie" in c.value for c in krea_filtered))
+
+        # 2. SDXL autocomplete
+        sdxl_choices = get_character_autocomplete_choices("", Architecture.SDXL)
+        sdxl_vals = [c.value for c in sdxl_choices]
+        self.assertIn("mageill.85", sdxl_vals)
+        self.assertIn("ogarla.85", sdxl_vals)
+        self.assertIn("valerie.85", sdxl_vals)
+        self.assertIn("sully.85", sdxl_vals)
+        self.assertIn("cheri.85", sdxl_vals)
+
+        # SDXL filtering
+        sdxl_filtered = get_character_autocomplete_choices("sully", Architecture.SDXL)
+        self.assertTrue(all("sully" in c.value for c in sdxl_filtered))
+
+        # 3. Flux autocomplete
+        flux_choices = get_character_autocomplete_choices("", Architecture.FLUX)
+        flux_vals = [c.value for c in flux_choices]
+        self.assertIn("ogarla.85", flux_vals)
+        self.assertIn("ogarla.70", flux_vals)
 
     def test_valerie_lora_parsing(self):
         """Test parsing --valerie and bare 'valerie' keywords in prompt with silent trigger substitution."""
@@ -2428,6 +2477,25 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("edit_blend_krea_prompt:krea_blend_777", btn_ids)
         self.assertIn("gen_blend_krea:krea_blend_777", btn_ids)
 
+        char_select = next(item for item in view.children if getattr(item, "custom_id", None) == "set_blend_krea_char:krea_blend_777")
+        char_values = [opt.value for opt in char_select.options]
+        self.assertIn("valerie.90", char_values)
+        self.assertIn("valerie.70", char_values)
+        self.assertIn("ogarla.85", char_values)
+
+        # Test BertflowButtons with Valerie character
+        from views import BertflowButtons
+        view_val = BertflowButtons(generation_id="bert_test_789", character="valerie.90")
+        self.assertEqual(view_val.toggle_char_btn.label, "✨ Valerie: ON")
+
+        # Test CHARACTER_CHOICES_KREA2 for slash commands
+        from bot import CHARACTER_CHOICES_KREA2
+        choice_vals = [c.value for c in CHARACTER_CHOICES_KREA2]
+        self.assertIn("ogarla.85", choice_vals)
+        self.assertIn("ogarla.70", choice_vals)
+        self.assertIn("valerie.90", choice_vals)
+        self.assertIn("valerie.70", choice_vals)
+
         # 4. Test build_blend_krea_embed
         gen_data = {
             "krea2_prompt": "A close up photo of a cat",
@@ -2453,9 +2521,16 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("muse", model_values)
         self.assertIn("pornmaster", model_values)
 
-        # 6. Test slash command registration
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("blend-krea", commands)
+
+        # 7. Test dynamic character autocomplete attached to commands
+        for cmd_name in ["bertflow", "blend-krea", "imagine", "flux"]:
+            self.assertIn(cmd_name, commands)
+            cmd = commands[cmd_name]
+            char_param = next((p for p in cmd.parameters if p.name == "character"), None)
+            self.assertIsNotNone(char_param, f"Command {cmd_name} missing character parameter")
+            self.assertTrue(char_param.autocomplete, f"Command {cmd_name} character parameter missing autocomplete")
 
     def test_bertflow_and_standard_remix_modals(self):
         """Verify handle_bertflow_remix and handle_remix construct the RemixModal properly."""
