@@ -3852,6 +3852,8 @@ async def execute_bertflow(
 
     cleaned_prompt, width, height = resolve_bertflow_dimensions(prompt, aspect_ratio)
     actual_seed = seed if seed is not None else random.randint(1, 1125899906842624)
+    # Expand dynamic wildcards {a|b|c} using actual_seed
+    cleaned_prompt = expand_dynamic_prompt(cleaned_prompt, random.Random(actual_seed))
     active_unet = get_bertflow_unet_model(model_name)
 
     comp_info = f" | Comp: {comp_strength} ({init_image_name})" if init_image_name and comp_strength != "off" else ""
@@ -4166,6 +4168,7 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
     prompt="Scene/subject description (supports natural language, --ar, --ogarla, --valerie)",
     aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
     character="Optional character LoRA preset (Ogarla / Valerie Krea 2)",
+    favorite_prompt="Apply one of your saved favorite prompts",
     model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",
     steps="Sampling steps (8 for Turbo, up to 20 for Extended)",
     seed="Optional fixed seed for reproducibility"
@@ -4184,13 +4187,35 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
 )
 async def bertflow_command(
     interaction: discord.Interaction,
-    prompt: str,
+    prompt: str = "",
     aspect_ratio: str = "1:1",
     character: str = None,
+    favorite_prompt: str = None,
     model: str = None,
     steps: int = 8,
     seed: int = None
 ):
+    if favorite_prompt:
+        clean_fav = favorite_prompt.replace("📌", "").strip()
+        fav_text = None
+        user_prompts = db.get_favorite_prompts(interaction.user.id)
+        for item in user_prompts:
+            p_id = str(item['id'])
+            p_name = item['prompt_name'].strip()
+            p_full = item['prompt_text'].strip()
+            if clean_fav == p_id or clean_fav.startswith(p_id) or clean_fav == p_name or clean_fav in p_name:
+                fav_text = p_full
+                break
+        if fav_text:
+            if prompt and prompt.strip():
+                prompt = f"{prompt}, {fav_text}"
+            else:
+                prompt = fav_text
+
+    if not prompt or not prompt.strip():
+        await interaction.response.send_message("Please provide a prompt or select a saved favorite prompt.", ephemeral=True)
+        return
+
     await safe_defer(interaction, thinking=True)
     char_val = character.value if hasattr(character, "value") else character
     await execute_bertflow(
@@ -4206,6 +4231,16 @@ async def bertflow_command(
 @bertflow_command.autocomplete('character')
 async def bertflow_character_autocomplete(interaction: discord.Interaction, current: str):
     return get_character_autocomplete_choices(current, Architecture.KREA2)
+
+@bertflow_command.autocomplete('favorite_prompt')
+async def bertflow_favorite_prompt_autocomplete(interaction: discord.Interaction, current: str):
+    prompts = db.get_favorite_prompts(interaction.user.id)
+    choices = []
+    for item in prompts:
+        label = f"📌 {item['prompt_name']}".strip()
+        if not current or current.lower() in label.lower() or current.lower() in item['prompt_text'].lower():
+            choices.append(app_commands.Choice(name=label[:100], value=str(item['id'])))
+    return choices[:25]
 
 
 # =========================================================================
@@ -4224,7 +4259,11 @@ async def prompt_list(interaction: discord.Interaction):
     async def prompt_imagine_callback(inter: discord.Interaction, prompt_text: str):
         await execute_imagine(inter, prompt_text)
 
-    view = PromptPaginationView(interaction.user.id, prompts, per_page=5, imagine_callback=prompt_imagine_callback)
+    async def prompt_bertflow_callback(inter: discord.Interaction, prompt_text: str):
+        await safe_defer(inter, thinking=True)
+        await execute_bertflow(inter, prompt_text)
+
+    view = PromptPaginationView(interaction.user.id, prompts, per_page=5, imagine_callback=prompt_imagine_callback, bertflow_callback=prompt_bertflow_callback)
     await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
 
 @prompt_group.command(name="save", description="Save a custom prompt to your favorite prompts.")

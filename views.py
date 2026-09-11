@@ -1764,12 +1764,13 @@ class EditPromptModal(discord.ui.Modal, title="✏️ Edit Saved Prompt"):
 
 
 class PromptPaginationView(discord.ui.View):
-    def __init__(self, user_id: int, prompts: list[dict], per_page: int = 5, imagine_callback=None):
+    def __init__(self, user_id: int, prompts: list[dict], per_page: int = 5, imagine_callback=None, bertflow_callback=None):
         super().__init__(timeout=180)
         self.user_id = user_id
         self.prompts = prompts
         self.per_page = per_page
         self.imagine_callback = imagine_callback
+        self.bertflow_callback = bertflow_callback
         self.current_page = 0
         self.selected_id = None
 
@@ -1852,6 +1853,15 @@ class PromptPaginationView(discord.ui.View):
         )
         imagine_btn.callback = self.on_imagine_prompt
         self.add_item(imagine_btn)
+
+        if self.bertflow_callback:
+            bertflow_btn = discord.ui.Button(
+                label="⚡ Bertflow",
+                style=discord.ButtonStyle.success,
+                row=1
+            )
+            bertflow_btn.callback = self.on_bertflow_prompt
+            self.add_item(bertflow_btn)
 
         edit_btn = discord.ui.Button(
             label="✏️ Edit",
@@ -1966,6 +1976,15 @@ class PromptPaginationView(discord.ui.View):
             return
 
         modal = StudyImagineModal(initial_prompt=selected["prompt_text"], on_submit_callback=self.imagine_callback)
+        await interaction.response.send_modal(modal)
+
+    async def on_bertflow_prompt(self, interaction: discord.Interaction):
+        selected = next((p for p in self.prompts if p["id"] == self.selected_id), None)
+        if not selected:
+            await interaction.response.send_message("Please select a prompt first.", ephemeral=True)
+            return
+
+        modal = StudyImagineModal(initial_prompt=selected["prompt_text"], on_submit_callback=self.bertflow_callback)
         await interaction.response.send_modal(modal)
 
     async def on_edit_prompt(self, interaction: discord.Interaction):

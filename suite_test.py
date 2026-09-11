@@ -2317,12 +2317,23 @@ class TestCUIBotFunctions(unittest.TestCase):
         view_char = BertflowButtons(generation_id="bert_test_456", character="ogarla.85")
         self.assertEqual(view_char.toggle_char_btn.label, "🌿 Ogarla: ON")
 
-        # 5. Test command registration
+        # 5. Test command registration and parameters
         from bot import bot
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("bertflow", commands)
+        bert_cmd = commands["bertflow"]
+        param_names = [p.name for p in bert_cmd.parameters]
+        self.assertIn("favorite_prompt", param_names)
         self.assertIn("free", commands)
         self.assertIn("purge-vram", commands)
+
+        # 6. Test PromptPaginationView with bertflow_callback
+        from views import PromptPaginationView
+        sample_prompts = [{"id": 1, "prompt_name": "Test Krea Prompt", "prompt_text": "A photo of a cyberpunk city"}]
+        view_pg = PromptPaginationView(user_id=123, prompts=sample_prompts, per_page=5, imagine_callback=lambda inter, p: None, bertflow_callback=lambda inter, p: None)
+        labels = [c.label for c in view_pg.children if hasattr(c, "label") and c.label]
+        self.assertIn("⚡ Bertflow", labels)
+        self.assertIn("🎨 Imagine", labels)
 
     def test_module60_describe_krea2_workflow_and_buttons(self):
         """Test Krea 2 prompt formatting, workflow nodes, and DescribeButtons integration."""
