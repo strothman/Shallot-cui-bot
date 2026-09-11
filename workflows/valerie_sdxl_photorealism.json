@@ -1,0 +1,126 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "RealVisXL_V5.0_fp16.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint (SDXL RealVisXL)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "lora_name": "jen_epoch_5.safetensors",
+      "strength_model": 0.9,
+      "strength_clip": 0.9,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "Load LoRA: Valerie (jen_epoch_5)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image (Portrait 832x1216)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "photo of jen, 25yo woman, brown hair, dark brown eyes, realistic skin texture, subtle smile, soft natural studio lighting, highly detailed face, fine skin pores, 8k uhd, dslr, masterpiece, photorealistic",
+      "clip": [
+        "2",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt (Valerie Trigger: jen)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "ugly, deformed, bad anatomy, bad face, disfigured, malformed hands, extra fingers, missing fingers, blurry, grainy, low resolution, doll, plastic skin, anime, illustration, 3d render, cartoon, oversaturated",
+      "clip": [
+        "2",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "6": {
+    "inputs": {
+      "seed": 42424242,
+      "steps": 30,
+      "cfg": 4.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1.0,
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler (DPM++ 2M Karras)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "8": {
+    "inputs": {
+      "filename_prefix": "Valerie/valerie_sdxl",
+      "images": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Valerie Image"
+    }
+  }
+}

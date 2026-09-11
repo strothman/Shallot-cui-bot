@@ -2,6 +2,7 @@ import sqlite3
 import json
 import os
 import logging
+import threading
 
 logger = logging.getLogger("DiscordBot.DB")
 DB_FILE = "cache.db"
@@ -156,10 +157,10 @@ def save_generation(generation_id: str, data: dict):
             )
             conn.commit()
         
-        # Prune older entries periodically rather than on every single write
+        # Prune older entries periodically in a background thread to prevent blocking event loop
         _save_counter += 1
         if _save_counter % 25 == 0:
-            prune_cache()
+            threading.Thread(target=prune_cache, daemon=True).start()
     except Exception as e:
         logger.error(f"Error saving generation {generation_id} to SQLite: {e}")
 
@@ -195,7 +196,6 @@ def prune_cache(limit=2000):
                                 except Exception:
                                     pass
                 logger.info(f"Pruned {len(ids_to_delete)} generations from database and cleared associated files.")
-                vacuum_database()
     except Exception as e:
         logger.error(f"Error pruning SQLite cache: {e}")
 

@@ -633,6 +633,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(edit_kwargs.get("view"), None)
         self.assertEqual(edit_kwargs.get("content"), "Editing")
 
+        # Test edit_original_fallback with attachments
+        mock_file = MagicMock()
+        asyncio.run(edit_original_fallback(mock_interaction, content="With file", attachments=[mock_file]))
+        _, edit_kwargs = mock_interaction.edit_original_response.call_args
+        self.assertEqual(edit_kwargs.get("attachments"), [mock_file])
+
         # Test edit_message_fallback with allow_send_fallback=False suppresses channel.send on expired token
         mock_msg_interaction = MagicMock()
         mock_msg_interaction.channel_id = 12345
@@ -1680,14 +1686,14 @@ class TestCUIBotFunctions(unittest.TestCase):
         # 1. Krea 2 autocomplete
         krea_choices = get_character_autocomplete_choices("", Architecture.KREA2)
         krea_vals = [c.value for c in krea_choices]
-        self.assertIn("valerie.90", krea_vals)
-        self.assertIn("valerie.70", krea_vals)
+        self.assertNotIn("valerie.90", krea_vals)
+        self.assertNotIn("valerie.70", krea_vals)
         self.assertIn("ogarla.85", krea_vals)
         self.assertIn("ogarla.70", krea_vals)
 
         # Krea 2 filtering
-        krea_filtered = get_character_autocomplete_choices("val", Architecture.KREA2)
-        self.assertTrue(all("valerie" in c.value for c in krea_filtered))
+        krea_filtered = get_character_autocomplete_choices("oga", Architecture.KREA2)
+        self.assertTrue(all("ogarla" in c.value for c in krea_filtered))
 
         # 2. SDXL autocomplete
         sdxl_choices = get_character_autocomplete_choices("", Architecture.SDXL)
@@ -1868,7 +1874,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         import asyncio
         from unittest.mock import AsyncMock, patch, MagicMock
         from views import build_blend_embed, BlendButtons
-        from image_utils import detect_closest_aspect_ratio
+        from image_utils import detect_closest_aspect_ratio, detect_closest_krea_aspect_ratio
         import bot
 
         # 1. Test detect_closest_aspect_ratio
@@ -1879,6 +1885,32 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(detect_closest_aspect_ratio(2560, 1080), "21:9")
         self.assertEqual(detect_closest_aspect_ratio(1000, 700), "10:7")
         self.assertEqual(detect_closest_aspect_ratio(0, 100), "16:9")
+
+        # 1b. Test detect_closest_krea_aspect_ratio (Krea 2 Studio 5-button set)
+        self.assertEqual(detect_closest_krea_aspect_ratio(2560, 1080), "21:9")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1920, 1080), "16:9")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1024, 768), "16:9")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1500, 1000), "16:9")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1000, 1000), "1:1")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1000, 950), "1:1")
+        self.assertEqual(detect_closest_krea_aspect_ratio(768, 1024), "3:4")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1000, 1500), "3:4")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1080, 1920), "9:16")
+        self.assertEqual(detect_closest_krea_aspect_ratio(1170, 2532), "9:16")
+        self.assertEqual(detect_closest_krea_aspect_ratio(0, 100), "16:9")
+
+        # 1c. Test create_thumbnail_bytes
+        from image_utils import create_thumbnail_bytes
+        from PIL import Image
+        import io
+        img = Image.new("RGBA", (800, 600), (255, 0, 0, 128))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        thumb_bytes = create_thumbnail_bytes(buf.getvalue(), max_dim=256)
+        self.assertIsNotNone(thumb_bytes)
+        with Image.open(io.BytesIO(thumb_bytes)) as thumb_img:
+            self.assertLessEqual(thumb_img.width, 256)
+            self.assertLessEqual(thumb_img.height, 256)
 
         # 2. Test build_blend_embed 3-column inline dashboard formatting
         gen_data = {
@@ -2451,15 +2483,22 @@ class TestCUIBotFunctions(unittest.TestCase):
         wf_custom_wet = prepare_bertflow_workflow("rainy street --wet 0.75")
         self.assertEqual(wf_custom_wet["822"]["inputs"]["lora_1"]["strength"], 0.75)
 
-        # Test Valerie Krea 2 Character LoRA injection and trigger word
+        # Test Ogarla Krea 2 Character LoRA injection and trigger word
+        wf_oga = prepare_bertflow_workflow(
+            prompt="fashion runway photo --ogarla.85",
+            character="ogarla"
+        )
+        self.assertTrue(wf_oga["822"]["inputs"]["lora_2"]["on"])
+        self.assertEqual(wf_oga["822"]["inputs"]["lora_2"]["lora"], "Krea2\\ogarla_krea2.safetensors")
+        self.assertEqual(wf_oga["822"]["inputs"]["lora_2"]["strength"], 0.85)
+        self.assertEqual(wf_oga["627"]["inputs"]["text"], "ogarla, fashion runway photo")
+
+        # Valerie is SDXL-only and must not inject into Krea 2
         wf_val = prepare_bertflow_workflow(
             prompt="fashion runway photo --valerie.90",
             character="valerie"
         )
-        self.assertTrue(wf_val["822"]["inputs"]["lora_2"]["on"])
-        self.assertEqual(wf_val["822"]["inputs"]["lora_2"]["lora"], "Krea2\\valerie_krea2.safetensors")
-        self.assertEqual(wf_val["822"]["inputs"]["lora_2"]["strength"], 0.90)
-        self.assertEqual(wf_val["627"]["inputs"]["text"], "valerie, fashion runway photo")
+        self.assertNotIn("lora_2", wf_val["822"]["inputs"])
 
         # Test scan_krea2_loras
         from characters import scan_krea2_loras
@@ -2473,8 +2512,8 @@ class TestCUIBotFunctions(unittest.TestCase):
             "Krea2\\ogarla_krea2.safetensors"
         )
         self.assertEqual(
-            resolve_lora_for_architecture("valerie", Architecture.KREA2),
-            "Krea2\\valerie_krea2.safetensors"
+            resolve_lora_for_architecture("valerie", Architecture.SDXL),
+            "jen_epoch_5.safetensors"
         )
 
         # 3. Test BlendKreaButtons
@@ -2490,22 +2529,22 @@ class TestCUIBotFunctions(unittest.TestCase):
 
         char_select = next(item for item in view.children if getattr(item, "custom_id", None) == "set_blend_krea_char:krea_blend_777")
         char_values = [opt.value for opt in char_select.options]
-        self.assertIn("valerie.90", char_values)
-        self.assertIn("valerie.70", char_values)
+        self.assertNotIn("valerie.90", char_values)
+        self.assertNotIn("valerie.70", char_values)
         self.assertIn("ogarla.85", char_values)
 
-        # Test BertflowButtons with Valerie character
+        # Test BertflowButtons with character
         from views import BertflowButtons
-        view_val = BertflowButtons(generation_id="bert_test_789", character="valerie.90")
-        self.assertEqual(view_val.toggle_char_btn.label, "✨ Valerie: ON")
+        view_oga = BertflowButtons(generation_id="bert_test_789", character="ogarla.85")
+        self.assertEqual(view_oga.toggle_char_btn.label, "🌿 Ogarla: ON")
 
         # Test CHARACTER_CHOICES_KREA2 for slash commands
         from bot import CHARACTER_CHOICES_KREA2
         choice_vals = [c.value for c in CHARACTER_CHOICES_KREA2]
         self.assertIn("ogarla.85", choice_vals)
         self.assertIn("ogarla.70", choice_vals)
-        self.assertIn("valerie.90", choice_vals)
-        self.assertIn("valerie.70", choice_vals)
+        self.assertNotIn("valerie.90", choice_vals)
+        self.assertNotIn("valerie.70", choice_vals)
 
         # 4. Test build_blend_krea_embed
         gen_data = {
@@ -2543,6 +2582,10 @@ class TestCUIBotFunctions(unittest.TestCase):
 
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("blend-krea", commands)
+        bk_cmd = commands["blend-krea"]
+        ar_param = next((p for p in bk_cmd.parameters if p.name == "aspect_ratio"), None)
+        self.assertIsNotNone(ar_param)
+        self.assertFalse(ar_param.required)
 
         # 7. Test dynamic character autocomplete attached to commands
         for cmd_name in ["bertflow", "blend-krea", "imagine", "flux"]:
@@ -2765,8 +2808,8 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(wf_flag["627"]["inputs"]["text"].startswith("Margot Robbie,"))
 
         # Both character LoRA and celebrity preset can coexist
-        wf_both = prepare_bertflow_workflow("a stylish portrait", character="valerie.90", celebrity="audrey_hepburn")
-        self.assertIn("valerie", wf_both["627"]["inputs"]["text"].lower())
+        wf_both = prepare_bertflow_workflow("a stylish portrait", character="ogarla.85", celebrity="audrey_hepburn")
+        self.assertIn("ogarla", wf_both["627"]["inputs"]["text"].lower())
         self.assertIn("Audrey Hepburn", wf_both["627"]["inputs"]["text"])
 
         # 5. Test BlendKreaButtons has both Character and Celebrity dropdowns
@@ -2776,7 +2819,7 @@ class TestCUIBotFunctions(unittest.TestCase):
             model_choice="muse",
             wetness=-2.0,
             composition="off",
-            character="valerie.90",
+            character="ogarla.85",
             celebrity="zendaya"
         )
         celeb_select = next(item for item in view.children if getattr(item, "custom_id", None) == "krea_celeb_test" or getattr(item, "custom_id", None) == "set_blend_krea_celeb:krea_celeb_test")
@@ -2799,13 +2842,13 @@ class TestCUIBotFunctions(unittest.TestCase):
             "ar": "16:9",
             "model_choice": "muse",
             "wetness": -2.0,
-            "char_choice": "valerie.90",
+            "char_choice": "ogarla.85",
             "celeb_choice": "audrey_hepburn"
         }
         embed = build_blend_krea_embed(gen_data)
         settings_field = next(f for f in embed.fields if f.name == "⚙️ Pipeline Settings")
         self.assertIn("Character:", settings_field.value)
-        self.assertIn("Valerie", settings_field.value)
+        self.assertIn("Ogarla", settings_field.value)
         self.assertIn("Celebrity:", settings_field.value)
         self.assertIn("Audrey Hepburn", settings_field.value)
 
@@ -2817,6 +2860,26 @@ class TestCUIBotFunctions(unittest.TestCase):
         blend_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "blend-krea")
         self.assertIn("character", [p.name for p in blend_cmd.parameters])
         self.assertIn("celebrity", [p.name for p in blend_cmd.parameters])
+
+    def test_module67_lora_workflow_architecture_audit(self):
+        """Audit all workflows, character profiles, resolvers, and parsers for 100% LoRA architecture match."""
+        from scripts.audit_loras import (
+            audit_workflows,
+            audit_characters,
+            audit_parsers_and_presets,
+            audit_ui_choices
+        )
+        wf_issues = audit_workflows()
+        self.assertEqual(wf_issues, [], f"Workflow LoRA audit issues: {wf_issues}")
+
+        char_issues = audit_characters()
+        self.assertEqual(char_issues, [], f"Character LoRA audit issues: {char_issues}")
+
+        preset_issues = audit_parsers_and_presets()
+        self.assertEqual(preset_issues, [], f"Preset LoRA audit issues: {preset_issues}")
+
+        ui_issues = audit_ui_choices()
+        self.assertEqual(ui_issues, [], f"UI LoRA audit issues: {ui_issues}")
 
 
 if __name__ == "__main__":

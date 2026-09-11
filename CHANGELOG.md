@@ -7,6 +7,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-11]
 
 ### Added
+* 📐 **Auto-Detected Source Image Aspect Ratio in `/blend-krea` (`image_utils.detect_closest_krea_aspect_ratio`)**: Implemented automatic aspect ratio detection for `/blend-krea` from the uploaded source image dimensions, mapping seamlessly to the Krea 2 Studio button set (`21:9`, `16:9`, `1:1`, `3:4`, `9:16`). Eliminated the rigid default of `16:9` so portraits, square images, and ultrawide uploads are immediately detected and pre-selected in the interactive dashboard without manual button clicking.
 * 🌟 **Krea 2 Curated Celebrity Presets (`celebrities.py`)**: Added a dedicated celebrity registry and prompt injection system for 16 favorite actresses/icons (Audrey Hepburn, Grace Kelly, Nicole Kidman, Margot Robbie, Sandra Bullock, Emma Stone, Anya Taylor-Joy, Zendaya, Cameron Diaz, Saoirse Ronan, Emma Watson, Michelle Pfeiffer, Gal Gadot, Taylor Swift, Ariana Grande, Keira Knightley), taking advantage of Krea 2 Turbo's inherent facial knowledge without requiring extra LoRAs.
 * 🎭 **Independent Character & Celebrity Selection in `/blend-krea` (`views.BlendKreaButtons`)**:
   * Retained the dedicated **Character LoRA selector** (Ogarla, Valerie) on Row 2.
@@ -17,7 +18,26 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
   * Added `celebrity` options to `/bertflow` and `/blend-krea` with live autocomplete.
   * Added instant prompt shorthand flag parsing (e.g. `--audrey`, `--zendaya`, `--margot`, `--keira`, `--celeb <name>`) in `parsers.prepare_bertflow_workflow`.
 * 📖 **Curated Favorites Reference Guide (`docs/krea2_celebrity_reference.md`)**: Updated the community recognition reference guide with a dedicated *Curated Favorites (Bot Presets)* table detailing recognition tiers and iconic visual markers.
+* 🛡️ **Comprehensive LoRA & Workflow Architecture Audit & Zero-Bleed Guardrails (`scripts/audit_loras.py`, `suite_test.py`)**:
+  * Added automated architectural auditing verifying that all 25+ LoRA references across 20 workflow templates, character profiles (`characters.py`), and UI dropdowns strictly match their base engine architecture (SDXL, Flux, Krea 2, Wan).
+  * Added active architecture guardrails in `parsers.apply_loras_to_workflow`: Incompatible LoRAs (e.g., attempting to append an SDXL LoRA onto a Flux or Krea 2 graph) are automatically intercepted and safely excluded, preventing ComfyUI `lora key not loaded` warnings.
+  * Enhanced `model_architecture.detect_model_architecture` with direct Safetensors header inspection and model directory path resolution across `checkpoints`, `loras`, and `diffusion_models` for SDXL, Flux, Krea 2, Lumina 2, Wan, SD1.5, and SD3.5.
+* 🕒 **Proactive Discord Interaction Expiration Protection (`bot.py`, `core_helpers.is_interaction_expired`)**:
+  * Implemented proactive 14.5-minute timestamp checking against `interaction.created_at` to detect expired tokens before attempting doomed webhook calls.
+  * Fast-routes expired generations directly to `channel.send` without logging noisy 50027 interaction token error traces.
+* 🎨 **Dedicated Valerie SDXL Photorealism Workflow (`workflows/valerie_sdxl_photorealism.json`)**: Created a production-ready ComfyUI workflow utilizing Valerie's trained SDXL LoRA (`jen_epoch_5.safetensors`) with `RealVisXL_V5.0_fp16.safetensors`, 832x1216 portrait resolution, and DPM++ 2M Karras sampling.
 * **Compact studio embed and add unified prompt editing modal**
+
+### Fixed
+* 🖼️ **Initial Source Thumbnail in `/blend-krea` and `/blend` Embeds (`bot.edit_original_fallback`, `image_utils.create_thumbnail_bytes`)**: Resolved an issue where Discord's embed media proxy failed to render the initial uploaded image thumbnail because slash command attachment URLs are hosted on restricted/ephemeral CDN paths. Added automatic creation of a lightweight thumbnail attachment (`source_thumb.jpg`) delivered directly via message attachments (`attachment://source_thumb.jpg`), guaranteeing that the source image thumbnail always displays immediately and persists across view button clicks.
+* ⚡ **Eliminated Dashboard Event Loop Freezes & Lag (`db.save_generation`, `image_utils.create_thumbnail_bytes`)**:
+  * Offloaded `db.prune_cache()` to a background daemon thread so periodic file-deletion cycles over the 5,900+ scratch files never stall the asyncio event loop or block Discord button interactions.
+  * Offloaded thumbnail generation in `/blend-krea` and `/blend` via `asyncio.to_thread(create_thumbnail_bytes, image_bytes)` with fast `BILINEAR` resampling.
+  * Added in-memory JSON workflow template caching (`parsers.load_workflow_template`) to eliminate repetitive disk file reads and JSON deserializations on every slash command.
+* 🧠 **Plugged Unbounded In-Memory Caches & Leaks (`bot.ActiveGenerationsProxy`, `comfy_client.ComfyClient`, `error_handler.ErrorHandler`)**:
+  * Converted `ActiveGenerationsProxy._cache` from an unbounded dictionary to an LRU `OrderedDict` capped at 500 items to prevent infinite RAM growth over extended bot uptime.
+  * Ensured `ComfyClient.timings` entries are always popped in the `finally:` block of `generate()` even during timeouts, interruptions, or transient errors.
+  * Capped `ErrorHandler._retry_tracker` to prevent unbounded error key accumulation.
 
 ---
 ## [2026-09-10]

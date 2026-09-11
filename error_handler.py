@@ -306,6 +306,9 @@ class ErrorHandler:
     def record_retry(self, recipe: AutoFixRecipe, context_key: str):
         """Record a retry attempt for tracking purposes."""
         tracker_key = f"{recipe.name}:{context_key}"
+        if len(self._retry_tracker) > 500:
+            for old_k in list(self._retry_tracker.keys())[:100]:
+                self._retry_tracker.pop(old_k, None)
         self._retry_tracker[tracker_key] = self._retry_tracker.get(tracker_key, 0) + 1
 
     def clear_retry_tracker(self, context_key: str = None):

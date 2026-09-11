@@ -10,6 +10,7 @@ import logging
 import subprocess
 import aiohttp
 import discord
+import datetime
 from config import (
     COMFYUI_ADDRESS,
     COMFYUI_BATCH_PATH,
@@ -18,6 +19,17 @@ from config import (
 )
 
 logger = logging.getLogger("DiscordBot")
+
+def is_interaction_expired(interaction: discord.Interaction) -> bool:
+    """Returns True if the interaction is None or exceeds Discord's 15-minute token lifetime."""
+    if not interaction:
+        return True
+    created_at = getattr(interaction, "created_at", None)
+    if isinstance(created_at, datetime.datetime):
+        age = (discord.utils.utcnow() - created_at).total_seconds()
+        if age >= 870:  # 14.5 minutes (Discord token expires at 15m)
+            return True
+    return False
 
 # Process holder class to manage global comfy_process across modules cleanly
 class ComfyProcessHolder:
@@ -70,60 +82,69 @@ async def send_followup_fallback(interaction: discord.Interaction, content=None,
     if view is not None:
         kwargs["view"] = view
 
-    try:
-        return await interaction.followup.send(**kwargs, ephemeral=ephemeral)
-    except (discord.HTTPException, discord.NotFound) as hex_err:
-        if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
-            logger.info(f"Interaction token expired ({getattr(hex_err, 'code', '404')}). Falling back to channel.send.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    bot = get_active_bot()
-                    if bot:
-                        channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if not channel:
-                return None
-            if file:
-                file.fp.seek(0)
-            if files:
-                for f in files:
-                    f.fp.seek(0)
-            tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-            if tag:
-                if "content" in kwargs and kwargs["content"]:
-                    if interaction.user.mention not in kwargs["content"]:
-                        kwargs["content"] = f"{tag}{kwargs['content']}"
-                else:
-                    kwargs["content"] = tag.strip()
-            return await channel.send(**kwargs)
+    if not is_interaction_expired(interaction):
+        try:
+            return await interaction.followup.send(**kwargs, ephemeral=ephemeral)
+        except (discord.HTTPException, discord.NotFound) as hex_err:
+            if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
+                logger.debug(f"Interaction token expired ({getattr(hex_err, 'code', '404')}). Falling back to channel.send.")
+            else:
+                raise hex_err
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit. Fast-routing directly to channel.send.")
+
+    channel = interaction.channel
+    if not channel and interaction.channel_id:
+        try:
+            bot = get_active_bot()
+            if bot:
+                channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if not channel:
+        return None
+    if file:
+        file.fp.seek(0)
+    if files:
+        for f in files:
+            f.fp.seek(0)
+    tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+    if tag:
+        if "content" in kwargs and kwargs["content"]:
+            if interaction.user.mention not in kwargs["content"]:
+                kwargs["content"] = f"{tag}{kwargs['content']}"
         else:
-            raise hex_err
+            kwargs["content"] = tag.strip()
+    return await channel.send(**kwargs)
 
 
 async def send_error_fallback(interaction: discord.Interaction, message: str):
     """Sends an error message using interaction, with fallback to channel.send if expired."""
     if len(message) > 1980:
         message = message[:1977] + "..."
-    try:
-        await interaction.followup.send(message, ephemeral=True)
-    except (discord.HTTPException, discord.NotFound) as hex_err:
-        logger.info(f"Interaction token expired ({getattr(hex_err, 'code', '404')}) during error report. Falling back to channel.send.")
+    if not is_interaction_expired(interaction):
         try:
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                bot = get_active_bot()
-                if bot:
-                    channel = await bot.fetch_channel(interaction.channel_id)
-            if channel:
-                tag = f"{interaction.user.mention} " if (interaction and interaction.user) else ""
-                await channel.send(f"{tag}❌ {message.replace('❌ ', '')}")
-        except Exception as e:
-            logger.debug(f"Failed channel.send fallback in send_error_fallback: {e}")
+            await interaction.followup.send(message, ephemeral=True)
+            return
+        except (discord.HTTPException, discord.NotFound) as hex_err:
+            logger.debug(f"Interaction token expired ({getattr(hex_err, 'code', '404')}) during error report. Falling back to channel.send.")
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit during error report. Fast-routing to channel.send.")
+
+    try:
+        channel = interaction.channel
+        if not channel and interaction.channel_id:
+            bot = get_active_bot()
+            if bot:
+                channel = await bot.fetch_channel(interaction.channel_id)
+        if channel:
+            tag = f"{interaction.user.mention} " if (interaction and interaction.user) else ""
+            await channel.send(f"{tag}❌ {message.replace('❌ ', '')}")
+    except Exception as e:
+        logger.debug(f"Failed channel.send fallback in send_error_fallback: {e}")
 
 
-async def edit_original_fallback(interaction: discord.Interaction, content=None, embed=None, view=None):
+async def edit_original_fallback(interaction: discord.Interaction, content=None, embed=None, view=None, attachments=None):
     """Edits the original interaction response, with fallback to channel.send if expired."""
     edit_kwargs = {}
     send_kwargs = {}
@@ -138,29 +159,37 @@ async def edit_original_fallback(interaction: discord.Interaction, content=None,
         send_kwargs["view"] = view
     else:
         edit_kwargs["view"] = None
+    if attachments is not None:
+        edit_kwargs["attachments"] = attachments
+        send_kwargs["files"] = attachments
 
-    try:
-        await interaction.edit_original_response(**edit_kwargs)
-    except (discord.HTTPException, discord.NotFound) as hex_err:
-        if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
-            logger.info(f"Interaction token expired ({getattr(hex_err, 'code', '404')}) during edit. Falling back to channel.send.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    bot = get_active_bot()
-                    if bot:
-                        channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if channel:
-                tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-                if "content" in send_kwargs:
-                    send_kwargs["content"] = f"{tag}{send_kwargs['content']}"
-                else:
-                    send_kwargs["content"] = f"{tag}Image Description Complete"
-                await channel.send(**send_kwargs)
+    if not is_interaction_expired(interaction):
+        try:
+            await interaction.edit_original_response(**edit_kwargs)
+            return
+        except (discord.HTTPException, discord.NotFound) as hex_err:
+            if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
+                logger.debug(f"Interaction token expired ({getattr(hex_err, 'code', '404')}) during edit. Falling back to channel.send.")
+            else:
+                raise hex_err
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit during edit. Fast-routing to channel.send.")
+
+    channel = interaction.channel
+    if not channel and interaction.channel_id:
+        try:
+            bot = get_active_bot()
+            if bot:
+                channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if channel:
+        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+        if "content" in send_kwargs:
+            send_kwargs["content"] = f"{tag}{send_kwargs['content']}"
         else:
-            raise hex_err
+            send_kwargs["content"] = f"{tag}Image Description Complete"
+        await channel.send(**send_kwargs)
 
 
 async def edit_message_fallback(interaction: discord.Interaction, message_id: int, content=None, embed=None, file=None, view=None, allow_send_fallback: bool = True):
@@ -195,34 +224,42 @@ async def edit_message_fallback(interaction: discord.Interaction, message_id: in
         except Exception as e:
             if not allow_send_fallback:
                 return
-            logger.info(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
+            logger.debug(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
 
-    try:
+    if not is_interaction_expired(interaction):
+        try:
+            if file:
+                file.fp.seek(0)
+                edit_kwargs["attachments"] = [file]
+            await interaction.followup.edit_message(message_id, **edit_kwargs)
+            return
+        except (discord.HTTPException, discord.NotFound) as hex_err:
+            if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
+                if not allow_send_fallback:
+                    return
+                logger.debug(f"Interaction token expired during message edit. Sending new message to channel.")
+            else:
+                if allow_send_fallback:
+                    raise hex_err
+                return
+    else:
+        if not allow_send_fallback:
+            return
+        logger.debug("Interaction token reached 15m lifetime limit during message edit. Sending new message to channel.")
+
+    channel = interaction.channel
+    if not channel and interaction.channel_id:
+        try:
+            bot = get_active_bot()
+            if bot:
+                channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if channel:
         if file:
             file.fp.seek(0)
-            edit_kwargs["attachments"] = [file]
-        await interaction.followup.edit_message(message_id, **edit_kwargs)
-    except (discord.HTTPException, discord.NotFound) as hex_err:
-        if getattr(hex_err, 'code', None) in [50027, 10062, 10015] or getattr(hex_err, 'status', None) in [404, 400] or isinstance(hex_err, discord.NotFound):
-            if not allow_send_fallback:
-                return
-            logger.info(f"Interaction token expired during message edit. Sending new message to channel.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    bot = get_active_bot()
-                    if bot:
-                        channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if channel:
-                if file:
-                    file.fp.seek(0)
-                    send_kwargs["file"] = file
-                await channel.send(**send_kwargs)
-        else:
-            if allow_send_fallback:
-                raise hex_err
+            send_kwargs["file"] = file
+        await channel.send(**send_kwargs)
 
 
 async def _update_button_state(interaction: discord.Interaction, custom_id: str, style: discord.ButtonStyle, disabled: bool = True):

@@ -44,10 +44,10 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         trained_trigger="jen",
         lora_sdxl="jen_epoch_5.safetensors",
         lora_flux=None,
-        lora_krea2="Krea2\\valerie_krea2.safetensors",
+        lora_krea2=None,
         default_weight=0.90,
         shorthands=["valerie", "val"],
-        description="Valerie character LoRA (SDXL & Krea 2)",
+        description="Valerie character LoRA (SDXL)",
         base_prompt_traits="brown hair, dark brown eyes, realistic skin texture",
         is_private=True
     ),

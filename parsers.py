@@ -3,6 +3,7 @@ import json
 import re
 import math
 import random
+import copy
 import logging
 from PIL import Image
 from model_architecture import (
@@ -15,6 +16,15 @@ from model_architecture import (
 )
 
 logger = logging.getLogger("DiscordBot.Parsers")
+
+_WORKFLOW_CACHE: dict[str, dict] = {}
+
+def load_workflow_template(path: str) -> dict:
+    """Loads and caches workflow JSON templates in memory, returning a deepcopy to prevent repeated disk I/O."""
+    if path not in _WORKFLOW_CACHE:
+        with open(path, "r", encoding="utf-8") as f:
+            _WORKFLOW_CACHE[path] = json.load(f)
+    return copy.deepcopy(_WORKFLOW_CACHE[path])
 
 SREF_MEDIUMS = [
     "oil painting", "watercolor painting", "pencil sketch", "acrylic painting", 
@@ -553,7 +563,28 @@ def apply_loras_to_workflow(workflow, loras):
                     workflow["76"]["inputs"]["strength_clip"] = weight
                 workflow["76"]["inputs"]["lora_name"] = target_file
             else:
-                extra_loras.append((resolved_lora, weight))
+                candidate_fname = resolved_lora if resolved_lora.endswith((".safetensors", ".ckpt")) else f"{resolved_lora}.safetensors"
+                try:
+                    from characters import get_character
+                    char_prof = get_character(resolved_lora)
+                    if char_prof:
+                        if is_flux and not char_prof.lora_flux:
+                            logger.info(f"Skipping character '{char_prof.display_name}' on Flux (no Flux LoRA available).")
+                            continue
+                        elif not is_flux and not char_prof.lora_sdxl:
+                            logger.info(f"Skipping character '{char_prof.display_name}' on SDXL (no SDXL LoRA available).")
+                            continue
+                except Exception:
+                    pass
+
+                _, lora_arch, _ = detect_model_architecture(candidate_fname)
+                if lora_arch != Architecture.UNKNOWN and lora_arch != target_arch:
+                    logger.warning(
+                        f"apply_loras_to_workflow: Skipping incompatible LoRA '{candidate_fname}' ({lora_arch.upper()}) "
+                        f"for workflow architecture {target_arch.upper()}."
+                    )
+                    continue
+                extra_loras.append((candidate_fname, weight))
 
     # 2. If workflow has no pre-wired Node 75/76 or there are extra custom LoRAs, dynamically chain them
     current_model_source = ["76", 0] if "76" in workflow else (["1", 0] if is_flux else ["4", 0])
@@ -1772,12 +1803,9 @@ def prepare_bertflow_workflow(
     optional character LoRA, and optional favorite celebrity prompt injection.
     Optionally injects direct compositional reference (img2img VAE latent) when init_image and comp_strength are specified.
     """
-    import json
     import random
     import re
-    wf_path = "workflows/bertflow.json"
-    with open(wf_path, "r", encoding="utf-8") as f:
-        wf = json.load(f)
+    wf = load_workflow_template("workflows/bertflow.json")
 
     final_seed = seed if seed is not None else random.randint(1, 1125899906842624)
     model_name = unet_model or get_bertflow_unet_model()
@@ -1801,22 +1829,16 @@ def prepare_bertflow_workflow(
             wetness_strength = -0.5
             prompt = re.sub(r'--dewy\b', '', prompt, flags=re.IGNORECASE).strip()
 
-    # Parse character flag from prompt if present (e.g. --ogarla.85, --oga, --valerie.90, --val)
+    # Parse character flag from prompt if present (e.g. --ogarla.85, --oga)
     active_char = character
     char_weight = character_strength
     if prompt:
         oga_match = re.search(r'--(ogarla|oga)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
-        val_match = re.search(r'--(valerie|val)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
         if oga_match:
             active_char = "ogarla"
             if char_weight is None and oga_match.group(2):
                 char_weight = float(oga_match.group(2)) / 100.0 if len(oga_match.group(2)) == 2 else float(f"0.{oga_match.group(2)}")
             prompt = re.sub(r'--(ogarla|oga)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
-        elif val_match:
-            active_char = "valerie"
-            if char_weight is None and val_match.group(2):
-                char_weight = float(val_match.group(2)) / 100.0 if len(val_match.group(2)) == 2 else float(f"0.{val_match.group(2)}")
-            prompt = re.sub(r'--(valerie|val)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
 
     # Parse celebrity flag from prompt if present (e.g. --audrey, --zendaya, --celeb margot)
     active_celeb = celebrity
@@ -1853,16 +1875,6 @@ def prepare_bertflow_workflow(
                     char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
                 else:
                     char_weight = 0.70
-        elif "valerie" in c_str or "val" in c_str:
-            char_lora_file = "Krea2\\valerie_krea2.safetensors"
-            char_trigger = "valerie"
-            if char_weight is None:
-                dot_match = re.search(r'\.(\d+)', c_str)
-                if dot_match:
-                    val = dot_match.group(1)
-                    char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
-                else:
-                    char_weight = 0.90
 
     # Inject trigger word into prompt if needed
     cleaned_prompt = prompt or ""

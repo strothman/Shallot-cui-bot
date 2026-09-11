@@ -24,9 +24,10 @@ class Architecture:
     WAN = "wan"
     LTX = "ltx"
     HUNYUAN = "hunyuan"
+    LUMINA2 = "lumina2"
     UNKNOWN = "unknown"
 
-    ALL = [SDXL, FLUX, KREA2, SD15, SD35, WAN, LTX, HUNYUAN, UNKNOWN]
+    ALL = [SDXL, FLUX, KREA2, SD15, SD35, WAN, LTX, HUNYUAN, LUMINA2, UNKNOWN]
 
 class SubType:
     STANDARD = "standard"
@@ -56,6 +57,7 @@ ARCH_BADGES = {
     Architecture.WAN: "🎬 [WAN]",
     Architecture.LTX: "🎥 [LTX]",
     Architecture.HUNYUAN: "🐉 [HUNYUAN]",
+    Architecture.LUMINA2: "✨ [LUMINA2]",
     Architecture.UNKNOWN: "❓ [MODEL]"
 }
 
@@ -100,7 +102,19 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
     target_path = file_path or filename_or_path
     clean_name = os.path.basename(filename_or_path).lower()
     
-    # 1. First, check if file exists and inspect safetensors header
+    # 1. First, resolve target_path if relative or not directly found
+    if not os.path.isfile(target_path):
+        for cdir in [
+            r"C:\ComfyUI\ComfyUI\models\loras",
+            r"C:\ComfyUI\ComfyUI\models\checkpoints",
+            r"C:\ComfyUI\ComfyUI\models\diffusion_models",
+            r"C:\ComfyUI\ComfyUI\models\unet"
+        ]:
+            cand = os.path.join(cdir, filename_or_path)
+            if os.path.isfile(cand):
+                target_path = cand
+                break
+    
     if os.path.isfile(target_path) and clean_name.endswith(".safetensors"):
         header = read_safetensors_header(target_path)
         if header:
@@ -108,9 +122,13 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
             ss_base = str(meta.get("ss_base_model_version", "")).lower()
             modelspec_arch = str(meta.get("modelspec.architecture", "")).lower()
             
-            # Check modelspec / kohya metadata
+            # Check modelspec / kohya / ai-toolkit metadata
             if "flux" in ss_base or "flux" in modelspec_arch:
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.FLUX, SubType.STANDARD)
+            if "krea2" in ss_base or "krea" in ss_base or "krea" in modelspec_arch:
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.KREA2, SubType.STANDARD)
+            if "lumina2" in ss_base or "lumina" in ss_base or "lumina" in modelspec_arch:
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.LUMINA2, SubType.STANDARD)
             if "sdxl" in ss_base or "sdxl" in modelspec_arch or "stable-diffusion-xl" in ss_base:
                 subtype = detect_sdxl_subtype(clean_name, meta)
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.SDXL, subtype)
@@ -118,19 +136,35 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.SD15, SubType.STANDARD)
             if "sd3" in ss_base:
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.SD35, SubType.STANDARD)
+            wan_subtype = SubType.HIGH_NOISE if "high" in clean_name else (SubType.LOW_NOISE if "low" in clean_name else SubType.STANDARD)
+            if "wan" in ss_base or "wan2" in ss_base:
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.WAN, wan_subtype)
 
             # Check key structure
             keys = list(header.keys())
             if any("double_blocks" in k for k in keys):
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.FLUX, SubType.STANDARD)
+            if any("diffusion_model.blocks" in k for k in keys):
+                if any("attn.gate" in k for k in keys):
+                    return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.KREA2, SubType.STANDARD)
+                elif any("cross_attn" in k for k in keys):
+                    return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.WAN, wan_subtype)
+            if any("transformer.context_refiner" in k for k in keys):
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.LUMINA2, SubType.STANDARD)
             if any("lora_unet_down_blocks" in k or "lora_te1" in k or "lora_te2" in k for k in keys):
                 subtype = detect_sdxl_subtype(clean_name, meta)
                 return (ModelType.LORA, Architecture.SDXL, subtype)
             if any("wan" in k for k in keys):
-                return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.WAN, SubType.STANDARD)
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.WAN, wan_subtype)
 
     # 2. Heuristic Pattern Detection based on Filename & Dialects
     model_type = ModelType.LORA if ("lora" in clean_name or "epoch" in clean_name or "sr" in clean_name or "semi-realism" in clean_name) else ModelType.CHECKPOINT
+
+    # Krea 2 and Lumina 2
+    if "krea2" in clean_name or "krea" in clean_name or "muse" in clean_name or "pornmaster" in clean_name:
+        return (model_type, Architecture.KREA2, SubType.STANDARD)
+    if "lumina" in clean_name or "lumina2" in clean_name:
+        return (model_type, Architecture.LUMINA2, SubType.STANDARD)
 
     # Video Models (Wan, LTX, Hunyuan)
     if "wan" in clean_name or "wan21" in clean_name or "wan22" in clean_name or "i2v" in clean_name:
@@ -198,7 +232,6 @@ LORA_FAMILY_VARIANTS = {
     },
     "valerie": {
         Architecture.SDXL: "jen_epoch_5.safetensors",
-        Architecture.KREA2: "Krea2\\valerie_krea2.safetensors",
     },
     "semi-realism": {
         Architecture.SDXL: "Semi-realism_illustrious.safetensors",
@@ -226,9 +259,7 @@ def resolve_lora_for_architecture(lora_name: str, target_arch: str, target_subty
 
     # Check Valerie family
     if "valerie" in clean or "jen" in clean:
-        if target_arch == Architecture.KREA2 or "krea" in str(target_arch).lower():
-            return "Krea2\\valerie_krea2.safetensors"
-        elif target_arch == Architecture.SDXL:
+        if target_arch == Architecture.SDXL:
             return "jen_epoch_5.safetensors"
 
     # Check Semi-realism family

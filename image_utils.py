@@ -432,3 +432,49 @@ def detect_closest_aspect_ratio(width: int, height: int) -> str:
     }
     return min(candidates.keys(), key=lambda ar: abs(candidates[ar] - ratio))
 
+
+def detect_closest_krea_aspect_ratio(width: int, height: int) -> str:
+    """
+    Finds the closest supported aspect ratio for Bert's Krea 2 (Bertflow) workflow based on image dimensions.
+    Supported Krea 2 options: '21:9', '16:9', '1:1', '3:4', '9:16'.
+    Orientation-aware matching ensures landscape images map to landscape ratios and portrait to portrait.
+    """
+    if not width or not height or width <= 0 or height <= 0:
+        return "16:9"
+    ratio = float(width) / float(height)
+
+    # Orientation-aware mapping for Krea 2 ratios:
+    # 21:9 = ~2.333, 16:9 = ~1.778, 1:1 = 1.0, 3:4 = 0.75, 9:16 = 0.5625
+    if ratio >= 2.0:
+        return "21:9"
+    elif ratio >= 1.2:
+        return "16:9"
+    elif ratio <= 0.625:
+        return "9:16"
+    elif ratio <= 0.85:
+        return "3:4"
+    else:
+        return "1:1"
+
+
+def create_thumbnail_bytes(image_bytes: bytes, max_dim: int = 512) -> bytes:
+    """Creates a fast, lightweight JPEG thumbnail of an uploaded image for Discord embeds."""
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            if img.mode in ("RGBA", "LA", "P"):
+                # Paste onto white background to avoid black borders on transparency
+                background = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "P":
+                    img = img.convert("RGBA")
+                background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+                img = background
+            else:
+                img = img.convert("RGB")
+            img.thumbnail((max_dim, max_dim), Image.Resampling.BILINEAR)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=80)
+            return buf.getvalue()
+    except Exception as e:
+        logger.debug(f"Could not resize thumbnail: {e}")
+        return image_bytes
+

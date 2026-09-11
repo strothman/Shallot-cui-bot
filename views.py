@@ -561,8 +561,9 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
         inline=True
     )
 
-    if image_url:
-        embed.set_thumbnail(url=image_url)
+    thumb_url = image_url or gen_data.get("image_url")
+    if thumb_url:
+        embed.set_thumbnail(url=thumb_url)
     embed.set_footer(text=f"Florence-2 Vision AI • Requested by {author_str}")
     return embed
 
@@ -1186,8 +1187,9 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         description="Blend and remix your uploaded image using Florence-2 AI vision and Bert's Krea 2 Turbo photorealism pipeline.",
         color=discord.Color.from_rgb(220, 90, 40)
     )
-    if image_url:
-        embed.set_thumbnail(url=image_url)
+    thumb_url = image_url or gen_data.get("image_url")
+    if thumb_url:
+        embed.set_thumbnail(url=thumb_url)
 
     disp_prompt = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
     embed.add_field(name="📜 Generation Prompt", value=disp_prompt, inline=False)
@@ -1319,23 +1321,9 @@ class BlendKreaButtons(discord.ui.View):
                 description="Trained Krea 2 Character LoRA (Heavy)",
                 default=(self.character == "ogarla.85")
             ),
-            discord.SelectOption(
-                label="Valerie (Krea 2 - 0.90)",
-                value="valerie.90",
-                emoji="✨",
-                description="Valerie Krea 2 Character LoRA (Brunette, Brown Eyes)",
-                default=(self.character in ["valerie", "valerie.90", "val"])
-            ),
-            discord.SelectOption(
-                label="Valerie (Krea 2 Light - 0.70)",
-                value="valerie.70",
-                emoji="✨",
-                description="Subtle Valerie Krea 2 Character LoRA",
-                default=(self.character in ["valerie.70", "valerie_light"])
-            ),
         ]
         self.add_item(discord.ui.Select(
-            placeholder="🎭 Select Character LoRA (Ogarla / Valerie)...",
+            placeholder="🎭 Select Character LoRA (Ogarla)...",
             options=char_options,
             min_values=1,
             max_values=1,
@@ -2401,8 +2389,6 @@ class BertflowButtons(discord.ui.View):
         has_char = character and str(character).lower() not in ["none", "nochar", "off", "false"]
         if not has_char:
             char_label = "🌿 Ogarla: OFF"
-        elif "valerie" in str(character).lower() or "val" in str(character).lower():
-            char_label = "✨ Valerie: ON"
         elif "ogarla" in str(character).lower() or "oga" in str(character).lower():
             char_label = "🌿 Ogarla: ON"
         else:

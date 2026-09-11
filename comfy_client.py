@@ -383,6 +383,7 @@ class ComfyClient:
                         self.futures.pop(prompt_id, None)
                         self.results.pop(prompt_id, None)
                         self.progress_callbacks.pop(prompt_id, None)
+                        self.timings.pop(prompt_id, None)
 
                 except StasisInterruptException as e:
                     raise e

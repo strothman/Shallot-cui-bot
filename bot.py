@@ -10,6 +10,7 @@ import copy
 import re
 import subprocess
 import time
+from collections import OrderedDict
 import discord
 import aiohttp
 from PIL import Image
@@ -79,6 +80,8 @@ from image_utils import (
     boost_image_vibrancy_and_contrast,
     get_checkpoint_abbrev,
     detect_closest_aspect_ratio,
+    detect_closest_krea_aspect_ratio,
+    create_thumbnail_bytes,
     QUADRANT_CACHE_DIR,
 )
 from views import (
@@ -202,8 +205,6 @@ CHARACTER_CHOICES_FLUX = [
 CHARACTER_CHOICES_KREA2 = [
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.85 - Default)", value="ogarla.85"),
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.70 - Light)", value="ogarla.70"),
-    app_commands.Choice(name="✨ Valerie Krea 2 (.90 - Default)", value="valerie.90"),
-    app_commands.Choice(name="✨ Valerie Krea 2 (.70 - Light)", value="valerie.70"),
 ]
 
 # Checkpoint-specific configurations & optimal generation parameters for photorealism and LoRA compatibility
@@ -333,23 +334,51 @@ comfy_client = ComfyClient(server_address=COMFYUI_ADDRESS)
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Active generations SQLite Proxy
+# Active generations SQLite Proxy with bounded LRU in-memory caching
 class ActiveGenerationsProxy:
+    def __init__(self, max_size=500):
+        self._cache = OrderedDict()
+        self._max_size = max_size
+
     def __getitem__(self, key):
-        val = db.get_generation(str(key))
+        k = str(key)
+        if k in self._cache:
+            self._cache.move_to_end(k)
+            return self._cache[k]
+        val = db.get_generation(k)
         if val is None:
             raise KeyError(key)
+        self._cache[k] = val
+        if len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)
         return val
 
     def get(self, key, default=None):
-        val = db.get_generation(str(key))
-        return val if val is not None else default
+        k = str(key)
+        if k in self._cache:
+            self._cache.move_to_end(k)
+            return self._cache[k]
+        val = db.get_generation(k)
+        if val is not None:
+            self._cache[k] = val
+            if len(self._cache) > self._max_size:
+                self._cache.popitem(last=False)
+            return val
+        return default
 
     def __setitem__(self, key, value):
-        db.save_generation(str(key), value)
+        k = str(key)
+        self._cache[k] = value
+        self._cache.move_to_end(k)
+        if len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)
+        db.save_generation(k, value)
 
     def __contains__(self, key):
-        return db.get_generation(str(key)) is not None
+        k = str(key)
+        if k in self._cache:
+            return True
+        return db.get_generation(k) is not None
 
 active_generations = ActiveGenerationsProxy()
 
@@ -493,6 +522,18 @@ async def update_bot_presence(status_text: str = None):
         logger.debug(f"Failed to update bot presence: {e}")
 
 
+def is_interaction_expired(interaction) -> bool:
+    """Returns True if the interaction is None or exceeds Discord's 15-minute token lifetime."""
+    if not interaction:
+        return True
+    created_at = getattr(interaction, "created_at", None)
+    if isinstance(created_at, datetime):
+        age = (discord.utils.utcnow() - created_at).total_seconds()
+        if age >= 870:  # 14.5 minutes (Discord invalidates webhook tokens at 15m)
+            return True
+    return False
+
+
 async def send_followup_fallback(interaction, content=None, embed=None, file=None, files=None, view=None, ephemeral=False):
     """Sends a follow-up message using interaction, with fallback to channel.send if expired."""
     kwargs = {}
@@ -506,54 +547,64 @@ async def send_followup_fallback(interaction, content=None, embed=None, file=Non
         kwargs["files"] = files
     if view is not None:
         kwargs["view"] = view
-    try:
-        return await interaction.followup.send(**kwargs, ephemeral=ephemeral)
-    except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
-        logger.info(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}). Falling back to channel.send.")
-        channel = interaction.channel
-        if not channel and interaction.channel_id:
-            try:
-                channel = await bot.fetch_channel(interaction.channel_id)
-            except Exception:
-                pass
-        if not channel:
-            return None
-        if file:
-            file.fp.seek(0)
-        if files:
-            for f in files:
-                f.fp.seek(0)
-        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-        if tag:
-            if "content" in kwargs and kwargs["content"]:
-                if interaction.user.mention not in kwargs["content"]:
-                    kwargs["content"] = f"{tag}{kwargs['content']}"
-            else:
-                kwargs["content"] = tag.strip()
+
+    if not is_interaction_expired(interaction):
         try:
-            return await channel.send(**kwargs)
-        except Exception as ce:
-            logger.warning(f"Channel send fallback failed: {ce}")
-            return None
+            return await interaction.followup.send(**kwargs, ephemeral=ephemeral)
+        except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
+            logger.debug(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}). Falling back to channel.send.")
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit. Fast-routing directly to channel.send.")
+
+    channel = getattr(interaction, "channel", None)
+    if not channel and getattr(interaction, "channel_id", None):
+        try:
+            channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if not channel:
+        return None
+    if file:
+        file.fp.seek(0)
+    if files:
+        for f in files:
+            f.fp.seek(0)
+    tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+    if tag:
+        if "content" in kwargs and kwargs["content"]:
+            if interaction.user.mention not in kwargs["content"]:
+                kwargs["content"] = f"{tag}{kwargs['content']}"
+        else:
+            kwargs["content"] = tag.strip()
+    try:
+        return await channel.send(**kwargs)
+    except Exception as ce:
+        logger.warning(f"Channel send fallback failed: {ce}")
+        return None
 
 async def send_error_fallback(interaction, message):
     """Sends an error message using interaction, with fallback to channel.send if expired."""
     # Ensure error message fits within Discord's 2000 character limit
     if len(message) > 1980:
         message = message[:1977] + "..."
-    try:
-        await interaction.followup.send(message, ephemeral=True)
-    except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
-        logger.info(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}) during error report. Falling back to channel.send.")
+    if not is_interaction_expired(interaction):
         try:
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                channel = await bot.fetch_channel(interaction.channel_id)
-            if channel:
-                tag = f"{interaction.user.mention} " if (interaction and interaction.user) else ""
-                await channel.send(f"{tag}❌ {message.replace('❌ ', '')}")
-        except Exception as e:
-            logger.debug(f"Failed channel.send fallback in send_error_fallback: {e}")
+            await interaction.followup.send(message, ephemeral=True)
+            return
+        except (discord.HTTPException, discord.NotFound, aiohttp.ClientError, OSError) as hex:
+            logger.debug(f"Interaction token or socket issue ({getattr(hex, 'code', str(hex))}) during error report. Falling back to channel.send.")
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit during error report. Fast-routing to channel.send.")
+
+    try:
+        channel = getattr(interaction, "channel", None)
+        if not channel and getattr(interaction, "channel_id", None):
+            channel = await bot.fetch_channel(interaction.channel_id)
+        if channel:
+            tag = f"{interaction.user.mention} " if (interaction and interaction.user) else ""
+            await channel.send(f"{tag}❌ {message.replace('❌ ', '')}")
+    except Exception as e:
+        logger.debug(f"Failed channel.send fallback in send_error_fallback: {e}")
 
 async def download_image(url: str) -> bytes:
     """Downloads image bytes from a remote URL using aiohttp."""
@@ -564,7 +615,7 @@ async def download_image(url: str) -> bytes:
             else:
                 raise Exception(f"HTTP {resp.status} fetching image from {url}")
 
-async def edit_original_fallback(interaction, content=None, embed=None, view=None):
+async def edit_original_fallback(interaction, content=None, embed=None, view=None, attachments=None):
     """Edits the original interaction response, with fallback to channel.send if expired."""
     edit_kwargs = {}
     send_kwargs = {}
@@ -579,32 +630,40 @@ async def edit_original_fallback(interaction, content=None, embed=None, view=Non
         send_kwargs["view"] = view
     else:
         edit_kwargs["view"] = None
+    if attachments is not None:
+        edit_kwargs["attachments"] = attachments
+        send_kwargs["files"] = attachments
 
-    try:
-        await interaction.edit_original_response(**edit_kwargs)
-    except (discord.HTTPException, discord.NotFound) as hex:
-        if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
-            logger.info(f"Interaction token expired ({getattr(hex, 'code', '404')}) during edit. Falling back to channel.send.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if channel:
-                tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
-                if "content" in send_kwargs:
-                    send_kwargs["content"] = f"{tag}{send_kwargs['content']}"
-                else:
-                    send_kwargs["content"] = f"{tag}Image Description Complete"
-                await channel.send(**send_kwargs)
+    if not is_interaction_expired(interaction):
+        try:
+            await interaction.edit_original_response(**edit_kwargs)
+            return
+        except (discord.HTTPException, discord.NotFound) as hex:
+            if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
+                logger.debug(f"Interaction token expired ({getattr(hex, 'code', '404')}) during edit. Falling back to channel.send.")
+            else:
+                raise hex
+    else:
+        logger.debug("Interaction token reached 15m lifetime limit during edit. Fast-routing to channel.send.")
+
+    channel = getattr(interaction, "channel", None)
+    if not channel and getattr(interaction, "channel_id", None):
+        try:
+            channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if channel:
+        tag = f"{interaction.user.mention}\n" if (interaction and interaction.user) else ""
+        if "content" in send_kwargs:
+            send_kwargs["content"] = f"{tag}{send_kwargs['content']}"
         else:
-            raise hex
+            send_kwargs["content"] = f"{tag}Image Description Complete"
+        await channel.send(**send_kwargs)
 
 
 async def edit_message_fallback(interaction, message_id, content=None, embed=None, file=None, view=None, allow_send_fallback=True):
     """Edits a status message by ID. Falls back to channel.send if interaction token expired/fails (unless allow_send_fallback is False)."""
-    chan_id = interaction.channel_id
+    chan_id = getattr(interaction, "channel_id", None)
     edit_kwargs = {}
     send_kwargs = {}
     if content is not None:
@@ -621,7 +680,7 @@ async def edit_message_fallback(interaction, message_id, content=None, embed=Non
 
     if chan_id and message_id:
         try:
-            channel = interaction.channel or await bot.fetch_channel(chan_id)
+            channel = getattr(interaction, "channel", None) or await bot.fetch_channel(chan_id)
             message = await channel.fetch_message(message_id)
             if message:
                 if file:
@@ -632,32 +691,40 @@ async def edit_message_fallback(interaction, message_id, content=None, embed=Non
         except Exception as e:
             if not allow_send_fallback:
                 return
-            logger.info(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
-    
-    try:
+            logger.debug(f"Could not edit message via Bot API ({e}). Falling back to interaction/channel send.")
+
+    if not is_interaction_expired(interaction):
+        try:
+            if file:
+                file.fp.seek(0)
+                edit_kwargs["attachments"] = [file]
+            await interaction.followup.edit_message(message_id, **edit_kwargs)
+            return
+        except (discord.HTTPException, discord.NotFound) as hex:
+            if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
+                if not allow_send_fallback:
+                    return
+                logger.debug(f"Interaction token expired during message edit. Sending new message to channel.")
+            else:
+                if allow_send_fallback:
+                    raise hex
+                return
+    else:
+        if not allow_send_fallback:
+            return
+        logger.debug("Interaction token reached 15m lifetime limit during message edit. Sending new message to channel.")
+
+    channel = getattr(interaction, "channel", None)
+    if not channel and getattr(interaction, "channel_id", None):
+        try:
+            channel = await bot.fetch_channel(interaction.channel_id)
+        except Exception:
+            pass
+    if channel:
         if file:
             file.fp.seek(0)
-            edit_kwargs["attachments"] = [file]
-        await interaction.followup.edit_message(message_id, **edit_kwargs)
-    except (discord.HTTPException, discord.NotFound) as hex:
-        if getattr(hex, 'code', None) in [50027, 10062, 10015] or getattr(hex, 'status', None) in [404, 400] or isinstance(hex, discord.NotFound):
-            if not allow_send_fallback:
-                return
-            logger.info(f"Interaction token expired during message edit. Sending new message to channel.")
-            channel = interaction.channel
-            if not channel and interaction.channel_id:
-                try:
-                    channel = await bot.fetch_channel(interaction.channel_id)
-                except Exception:
-                    pass
-            if channel:
-                if file:
-                    file.fp.seek(0)
-                    send_kwargs["file"] = file
-                await channel.send(**send_kwargs)
-        else:
-            if allow_send_fallback:
-                raise hex
+            send_kwargs["file"] = file
+        await channel.send(**send_kwargs)
 
 
 async def complete_grid_generation(interaction, generation_id, images, gen_data, status_message_id=None, timing_data=None):
@@ -4126,7 +4193,8 @@ async def handle_bertflow_toggle_char(interaction: discord.Interaction, generati
         gen_data["last_character"] = curr_char
         db.save_generation(generation_id, gen_data)
     else:
-        new_char = gen_data.get("last_character") or "ogarla.85"
+        cand = gen_data.get("last_character") or "ogarla.85"
+        new_char = "ogarla.85" if "valerie" in str(cand).lower() else cand
 
     await execute_bertflow(
         interaction=interaction,
@@ -5516,7 +5584,6 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
     if not gen_data.get("fused_prompt"):
         gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
     active_generations[generation_id] = gen_data
-    db.save_generation(generation_id, gen_data)
 
     embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
     view = BlendKreaButtons(
@@ -5544,7 +5611,6 @@ async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction,
     gen_data["fused_prompt"] = new_prompt
     gen_data["user_prompt"] = new_prompt
     active_generations[generation_id] = gen_data
-    db.save_generation(generation_id, gen_data)
 
     embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
     view = BlendKreaButtons(
@@ -6648,6 +6714,12 @@ async def execute_blend_core(
         if len(detailed_caption) > 1024:
             detailed_caption = detailed_caption[:1021] + "..."
 
+        # Prepare fast, lightweight thumbnail attachment for Discord embed
+        thumb_bytes = await asyncio.to_thread(create_thumbnail_bytes, image_bytes)
+        thumb_filename = "source_thumb.jpg"
+        thumb_file = discord.File(io.BytesIO(thumb_bytes), filename=thumb_filename)
+        effective_image_url = f"attachment://{thumb_filename}"
+
         # Store in active generations cache for interactive button clicks
         generation_id = str(random.randint(100000, 999999))
         gen_data = {
@@ -6656,7 +6728,8 @@ async def execute_blend_core(
             "krea2_prompt": raw_krea2_prompt,
             "extra_details": prompt or "",
             "uploaded_image_name": uploaded_name,
-            "image_url": image_url,
+            "image_url": effective_image_url,
+            "source_image_url": image_url,
             "user_prompt": prompt or "",
             "ar": detected_ar,
             "sr": True,
@@ -6673,7 +6746,7 @@ async def execute_blend_core(
         save_generations()
 
         # Build streamlined embed response with 3-column dashboard
-        embed = build_blend_embed(gen_data, author_str=interaction.user.name, image_url=image_url)
+        embed = build_blend_embed(gen_data, author_str=interaction.user.name, image_url=effective_image_url)
         user_favs = db.get_favorite_styles(interaction.user.id) if (interaction and interaction.user) else []
         view = BlendButtons(
             generation_id=generation_id,
@@ -6687,7 +6760,7 @@ async def execute_blend_core(
             tab="canvas",
             user_favorites=user_favs
         )
-        await edit_original_fallback(interaction, content=None, embed=embed, view=view)
+        await edit_original_fallback(interaction, content=None, embed=embed, view=view, attachments=[thumb_file])
 
     except Exception as e:
         logger.error(f"Error executing blend workflow: {e}")
@@ -6829,7 +6902,7 @@ async def execute_blend_krea_core(
     filename: str,
     image_url: str,
     prompt: str = None,
-    aspect_ratio: str = "16:9",
+    aspect_ratio: str = None,
     model: str = "muse",
     wetness: float = -2.0,
     composition: str = "off",
@@ -6873,15 +6946,23 @@ async def execute_blend_krea_core(
         except Exception as e:
             logger.debug(f"Could not free VRAM after Florence-2: {e}")
 
-        resolved_ar = aspect_ratio or "16:9"
-        if not aspect_ratio:
+        resolved_ar = aspect_ratio
+        if not resolved_ar or str(resolved_ar).lower() == "auto":
             try:
                 with Image.open(io.BytesIO(image_bytes)) as pil_img:
-                    resolved_ar = detect_closest_aspect_ratio(pil_img.width, pil_img.height)
+                    resolved_ar = detect_closest_krea_aspect_ratio(pil_img.width, pil_img.height)
+                    logger.info(f"Auto-detected Krea 2 aspect ratio {resolved_ar} from source image size ({pil_img.width}x{pil_img.height})")
             except Exception as e:
                 logger.debug(f"Could not auto-detect AR: {e}")
+                resolved_ar = "16:9"
 
         fused_prompt = fuse_krea2_blend_prompt(raw_krea2_prompt, prompt)
+
+        # Prepare fast, lightweight thumbnail attachment for Discord embed
+        thumb_bytes = await asyncio.to_thread(create_thumbnail_bytes, image_bytes)
+        thumb_filename = "source_thumb.jpg"
+        thumb_file = discord.File(io.BytesIO(thumb_bytes), filename=thumb_filename)
+        effective_image_url = f"attachment://{thumb_filename}"
 
         generation_id = str(random.randint(100000, 999999))
         gen_data = {
@@ -6891,7 +6972,8 @@ async def execute_blend_krea_core(
             "user_prompt": prompt or "",
             "fused_prompt": fused_prompt,
             "uploaded_image_name": uploaded_name,
-            "image_url": image_url,
+            "image_url": effective_image_url,
+            "source_image_url": image_url,
             "ar": resolved_ar,
             "model_choice": model or "muse",
             "wetness": float(wetness if wetness is not None else -2.0),
@@ -6904,7 +6986,7 @@ async def execute_blend_krea_core(
         db.save_generation(generation_id, gen_data)
         save_generations()
 
-        embed = build_blend_krea_embed(gen_data, author_str=interaction.user.name, image_url=image_url)
+        embed = build_blend_krea_embed(gen_data, author_str=interaction.user.name, image_url=effective_image_url)
         view = BlendKreaButtons(
             generation_id=generation_id,
             ar=resolved_ar,
@@ -6914,7 +6996,7 @@ async def execute_blend_krea_core(
             character=gen_data["char_choice"],
             celebrity=gen_data["celeb_choice"]
         )
-        await edit_original_fallback(interaction, content=None, embed=embed, view=view)
+        await edit_original_fallback(interaction, content=None, embed=embed, view=view, attachments=[thumb_file])
 
     except Exception as e:
         logger.error(f"Error executing blend-krea workflow: {e}")
@@ -6925,7 +7007,7 @@ async def execute_blend_krea_core(
 @app_commands.describe(
     image="The image file you want to analyze and blend",
     prompt="Optional remix instructions or extra details to blend into the image",
-    aspect_ratio="The aspect ratio for the Krea 2 render",
+    aspect_ratio="Optional aspect ratio (defaults to auto-detecting from source image)",
     character="Optional character preset (Ogarla / Valerie Krea 2)",
     celebrity="Optional favorite celebrity to inject into prompt (Audrey Hepburn, Zendaya, etc.)",
     model="Select Krea 2 UNET Checkpoint (Defaults to auto-detecting Muse v3.5)",
@@ -6934,6 +7016,7 @@ async def execute_blend_krea_core(
 )
 @app_commands.choices(
     aspect_ratio=[
+        app_commands.Choice(name="Auto-Detect (Match Source Image)", value="auto"),
         app_commands.Choice(name="16:9 Landscape (1632x920)", value="16:9"),
         app_commands.Choice(name="1:1 Square (1224x1224)", value="1:1"),
         app_commands.Choice(name="21:9 Ultra-Wide (1872x800)", value="21:9"),
@@ -6953,7 +7036,7 @@ async def blend_krea(
     interaction: discord.Interaction, 
     image: discord.Attachment, 
     prompt: str = None,
-    aspect_ratio: str = "16:9",
+    aspect_ratio: app_commands.Choice[str] = None,
     character: str = None,
     celebrity: str = None,
     model: app_commands.Choice[str] = None,
@@ -6973,13 +7056,17 @@ async def blend_krea(
         comp_val = composition.value if composition else "off"
         char_val = character.value if hasattr(character, "value") else (character if character else "none")
         celeb_val = celebrity.value if hasattr(celebrity, "value") else (celebrity if celebrity else "none")
+        ar_val = aspect_ratio.value if hasattr(aspect_ratio, "value") else (aspect_ratio if aspect_ratio else None)
+        if ar_val == "auto":
+            ar_val = None
+
         await execute_blend_krea_core(
             interaction=interaction,
             image_bytes=image_bytes,
             filename=image.filename,
             image_url=image.url,
             prompt=prompt,
-            aspect_ratio=aspect_ratio,
+            aspect_ratio=ar_val,
             model=selected_model,
             wetness=wetness,
             composition=comp_val,
