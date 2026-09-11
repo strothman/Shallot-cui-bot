@@ -82,9 +82,10 @@ OUTFITS_CASUAL = [
 ]
 
 
-def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
+def generate_prompt_matrix(trigger: str, count: int = 30, base_traits: str = None) -> list[str]:
     """Generates a diverse set of prompts with a guaranteed ratio of full-body, medium-body, and portrait shots."""
     prompts = []
+    traits_suffix = f", {base_traits}" if base_traits else ""
     
     # Target distribution: ~35% Full-body, ~35% Medium-body, ~30% Portrait
     num_full = max(1, int(count * 0.35))
@@ -96,21 +97,21 @@ def generate_prompt_matrix(trigger: str, count: int = 30) -> list[str]:
         outfit = random.choice(OUTFITS_MODELING_BODY)
         lighting = random.choice(LIGHTING_CONDITIONS)
         env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
+        prompts.append(f"{framing.format(trigger=trigger)}{traits_suffix}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
     for _ in range(num_med):
         framing = random.choice(FRAMINGS_MEDIUM_BODY)
         outfit = random.choice(OUTFITS_MODELING_BODY + OUTFITS_CASUAL)
         lighting = random.choice(LIGHTING_CONDITIONS)
         env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
+        prompts.append(f"{framing.format(trigger=trigger)}{traits_suffix}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
     for _ in range(num_port):
         framing = random.choice(FRAMINGS_PORTRAIT)
         outfit = random.choice(OUTFITS_CASUAL + OUTFITS_MODELING_BODY)
         lighting = random.choice(LIGHTING_CONDITIONS)
         env = random.choice(BACKGROUND_ENVIRONMENTS)
-        prompts.append(f"{framing.format(trigger=trigger)}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
+        prompts.append(f"{framing.format(trigger=trigger)}{traits_suffix}, {outfit}, {env}, {lighting}, natural skin texture, 35mm photograph")
 
     random.shuffle(prompts)
     return prompts
@@ -182,9 +183,10 @@ async def run_dataset_builder(
     count: int = 30,
     output_dir: str = None,
     engine: str = "auto",
-    checkpoint: str = "RealVisXL_V4.0.safetensors",
+    checkpoint: str = "hyphoriaIlluNAI_v001.safetensors",
     resolution: int = 1024,
     steps: int = None,
+    semi_realism: float = 0.90,
     overwrite: bool = False,
     server_address: str = "127.0.0.1:8188"
 ):
@@ -279,7 +281,7 @@ async def run_dataset_builder(
             write_ai_toolkit_config(train_trigger, output_dir, config_yaml_path)
             return
 
-        prompts = generate_prompt_matrix(gen_trigger, needed)[:needed]
+        prompts = generate_prompt_matrix(gen_trigger, needed, base_traits=char.base_prompt_traits)[:needed]
         logger.info(f"Generating {len(prompts)} samples to reach target dataset count (starting at index {start_num:03d}).")
 
         for i, prompt_text in enumerate(prompts):
@@ -330,10 +332,10 @@ async def run_dataset_builder(
                     wf["3"]["inputs"]["sampler_name"] = "dpmpp_2m"
                     wf["3"]["inputs"]["scheduler"] = "karras"
 
-                # Disable static node 75
+                # Configure static node 75 (Semi-Realism LoRA)
                 if "75" in wf:
-                    wf["75"]["inputs"]["strength_model"] = 0.0
-                    wf["75"]["inputs"]["strength_clip"] = 0.0
+                    wf["75"]["inputs"]["strength_model"] = semi_realism
+                    wf["75"]["inputs"]["strength_clip"] = semi_realism
 
                 # Inject SDXL character LoRA
                 if sdxl_lora and "76" in wf:
@@ -437,9 +439,10 @@ if __name__ == "__main__":
     parser.add_argument("--count", type=int, default=30, help="Number of image+caption pairs to generate (default: 30)")
     parser.add_argument("--output-dir", type=str, default=None, help="Destination folder (defaults to datasets/<character>_krea2)")
     parser.add_argument("--engine", type=str, choices=["auto", "flux", "sdxl"], default="auto", help="Engine to use: 'auto', 'flux', or 'sdxl'")
-    parser.add_argument("--checkpoint", type=str, default="RealVisXL_V4.0.safetensors", help="SDXL checkpoint (default: RealVisXL_V4.0.safetensors)")
+    parser.add_argument("--checkpoint", type=str, default="hyphoriaIlluNAI_v001.safetensors", help="SDXL checkpoint (default: hyphoriaIlluNAI_v001.safetensors)")
     parser.add_argument("--resolution", type=int, default=1024, help="Image resolution width & height (default: 1024)")
     parser.add_argument("--steps", type=int, default=None, help="Sampling steps (default: 25 for Flux, 28 for SDXL)")
+    parser.add_argument("--semi-realism", type=float, default=0.90, help="Strength of Semi-Realism LoRA for Illustrious/SDXL (default: 0.90)")
     parser.add_argument("--overwrite", action="store_true", help="Clear existing directory before starting")
     parser.add_argument("--server", type=str, default="127.0.0.1:8188", help="ComfyUI server address")
 
@@ -452,6 +455,7 @@ if __name__ == "__main__":
         checkpoint=args.checkpoint,
         resolution=args.resolution,
         steps=args.steps,
+        semi_realism=args.semi_realism,
         overwrite=args.overwrite,
         server_address=args.server
     ))

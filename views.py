@@ -1394,22 +1394,29 @@ class BlendKreaButtons(discord.ui.View):
                 default=(self.character in [None, "none", "nochar"])
             ),
             discord.SelectOption(
-                label="Ogarla (Krea 2 - 0.85)",
-                value="ogarla.85",
-                emoji="🌿",
-                description="Trained Krea 2 Character LoRA (Default)",
-                default=(self.character in ["ogarla", "ogarla.85", "oga"])
-            ),
-            discord.SelectOption(
                 label="Ogarla (Krea 2 Light - 0.70)",
                 value="ogarla.70",
                 emoji="🌿",
-                description="Subtle Krea 2 Character LoRA",
-                default=(self.character in ["ogarla.70", "ogarla_light"])
+                description="Subtle Krea 2 Character LoRA (Recommended Default)",
+                default=(self.character in ["ogarla", "ogarla.70", "oga", "ogarla_light", None])
+            ),
+            discord.SelectOption(
+                label="Ogarla (Krea 2 - 0.85)",
+                value="ogarla.85",
+                emoji="🌿",
+                description="Trained Krea 2 Character LoRA (Heavy)",
+                default=(self.character == "ogarla.85")
+            ),
+            discord.SelectOption(
+                label="Valerie (Krea 2 - 0.90)",
+                value="valerie.90",
+                emoji="✨",
+                description="Valerie Krea 2 Character LoRA (Brunette, Brown Eyes)",
+                default=(self.character in ["valerie", "valerie.90", "val"])
             ),
         ]
         self.add_item(discord.ui.Select(
-            placeholder="🎭 Select Character LoRA (Ogarla Krea 2)...",
+            placeholder="🎭 Select Character LoRA (Ogarla / Valerie)...",
             options=char_options,
             min_values=1,
             max_values=1,

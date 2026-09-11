@@ -1,5 +1,5 @@
 @echo off
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 title Generate Character Dataset from Reference Photos
 echo =================================================================
 echo   Character Dataset Generator from 1-12 Reference Photos

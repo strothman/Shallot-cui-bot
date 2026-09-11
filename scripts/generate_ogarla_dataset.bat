@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0\.."
 title Generate Ogarla Krea 2 Dataset
 echo ===================================================
 echo   Generating Ogarla Synthetic Dataset for Krea 2

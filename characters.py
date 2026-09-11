@@ -31,7 +31,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         lora_sdxl="ogarla_epoch_5.safetensors",
         lora_flux="ogarlaflux_epoch_5.safetensors",
         lora_krea2="Krea2\\ogarla_krea2.safetensors",
-        default_weight=0.85,
+        default_weight=0.70,
         shorthands=["ogarla", "oga"],
         description="Original Ogarla character LoRA (SDXL, Flux & Krea 2)",
         is_private=False
@@ -42,9 +42,11 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         trained_trigger="jen",
         lora_sdxl="jen_epoch_5.safetensors",
         lora_flux=None,
-        default_weight=0.85,
+        lora_krea2="Krea2\\valerie_krea2.safetensors",
+        default_weight=0.90,
         shorthands=["valerie", "val"],
-        description="Valerie character LoRA (SDXL)",
+        description="Valerie character LoRA (SDXL & Krea 2)",
+        base_prompt_traits="brown hair, dark brown eyes, realistic skin texture",
         is_private=True
     ),
     "sully": CharacterProfile(

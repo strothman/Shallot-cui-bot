@@ -1799,16 +1799,22 @@ def prepare_bertflow_workflow(
             wetness_strength = -0.5
             prompt = re.sub(r'--dewy\b', '', prompt, flags=re.IGNORECASE).strip()
 
-    # Parse character flag from prompt if present (e.g. --ogarla.85 or --oga)
+    # Parse character flag from prompt if present (e.g. --ogarla.85, --oga, --valerie.90, --val)
     active_char = character
     char_weight = character_strength
     if prompt:
         oga_match = re.search(r'--(ogarla|oga)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
+        val_match = re.search(r'--(valerie|val)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
         if oga_match:
             active_char = "ogarla"
             if char_weight is None and oga_match.group(2):
                 char_weight = float(oga_match.group(2)) / 100.0 if len(oga_match.group(2)) == 2 else float(f"0.{oga_match.group(2)}")
             prompt = re.sub(r'--(ogarla|oga)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
+        elif val_match:
+            active_char = "valerie"
+            if char_weight is None and val_match.group(2):
+                char_weight = float(val_match.group(2)) / 100.0 if len(val_match.group(2)) == 2 else float(f"0.{val_match.group(2)}")
+            prompt = re.sub(r'--(valerie|val)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
 
     # Determine character LoRA file, weight, and trigger word
     char_lora_file = None
@@ -1824,7 +1830,17 @@ def prepare_bertflow_workflow(
                     val = dot_match.group(1)
                     char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
                 else:
-                    char_weight = 0.85
+                    char_weight = 0.70
+        elif "valerie" in c_str or "val" in c_str:
+            char_lora_file = "Krea2\\valerie_krea2.safetensors"
+            char_trigger = "valerie"
+            if char_weight is None:
+                dot_match = re.search(r'\.(\d+)', c_str)
+                if dot_match:
+                    val = dot_match.group(1)
+                    char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
+                else:
+                    char_weight = 0.90
 
     # Inject trigger word into prompt if needed
     cleaned_prompt = prompt or ""
@@ -1832,6 +1848,14 @@ def prepare_bertflow_workflow(
         if not re.search(rf'\b{re.escape(char_trigger)}\b', cleaned_prompt, re.IGNORECASE):
             cleaned_prompt = f"{char_trigger}, {cleaned_prompt}".strip()
         cleaned_prompt = re.sub(r"\s+", " ", cleaned_prompt).lstrip(":,.- ").strip()
+
+    # Anatomical artifact protection for Krea 2 Flow-Matching:
+    # Steers the model away from constricted rings, rubbery bands, and double-corona ridges
+    male_anatomy_pattern = r'\b(penis|cock|shaft|dick|erection|phallus)\b'
+    if re.search(male_anatomy_pattern, cleaned_prompt, re.IGNORECASE):
+        clean_anatomy_anchor = "smooth natural shaft, clean coronal sulcus, realistic anatomy, circumcised, smooth skin"
+        if not any(k in cleaned_prompt.lower() for k in ["smooth natural shaft", "clean coronal sulcus"]):
+            cleaned_prompt = f"{cleaned_prompt}, {clean_anatomy_anchor}"
 
     if "627" in wf:
         wf["627"]["inputs"]["text"] = cleaned_prompt

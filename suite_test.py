@@ -1622,7 +1622,7 @@ class TestCUIBotFunctions(unittest.TestCase):
 
         # Injecting trained trigger -> ComfyUI prompt
         injected = inject_trained_trigger_in_prompt("valerie sitting in a coffee shop", "valerie")
-        self.assertEqual(injected, "jen sitting in a coffee shop")
+        self.assertEqual(injected, "jen, brown hair, dark brown eyes, realistic skin texture sitting in a coffee shop")
 
         injected_sully = inject_trained_trigger_in_prompt("sully, in a library", "sully")
         self.assertEqual(injected_sully, "susa, black hair, thin rim glasses, in a library")
@@ -2391,6 +2391,16 @@ class TestCUIBotFunctions(unittest.TestCase):
         wf_custom_wet = prepare_bertflow_workflow("rainy street --wet 0.75")
         self.assertEqual(wf_custom_wet["822"]["inputs"]["lora_1"]["strength"], 0.75)
 
+        # Test Valerie Krea 2 Character LoRA injection and trigger word
+        wf_val = prepare_bertflow_workflow(
+            prompt="fashion runway photo --valerie.90",
+            character="valerie"
+        )
+        self.assertTrue(wf_val["822"]["inputs"]["lora_2"]["on"])
+        self.assertEqual(wf_val["822"]["inputs"]["lora_2"]["lora"], "Krea2\\valerie_krea2.safetensors")
+        self.assertEqual(wf_val["822"]["inputs"]["lora_2"]["strength"], 0.90)
+        self.assertEqual(wf_val["627"]["inputs"]["text"], "valerie, fashion runway photo")
+
         # Test scan_krea2_loras
         from characters import scan_krea2_loras
         discovered_loras = scan_krea2_loras()
@@ -2401,6 +2411,10 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(
             resolve_lora_for_architecture("ogarla", Architecture.KREA2),
             "Krea2\\ogarla_krea2.safetensors"
+        )
+        self.assertEqual(
+            resolve_lora_for_architecture("valerie", Architecture.KREA2),
+            "Krea2\\valerie_krea2.safetensors"
         )
 
         # 3. Test BlendKreaButtons

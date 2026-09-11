@@ -196,6 +196,10 @@ LORA_FAMILY_VARIANTS = {
         Architecture.FLUX: "ogarlaflux_epoch_5.safetensors",
         Architecture.KREA2: "Krea2\\ogarla_krea2.safetensors",
     },
+    "valerie": {
+        Architecture.SDXL: "jen_epoch_5.safetensors",
+        Architecture.KREA2: "Krea2\\valerie_krea2.safetensors",
+    },
     "semi-realism": {
         Architecture.SDXL: "Semi-realism_illustrious.safetensors",
         f"{Architecture.SDXL}:{SubType.ILLUSTRIOUS}": "Semi-realism_illustrious.safetensors",
@@ -219,6 +223,13 @@ def resolve_lora_for_architecture(lora_name: str, target_arch: str, target_subty
             if target_subtype == SubType.PONY or "pony" in str(target_subtype).lower():
                 return "ogarlapony_epoch_6.safetensors"
             return "ogarla_epoch_5.safetensors"
+
+    # Check Valerie family
+    if "valerie" in clean or "jen" in clean:
+        if target_arch == Architecture.KREA2 or "krea" in str(target_arch).lower():
+            return "Krea2\\valerie_krea2.safetensors"
+        elif target_arch == Architecture.SDXL:
+            return "jen_epoch_5.safetensors"
 
     # Check Semi-realism family
     if "semi-realism" in clean or "sr" == clean.split(".")[0]:
