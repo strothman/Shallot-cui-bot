@@ -136,8 +136,9 @@ The tool is built with **automatic state resumption**:
   * Silenced test-induced multi-instance warning banner.
 * **Phase 2: Dynamic Character Autocomplete [COMPLETED]**
   * Replaced static `app_commands.choices` arrays with dynamic `app_commands.autocomplete` querying `characters.py` and `scan_krea2_loras()`. Newly added LoRAs dropped into models folders immediately appear in Discord autocomplete without code edits or command re-syncing.
-* **Phase 3: Modular Cog Architecture [PLANNED]**
-  * Decompose monolithic `bot.py` into specialized Discord Cogs (`cogs/imagine.py`, `cogs/krea.py`, `cogs/video.py`, `cogs/admin.py`), reducing `bot.py` to lightweight lifecycle orchestration.
+* **Phase 3: Modular Cog Architecture [PLANNED - READY WHEN NEEDED]**
+  * Decompose monolithic `bot.py` into specialized Discord Cogs (`cogs/imagine.py`, `cogs/krea.py`, `cogs/video.py`, `cogs/admin.py`) and a business service layer (`services/`). Reduces `bot.py` from 6,900+ lines down to ~300 lines.
+  * 📋 **Detailed Execution Blueprint:** See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for full step-by-step instructions, circular import mitigations, and verification checkpoints.
 
 ---
 
