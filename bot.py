@@ -2563,7 +2563,7 @@ async def on_interaction(interaction: discord.Interaction):
             if len(parts) >= 2:
                 gen_id = parts[1]
                 gen_data = get_generation(gen_id) or {}
-                cur_prompt = gen_data.get("user_prompt", "")
+                cur_prompt = gen_data.get("fused_prompt") or gen_data.get("krea2_prompt") or gen_data.get("user_prompt", "")
                 modal = EditBlendKreaModal(
                     generation_id=gen_id,
                     current_prompt=cur_prompt,
@@ -5478,7 +5478,8 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
     if new_char:
         gen_data["char_choice"] = new_char
 
-    gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
+    if not gen_data.get("fused_prompt"):
+        gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
     active_generations[generation_id] = gen_data
     db.save_generation(generation_id, gen_data)
 
@@ -5497,15 +5498,15 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
         logger.debug(f"Ignored update error: {e}")
 
 
-async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction, generation_id: str, new_user_prompt: str):
-    """Handles modal submission for updating the remix prompt in a /blend-krea session."""
+async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction, generation_id: str, new_prompt: str):
+    """Handles modal submission for updating the prompt in a /blend-krea session."""
     gen_data = get_generation(generation_id)
     if not gen_data:
         await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
         return
 
-    gen_data["user_prompt"] = new_user_prompt
-    gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), new_user_prompt)
+    gen_data["fused_prompt"] = new_prompt
+    gen_data["user_prompt"] = new_prompt
     active_generations[generation_id] = gen_data
     db.save_generation(generation_id, gen_data)
 

@@ -1186,16 +1186,8 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     if image_url:
         embed.set_thumbnail(url=image_url)
 
-    disp_vision = vision_prompt[:1020] + "..." if len(vision_prompt) > 1024 else vision_prompt
-    embed.add_field(name="👁️ Florence-2 Vision Analysis", value=disp_vision, inline=False)
-
-    if user_prompt:
-        disp_user = user_prompt[:1020] + "..." if len(user_prompt) > 1024 else user_prompt
-        disp_fused = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
-        embed.add_field(name="✏️ Your Remix Additions", value=disp_user, inline=False)
-        embed.add_field(name="📜 Fused Generation Prompt", value=disp_fused, inline=False)
-    else:
-        embed.add_field(name="✏️ Your Remix Additions", value="*(None — click **Edit Remix Prompt** below to add changes)*", inline=False)
+    disp_prompt = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
+    embed.add_field(name="📜 Generation Prompt", value=disp_prompt, inline=False)
 
     embed.add_field(
         name="⚙️ Pipeline Settings",
@@ -1212,28 +1204,28 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
 
 class EditBlendKreaModal(discord.ui.Modal):
     def __init__(self, generation_id: str, current_prompt: str = "", on_submit_callback=None):
-        super().__init__(title="✏️ Remix / Add Details to Blend")
+        super().__init__(title="✏️ Edit Generation Prompt")
         self.generation_id = generation_id
         self.on_submit_callback = on_submit_callback
 
-        self.remix_input = discord.ui.TextInput(
-            label="Remix / Extra Details to Blend In",
+        self.prompt_input = discord.ui.TextInput(
+            label="Generation Prompt",
             style=discord.TextStyle.paragraph,
-            default=current_prompt[:1000] if current_prompt else "",
-            placeholder="Describe new attire, background, mood, lighting, or objects to fuse into the image...",
-            required=False,
-            max_length=1000
+            default=current_prompt[:2000] if current_prompt else "",
+            placeholder="Edit, add prefixes, or rewrite the generation prompt for Krea 2...",
+            required=True,
+            max_length=2000
         )
-        self.add_item(self.remix_input)
+        self.add_item(self.prompt_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            val = self.remix_input.value.strip()
+            val = self.prompt_input.value.strip()
             if self.on_submit_callback:
                 await self.on_submit_callback(interaction, self.generation_id, val)
         except Exception as e:
             logger.error(f"Error in EditBlendKreaModal submit: {e}")
-            await send_error_fallback(interaction, f"Failed to update Krea 2 remix prompt: {e}")
+            await send_error_fallback(interaction, f"Failed to update Krea 2 prompt: {e}")
 
 
 class BlendKreaButtons(discord.ui.View):
@@ -1374,7 +1366,7 @@ class BlendKreaButtons(discord.ui.View):
 
         # Row 4: Action Launchers
         self.add_item(discord.ui.Button(
-            label="✏️ Edit Remix Prompt",
+            label="✏️ Edit Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"edit_blend_krea_prompt:{self.generation_id}",
             row=4

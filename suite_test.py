@@ -2519,8 +2519,17 @@ class TestCUIBotFunctions(unittest.TestCase):
         embed = build_blend_krea_embed(gen_data, author_str="TestUser")
         self.assertIn("Krea 2 Blend Studio", embed.title)
         field_names = [f.name for f in embed.fields]
-        self.assertIn("👁️ Florence-2 Vision Analysis", field_names)
-        self.assertIn("📜 Fused Generation Prompt", field_names)
+        self.assertIn("📜 Generation Prompt", field_names)
+        gen_prompt_field = next(f for f in embed.fields if f.name == "📜 Generation Prompt")
+        self.assertIn("wearing a tiny bowtie, A close up photo of a cat", gen_prompt_field.value)
+
+        # 4b. Test EditBlendKreaModal
+        from views import EditBlendKreaModal
+        modal = EditBlendKreaModal("krea_blend_777", current_prompt="A test generation prompt")
+        self.assertEqual(modal.title, "✏️ Edit Generation Prompt")
+        self.assertEqual(modal.prompt_input.default, "A test generation prompt")
+        edit_btn = next(item for item in view.children if getattr(item, "custom_id", None) == "edit_blend_krea_prompt:krea_blend_777")
+        self.assertEqual(edit_btn.label, "✏️ Edit Prompt")
 
         # 5. Test BlendButtons includes Krea 2 button and Krea 2 models in select dropdown
         blend_view = BlendButtons(generation_id="blend_gen_123")
