@@ -2715,6 +2715,109 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertIn('arch: "krea2"', content)
             self.assertIn('noise_scheduler: "flowmatch"', content)
 
+    def test_module66_krea2_celebrity_presets(self):
+        """Verify Krea 2 celebrity registry, prompt injection, UI dropdowns, and slash command choices."""
+        from celebrities import (
+            FAVORITE_CELEBRITIES,
+            get_celebrity,
+            get_celebrity_display_badge,
+            inject_celebrity_in_prompt,
+            get_celebrity_autocomplete_choices,
+            CELEBRITY_CHOICES_KREA2
+        )
+        from parsers import prepare_bertflow_workflow
+        from views import BlendKreaButtons, build_blend_krea_embed
+        import bot
+
+        # 1. Verify all 16 favorite celebrities are present
+        expected_celebs = [
+            "Audrey Hepburn", "Grace Kelly", "Nicole Kidman", "Margot Robbie",
+            "Sandra Bullock", "Emma Stone", "Anya Taylor-Joy", "Zendaya",
+            "Cameron Diaz", "Saoirse Ronan", "Emma Watson", "Michelle Pfeiffer",
+            "Gal Gadot", "Taylor Swift", "Ariana Grande", "Keira Knightley"
+        ]
+        self.assertEqual(len(FAVORITE_CELEBRITIES), 16)
+        for name in expected_celebs:
+            celeb = get_celebrity(name)
+            self.assertIsNotNone(celeb, f"Celebrity '{name}' should be resolved by get_celebrity")
+            self.assertEqual(celeb.display_name, name)
+
+        # 2. Test display badges
+        self.assertEqual(get_celebrity_display_badge("none"), "None")
+        self.assertEqual(get_celebrity_display_badge(None), "None")
+        self.assertIn("Audrey Hepburn", get_celebrity_display_badge("audrey_hepburn"))
+        self.assertIn("Zendaya", get_celebrity_display_badge("zendaya"))
+
+        # 3. Test prompt injection
+        injected = inject_celebrity_in_prompt("walking through Paris in spring", "audrey_hepburn")
+        self.assertTrue(injected.startswith("Audrey Hepburn,"))
+        self.assertIn("walking through Paris in spring", injected)
+
+        # No double injection if already present
+        already_in = inject_celebrity_in_prompt("photo of Audrey Hepburn in Paris", "audrey_hepburn")
+        self.assertEqual(already_in, "photo of Audrey Hepburn in Paris")
+
+        # 4. Test prepare_bertflow_workflow injection via argument and prompt flag
+        wf_arg = prepare_bertflow_workflow("a sunny afternoon", celebrity="zendaya")
+        self.assertTrue(wf_arg["627"]["inputs"]["text"].startswith("Zendaya,"))
+
+        wf_flag = prepare_bertflow_workflow("a red carpet event --margot")
+        self.assertTrue(wf_flag["627"]["inputs"]["text"].startswith("Margot Robbie,"))
+
+        # Both character LoRA and celebrity preset can coexist
+        wf_both = prepare_bertflow_workflow("a stylish portrait", character="valerie.90", celebrity="audrey_hepburn")
+        self.assertIn("valerie", wf_both["627"]["inputs"]["text"].lower())
+        self.assertIn("Audrey Hepburn", wf_both["627"]["inputs"]["text"])
+
+        # 5. Test BlendKreaButtons has both Character and Celebrity dropdowns
+        view = BlendKreaButtons(
+            generation_id="krea_celeb_test",
+            ar="16:9",
+            model_choice="muse",
+            wetness=-2.0,
+            composition="off",
+            character="valerie.90",
+            celebrity="zendaya"
+        )
+        celeb_select = next(item for item in view.children if getattr(item, "custom_id", None) == "krea_celeb_test" or getattr(item, "custom_id", None) == "set_blend_krea_celeb:krea_celeb_test")
+        self.assertIsNotNone(celeb_select)
+        celeb_vals = [opt.value for opt in celeb_select.options]
+        self.assertIn("none", celeb_vals)
+        self.assertIn("audrey_hepburn", celeb_vals)
+        self.assertIn("zendaya", celeb_vals)
+        self.assertIn("keira_knightley", celeb_vals)
+        self.assertEqual(len(celeb_vals), 17)  # None + 16 celebrities
+
+        # Character select still present and functional
+        char_select = next(item for item in view.children if getattr(item, "custom_id", None) == "set_blend_krea_char:krea_celeb_test")
+        self.assertIsNotNone(char_select)
+
+        # 6. Test build_blend_krea_embed shows both Character and Celebrity badges
+        gen_data = {
+            "krea2_prompt": "Portrait in natural sunlight",
+            "fused_prompt": "Portrait in natural sunlight",
+            "ar": "16:9",
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "char_choice": "valerie.90",
+            "celeb_choice": "audrey_hepburn"
+        }
+        embed = build_blend_krea_embed(gen_data)
+        settings_field = next(f for f in embed.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("Character:", settings_field.value)
+        self.assertIn("Valerie", settings_field.value)
+        self.assertIn("Celebrity:", settings_field.value)
+        self.assertIn("Audrey Hepburn", settings_field.value)
+
+        # 7. Test slash command parameters
+        bert_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "bertflow")
+        self.assertIn("character", [p.name for p in bert_cmd.parameters])
+        self.assertIn("celebrity", [p.name for p in bert_cmd.parameters])
+
+        blend_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "blend-krea")
+        self.assertIn("character", [p.name for p in blend_cmd.parameters])
+        self.assertIn("celebrity", [p.name for p in blend_cmd.parameters])
+
 
 if __name__ == "__main__":
     unittest.main()

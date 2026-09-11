@@ -1764,10 +1764,12 @@ def prepare_bertflow_workflow(
     comp_strength: str = "off",
     filename_prefix: str = None,
     character: str = None,
-    character_strength: float = None
+    character_strength: float = None,
+    celebrity: str = None
 ) -> dict:
     """
-    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, wetness strength, and optional character LoRA.
+    Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, wetness strength,
+    optional character LoRA, and optional favorite celebrity prompt injection.
     Optionally injects direct compositional reference (img2img VAE latent) when init_image and comp_strength are specified.
     """
     import json
@@ -1816,6 +1818,26 @@ def prepare_bertflow_workflow(
                 char_weight = float(val_match.group(2)) / 100.0 if len(val_match.group(2)) == 2 else float(f"0.{val_match.group(2)}")
             prompt = re.sub(r'--(valerie|val)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
 
+    # Parse celebrity flag from prompt if present (e.g. --audrey, --zendaya, --celeb margot)
+    active_celeb = celebrity
+    if prompt:
+        try:
+            from celebrities import FAVORITE_CELEBRITIES
+            celeb_match = re.search(r'--celeb(?:rity)?\s+([A-Za-z0-9_\-]+)\b', prompt, re.IGNORECASE)
+            if celeb_match:
+                active_celeb = celeb_match.group(1)
+                prompt = re.sub(r'--celeb(?:rity)?\s+[A-Za-z0-9_\-]+\b', '', prompt, flags=re.IGNORECASE).strip()
+            else:
+                for cid, cprof in FAVORITE_CELEBRITIES.items():
+                    flag_names = [cid] + list(cprof.shorthands)
+                    pattern = rf'--(?:{"|".join(re.escape(s) for s in flag_names)})\b'
+                    if re.search(pattern, prompt, re.IGNORECASE):
+                        active_celeb = cid
+                        prompt = re.sub(pattern, '', prompt, flags=re.IGNORECASE).strip()
+                        break
+        except Exception:
+            pass
+
     # Determine character LoRA file, weight, and trigger word
     char_lora_file = None
     char_trigger = None
@@ -1848,6 +1870,15 @@ def prepare_bertflow_workflow(
         if not re.search(rf'\b{re.escape(char_trigger)}\b', cleaned_prompt, re.IGNORECASE):
             cleaned_prompt = f"{char_trigger}, {cleaned_prompt}".strip()
         cleaned_prompt = re.sub(r"\s+", " ", cleaned_prompt).lstrip(":,.- ").strip()
+
+    # Inject favorite celebrity preset into prompt if specified
+    if active_celeb and str(active_celeb).lower() not in ["none", "noceleb", "off", "false"]:
+        try:
+            from celebrities import inject_celebrity_in_prompt
+            cleaned_prompt = inject_celebrity_in_prompt(cleaned_prompt, active_celeb)
+            cleaned_prompt = re.sub(r"\s+", " ", cleaned_prompt).lstrip(":,.- ").strip()
+        except Exception:
+            pass
 
     # Anatomical artifact protection for Krea 2 Flow-Matching:
     # Steers the model away from constricted rings, rubbery bands, and double-corona ridges

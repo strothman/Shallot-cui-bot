@@ -3,6 +3,7 @@ import re
 import discord
 from core_helpers import send_error_fallback
 from characters import get_character_display_badge
+from celebrities import FAVORITE_CELEBRITIES, get_celebrity_display_badge, get_celebrity
 
 logger = logging.getLogger("DiscordBot")
 
@@ -1156,6 +1157,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     wetness = float(gen_data.get("wetness", -2.0))
     comp = gen_data.get("composition", "off")
     char_choice = gen_data.get("char_choice", "none")
+    celeb_choice = gen_data.get("celeb_choice", "none")
 
     model_display = "Muse v3.5 Extended" if "muse" in model_choice.lower() else "Pornmaster v2 (FP8)"
     if wetness == -2.0:
@@ -1177,6 +1179,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         comp_display = "Off (Semantic Vision Only)"
 
     char_display = get_character_display_badge(char_choice, architecture="krea2")
+    celeb_display = get_celebrity_display_badge(celeb_choice)
 
     embed = discord.Embed(
         title="📸 Krea 2 Blend Studio",
@@ -1189,13 +1192,15 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     disp_prompt = fused_prompt[:1020] + "..." if len(fused_prompt) > 1024 else fused_prompt
     embed.add_field(name="📜 Generation Prompt", value=disp_prompt, inline=False)
 
+    settings_lines = [
+        f"📐 **Ratio:** `{ar}` • 🤖 **Engine:** `{model_display}` • 💧 **Skin:** `{skin_display}`",
+        f"🖼️ **Direct Comp:** `{comp_display}`",
+        f"🎭 **Character:** `{char_display}` • 🌟 **Celebrity:** `{celeb_display}`"
+    ]
+
     embed.add_field(
         name="⚙️ Pipeline Settings",
-        value=(
-            f"📐 **Ratio:** `{ar}` • 🤖 **Engine:** `{model_display}` • 💧 **Skin:** `{skin_display}`\n"
-            f"🖼️ **Direct Comp:** `{comp_display}`\n"
-            f"🎭 **Character:** `{char_display}`"
-        ),
+        value="\n".join(settings_lines),
         inline=False
     )
     embed.set_footer(text=f"Requested by {author_str} • Krea 2 Turbo Flow-Matching")
@@ -1229,7 +1234,7 @@ class EditBlendKreaModal(discord.ui.Modal):
 
 
 class BlendKreaButtons(discord.ui.View):
-    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none"):
+    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none", celebrity: str = "none"):
         super().__init__(timeout=None)
         self.generation_id = generation_id
         self.ar = ar
@@ -1237,6 +1242,7 @@ class BlendKreaButtons(discord.ui.View):
         self.wetness = wetness
         self.composition = composition or "off"
         self.character = character or "none"
+        self.celebrity = celebrity or "none"
 
         # Row 0: Aspect Ratios (21:9, 16:9, 1:1, 3:4, 9:16)
         ar_options = [("21:9", "21:9"), ("16:9", "16:9"), ("1:1", "1:1"), ("3:4", "3:4"), ("9:16", "9:16")]
@@ -1337,34 +1343,66 @@ class BlendKreaButtons(discord.ui.View):
             row=2
         ))
 
-        # Row 3: UNET Engine and Skin Finish Controls
+        # Row 3: Favorite Celebrity Dropdown Selector
+        celeb_options = [
+            discord.SelectOption(
+                label="None (No Celebrity Preset)",
+                value="none",
+                emoji="🚫",
+                description="Generate without celebrity injection",
+                default=(self.celebrity in [None, "none", "noceleb", "off"])
+            )
+        ]
+        for cid, cprof in FAVORITE_CELEBRITIES.items():
+            is_def = (
+                str(self.celebrity).lower() == cid.lower()
+                or str(self.celebrity).lower() == cprof.display_name.lower()
+                or str(self.celebrity).lower() in [s.lower() for s in cprof.shorthands]
+            )
+            celeb_options.append(discord.SelectOption(
+                label=cprof.display_name,
+                value=cid,
+                emoji=cprof.emoji,
+                description=cprof.description[:100],
+                default=is_def
+            ))
+
+        self.add_item(discord.ui.Select(
+            placeholder="🌟 Select Celebrity Preset (Audrey Hepburn, Zendaya, etc.)...",
+            options=celeb_options,
+            min_values=1,
+            max_values=1,
+            custom_id=f"set_blend_krea_celeb:{self.generation_id}",
+            row=3
+        ))
+
+        # Row 4: Action & Engine Controls
         is_muse = ("muse" in self.model_choice.lower())
-        model_label = "🤖 Engine: Muse v3.5" if is_muse else "🤖 Engine: Pornmaster v2"
+        model_label = "🤖 Engine: Muse" if is_muse else "🤖 Engine: Pornmaster"
         self.add_item(discord.ui.Button(
             label=model_label,
             style=discord.ButtonStyle.primary,
             custom_id=f"toggle_blend_krea_model:{self.generation_id}",
-            row=3
+            row=4
         ))
 
         if self.wetness == -2.0:
-            wet_label = "💧 Skin: Matte (-2.0)"
+            wet_label = "💧 Skin: Matte"
             wet_style = discord.ButtonStyle.primary
         elif self.wetness == 0.0:
-            wet_label = "💧 Skin: Natural (0.0)"
+            wet_label = "💧 Skin: Natural"
             wet_style = discord.ButtonStyle.secondary
         else:
-            wet_label = "💧 Skin: Glossy (+1.0)"
+            wet_label = "💧 Skin: Glossy"
             wet_style = discord.ButtonStyle.secondary
 
         self.add_item(discord.ui.Button(
             label=wet_label,
             style=wet_style,
             custom_id=f"toggle_blend_krea_wetness:{self.generation_id}",
-            row=3
+            row=4
         ))
 
-        # Row 4: Action Launchers
         self.add_item(discord.ui.Button(
             label="✏️ Edit Prompt",
             style=discord.ButtonStyle.secondary,
@@ -1372,7 +1410,7 @@ class BlendKreaButtons(discord.ui.View):
             row=4
         ))
         self.add_item(discord.ui.Button(
-            label="⚡ Generate in Krea 2",
+            label="⚡ Generate Krea 2",
             style=discord.ButtonStyle.danger,
             custom_id=f"gen_blend_krea:{self.generation_id}",
             row=4

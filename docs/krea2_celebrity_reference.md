@@ -242,6 +242,34 @@ Celebrities are grouped by gender, then by category (Actors, Musicians, etc.). E
 
 ---
 
+## ⭐ Curated Favorites (Bot Presets)
+
+These 16 favorites are integrated directly into `/bertflow` and `/blend-krea` as 1-click prompt injection presets and interactive dropdowns:
+
+| Celebrity | Category | Tier | Notes & Iconic Visual Markers |
+|-----------|----------|------|--------------------------------|
+| **Audrey Hepburn** | Classic Actress | ⭐⭐⭐ | *Breakfast at Tiffany's*, iconic updo, cat-eye makeup, classic elegance |
+| **Grace Kelly** | Classic Actress | ⭐⭐ | 1950s Hitchcock elegance, tailored fashion, regal presence |
+| **Nicole Kidman** | Modern A-List | ⭐⭐⭐ | Strong cheekbones, strawberry-blonde/red hair era, regal styling |
+| **Margot Robbie** | Modern A-List | ⭐⭐ | Distinctive smile, blonde styling (*Barbie*, *Once Upon a Time*) |
+| **Sandra Bullock** | Modern A-List | ⭐⭐ | Dark brown hair, warm recognizable features (*Gravity*, *Speed*) |
+| **Emma Stone** | Modern A-List | ⭐⭐ | Expressive green eyes, auburn/red hair era (*La La Land*, *Poor Things*) |
+| **Anya Taylor-Joy** | Modern A-List | ⭐⭐⭐ | Wide-set eyes, ethereal bone structure (*The Queen's Gambit*, *Furiosa*) |
+| **Zendaya** | Modern A-List | ⭐⭐⭐ | High cheekbones, modern fashion & screen icon (*Dune*, *Euphoria*) |
+| **Cameron Diaz** | Modern A-List | ⭐⭐ | Iconic 90s/2000s blue eyes and bright smile (*The Mask*, *Charlie's Angels*) |
+| **Saoirse Ronan** | Modern A-List | ⭐⭐ | Striking blue eyes, dramatic period aesthetic (*Little Women*, *Atonement*) |
+| **Emma Watson** | Modern A-List | ⭐⭐ | Refined British features, natural brown hair (*Beauty and the Beast*) |
+| **Michelle Pfeiffer** | Modern A-List | ⭐⭐⭐ | Striking cheekbones, legendary screen presence (*Batman Returns*, *Scarface*) |
+| **Gal Gadot** | Action / Genre | ⭐⭐⭐ | Statuesque athletic build, strong jawline (*Wonder Woman*) |
+| **Taylor Swift** | Musician | ⭐⭐⭐ | Signature red lips, blonde bangs, winged liner (*Eras Tour*, *1989*) |
+| **Ariana Grande** | Musician | ⭐⭐⭐ | High sleek ponytail, feline eyeliner, petite frame (*Wicked*, *Thank U Next*) |
+| **Keira Knightley** | Classic / Period | ⭐⭐⭐ | Chiseled cheekbones & jawline, romantic period styling (*Pirates*, *Pride & Prejudice*) |
+
+> [!TIP]
+> In `/bertflow` and `/blend-krea`, selecting any of these favorites automatically injects their clean prompt keyword at the start of your prompt to lock identity without requiring a dedicated LoRA. You can also pass prompt flags directly (e.g. `--audrey`, `--zendaya`, `--margot`, `--keira`).
+
+---
+
 ## 🎯 Quick-Reference: Top 10 Most Reliable (Name-Only, No LoRA)
 
 ### Male

@@ -22,6 +22,12 @@ from error_handler import error_handler, ErrorCategory, ErrorSeverity, AutoFixAc
 import db
 from characters import get_character_autocomplete_choices
 from model_architecture import Architecture
+from celebrities import (
+    CELEBRITY_CHOICES_KREA2,
+    get_celebrity_autocomplete_choices,
+    get_celebrity_display_badge,
+    get_celebrity
+)
 
 # Refactored modular imports
 from parsers import (
@@ -2558,6 +2564,13 @@ async def on_interaction(interaction: discord.Interaction):
                 if interaction.data and "values" in interaction.data:
                     val = interaction.data["values"][0]
                     await handle_update_blend_krea_view(interaction, gen_id, new_char=val)
+        elif custom_id.startswith("set_blend_krea_celeb:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                if interaction.data and "values" in interaction.data:
+                    val = interaction.data["values"][0]
+                    await handle_update_blend_krea_view(interaction, gen_id, new_celeb=val)
         elif custom_id.startswith("edit_blend_krea_prompt:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:
@@ -3840,9 +3853,10 @@ async def execute_bertflow(
     status_msg_ref: list = None,
     init_image_name: str = None,
     comp_strength: str = "off",
-    character: str = None
+    character: str = None,
+    celebrity: str = None
 ):
-    """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference and character LoRA."""
+    """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference, character LoRA, and favorite celebrity prompt injection."""
     global _active_architecture
     target_arch = "KREA2"
     if _active_architecture is not None and _active_architecture != target_arch:
@@ -3858,7 +3872,8 @@ async def execute_bertflow(
 
     comp_info = f" | Comp: {comp_strength} ({init_image_name})" if init_image_name and comp_strength != "off" else ""
     char_info = f" | Character: {character}" if character and str(character).lower() not in ["none", "nochar", "off"] else ""
-    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Wetness: {wetness_strength}{comp_info}{char_info} | Seed: {actual_seed}")
+    celeb_info = f" | Celebrity: {celebrity}" if celebrity and str(celebrity).lower() not in ["none", "noceleb", "off"] else ""
+    logger.info(f"[/bertflow] Prompt: '{cleaned_prompt}' | Res: {width}x{height} | Steps: {steps} | Model: {active_unet} | Wetness: {wetness_strength}{comp_info}{char_info}{celeb_info} | Seed: {actual_seed}")
 
     try:
         workflow = prepare_bertflow_workflow(
@@ -3871,7 +3886,8 @@ async def execute_bertflow(
             wetness_strength=wetness_strength,
             init_image=init_image_name,
             comp_strength=comp_strength,
-            character=character
+            character=character,
+            celebrity=celebrity
         )
     except Exception as e:
         logger.error(f"Error preparing Bertflow workflow: {e}")
@@ -3884,7 +3900,9 @@ async def execute_bertflow(
 
     init_bar = create_progress_bar(0, steps)
     comp_line = f" | **Comp:** `{comp_strength.title()}`" if init_image_name and comp_strength != "off" else ""
-    char_line = f" | **Character:** `🌿 Ogarla (Krea 2)`" if character and str(character).lower() not in ["none", "nochar", "off"] else ""
+    from characters import get_character_display_badge
+    char_line = f" | **Character:** `{get_character_display_badge(character, architecture='krea2')}`" if character and str(character).lower() not in ["none", "nochar", "off"] else ""
+    celeb_line = f" | **Celebrity:** `{get_celebrity_display_badge(celebrity)}`" if celebrity and str(celebrity).lower() not in ["none", "noceleb", "off"] else ""
     init_embed = discord.Embed(
         title="📸 Generating with Bertflow...",
         description=(
@@ -3892,7 +3910,7 @@ async def execute_bertflow(
             f"**Progress:** {init_bar}\n"
             f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
             f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
-            f"**Steps:** {steps}{comp_line}{char_line} | **Seed:** `{actual_seed}`"
+            f"**Steps:** {steps}{comp_line}{char_line}{celeb_line} | **Seed:** `{actual_seed}`"
         ),
         color=discord.Color.from_rgb(235, 140, 52)
     )
@@ -3923,7 +3941,7 @@ async def execute_bertflow(
                     f"**Progress:** {bar} ({percent}%)\n"
                     f"**Resolution:** {width}x{height} ({aspect_ratio or '1:1'})\n"
                     f"**Engine:** Krea 2 Turbo ({active_unet.split('.')[0]})\n"
-                    f"**Steps:** {steps}{comp_line}{char_line} | **Seed:** `{actual_seed}`"
+                    f"**Steps:** {steps}{comp_line}{char_line}{celeb_line} | **Seed:** `{actual_seed}`"
                 ),
                 color=discord.Color.from_rgb(235, 140, 52)
             )
@@ -3972,6 +3990,7 @@ async def execute_bertflow(
             "seed": actual_seed,
             "unet_model": active_unet,
             "character": character,
+            "celebrity": celebrity,
             "user_id": interaction.user.id
         })
 
@@ -3990,7 +4009,10 @@ async def execute_bertflow(
         complete_embed.add_field(name="📐 Specs", value=f"`{width}x{height}`\n`{aspect_ratio or '1:1'}`", inline=True)
         complete_embed.add_field(name="⚡ Engine", value=f"Krea 2 Turbo\n`{active_unet.split('.')[0]}`", inline=True)
         if character and str(character).lower() not in ["none", "nochar", "off"]:
-            complete_embed.add_field(name="🎭 Character", value="🌿 Ogarla (Krea 2)", inline=True)
+            char_badge = get_character_display_badge(character, architecture="krea2")
+            complete_embed.add_field(name="🎭 Character", value=char_badge, inline=True)
+        if celebrity and str(celebrity).lower() not in ["none", "noceleb", "off"]:
+            complete_embed.add_field(name="🌟 Celebrity", value=get_celebrity_display_badge(celebrity), inline=True)
         t_str = f"{elapsed_time:.1f}s"
         sample_sec = t_breakdown.get("sampling_duration", 0.0) or t_breakdown.get("sample", 0.0)
         init_sec = t_breakdown.get("init_duration", 0.0) or t_breakdown.get("init", 0.0)
@@ -4052,7 +4074,8 @@ async def handle_bertflow_reroll(interaction: discord.Interaction, generation_id
         seed=new_seed,
         steps=gen_data.get("steps", 8),
         model_name=gen_data.get("unet_model"),
-        character=gen_data.get("character")
+        character=gen_data.get("character"),
+        celebrity=gen_data.get("celebrity")
     )
 
 
@@ -4075,7 +4098,8 @@ async def handle_bertflow_remix(interaction: discord.Interaction, generation_id:
             seed=new_seed if new_seed is not None else random.randint(1, 1125899906842624),
             steps=gen_data.get("steps", 8),
             model_name=gen_data.get("unet_model"),
-            character=gen_data.get("character")
+            character=gen_data.get("character"),
+            celebrity=gen_data.get("celebrity")
         )
 
     modal = RemixModal(generation_id, initial_prompt=orig_p, initial_seed=orig_seed, on_submit_callback=remix_callback)
@@ -4111,7 +4135,8 @@ async def handle_bertflow_toggle_char(interaction: discord.Interaction, generati
         seed=gen_data.get("seed"),
         steps=gen_data.get("steps", 8),
         model_name=gen_data.get("unet_model"),
-        character=new_char
+        character=new_char,
+        celebrity=gen_data.get("celebrity")
     )
 
 
@@ -4168,6 +4193,7 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
     prompt="Scene/subject description (supports natural language, --ar, --ogarla, --valerie)",
     aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
     character="Optional character LoRA preset (Ogarla / Valerie Krea 2)",
+    celebrity="Optional favorite celebrity to inject into prompt (Audrey Hepburn, Zendaya, etc.)",
     favorite_prompt="Apply one of your saved favorite prompts",
     model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",
     steps="Sampling steps (8 for Turbo, up to 20 for Extended)",
@@ -4190,6 +4216,7 @@ async def bertflow_command(
     prompt: str = "",
     aspect_ratio: str = "1:1",
     character: str = None,
+    celebrity: str = None,
     favorite_prompt: str = None,
     model: str = None,
     steps: int = 8,
@@ -4218,6 +4245,7 @@ async def bertflow_command(
 
     await safe_defer(interaction, thinking=True)
     char_val = character.value if hasattr(character, "value") else character
+    celeb_val = celebrity.value if hasattr(celebrity, "value") else celebrity
     await execute_bertflow(
         interaction=interaction,
         prompt=prompt,
@@ -4225,12 +4253,17 @@ async def bertflow_command(
         seed=seed,
         steps=steps,
         model_name=model,
-        character=char_val
+        character=char_val,
+        celebrity=celeb_val
     )
 
 @bertflow_command.autocomplete('character')
 async def bertflow_character_autocomplete(interaction: discord.Interaction, current: str):
     return get_character_autocomplete_choices(current, Architecture.KREA2)
+
+@bertflow_command.autocomplete('celebrity')
+async def bertflow_celebrity_autocomplete(interaction: discord.Interaction, current: str):
+    return get_celebrity_autocomplete_choices(current)
 
 @bertflow_command.autocomplete('favorite_prompt')
 async def bertflow_favorite_prompt_autocomplete(interaction: discord.Interaction, current: str):
@@ -5460,7 +5493,7 @@ async def handle_reblend(interaction: discord.Interaction, generation_id: str):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-async def handle_update_blend_krea_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_model: str = None, new_wetness: float = None, new_comp: str = None, new_char: str = None):
+async def handle_update_blend_krea_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_model: str = None, new_wetness: float = None, new_comp: str = None, new_char: str = None, new_celeb: str = None):
     """Updates interactive buttons and embed for a /blend-krea session."""
     gen_data = get_generation(generation_id)
     if not gen_data:
@@ -5477,6 +5510,8 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
         gen_data["composition"] = new_comp
     if new_char:
         gen_data["char_choice"] = new_char
+    if new_celeb:
+        gen_data["celeb_choice"] = new_celeb
 
     if not gen_data.get("fused_prompt"):
         gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
@@ -5490,7 +5525,8 @@ async def handle_update_blend_krea_view(interaction: discord.Interaction, genera
         model_choice=gen_data.get("model_choice", "muse"),
         wetness=gen_data.get("wetness", -2.0),
         composition=gen_data.get("composition", "off"),
-        character=gen_data.get("char_choice", "none")
+        character=gen_data.get("char_choice", "none"),
+        celebrity=gen_data.get("celeb_choice", "none")
     )
     try:
         await interaction.response.edit_message(embed=embed, view=view)
@@ -5517,7 +5553,8 @@ async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction,
         model_choice=gen_data.get("model_choice", "muse"),
         wetness=gen_data.get("wetness", -2.0),
         composition=gen_data.get("composition", "off"),
-        character=gen_data.get("char_choice", "none")
+        character=gen_data.get("char_choice", "none"),
+        celebrity=gen_data.get("celeb_choice", "none")
     )
     await interaction.response.edit_message(embed=embed, view=view)
 
@@ -5537,6 +5574,7 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
     comp = gen_data.get("composition", "off")
     uploaded_image_name = gen_data.get("uploaded_image_name")
     character = gen_data.get("char_choice")
+    celebrity = gen_data.get("celeb_choice")
 
     unet_name = "museByStableYogi_v35Int8Extended.safetensors" if "muse" in model_choice.lower() else "pornmasterKrea2_v1FP8.safetensors"
     await execute_bertflow(
@@ -5547,7 +5585,8 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
         wetness_strength=wetness,
         init_image_name=uploaded_image_name if comp != "off" else None,
         comp_strength=comp,
-        character=character
+        character=character,
+        celebrity=celebrity
     )
 
 
@@ -5580,7 +5619,8 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
             model_name=unet_name,
             init_image_name=uploaded_image_name if krea_comp != "off" else None,
             comp_strength=krea_comp,
-            character=char_choice
+            character=char_choice,
+            celebrity=gen_data.get("celeb_choice")
         )
         return
 
@@ -6793,7 +6833,8 @@ async def execute_blend_krea_core(
     model: str = "muse",
     wetness: float = -2.0,
     composition: str = "off",
-    character: str = "none"
+    character: str = "none",
+    celebrity: str = "none"
 ):
     """Core logic to analyze an image with Florence-2 and initialize the Krea 2 Blend Studio dashboard."""
     try:
@@ -6856,6 +6897,7 @@ async def execute_blend_krea_core(
             "wetness": float(wetness if wetness is not None else -2.0),
             "composition": composition or "off",
             "char_choice": character or "none",
+            "celeb_choice": celebrity or "none",
             "author_str": interaction.user.name
         }
         active_generations[generation_id] = gen_data
@@ -6869,7 +6911,8 @@ async def execute_blend_krea_core(
             model_choice=gen_data["model_choice"],
             wetness=gen_data["wetness"],
             composition=gen_data["composition"],
-            character=gen_data["char_choice"]
+            character=gen_data["char_choice"],
+            celebrity=gen_data["celeb_choice"]
         )
         await edit_original_fallback(interaction, content=None, embed=embed, view=view)
 
@@ -6884,6 +6927,7 @@ async def execute_blend_krea_core(
     prompt="Optional remix instructions or extra details to blend into the image",
     aspect_ratio="The aspect ratio for the Krea 2 render",
     character="Optional character preset (Ogarla / Valerie Krea 2)",
+    celebrity="Optional favorite celebrity to inject into prompt (Audrey Hepburn, Zendaya, etc.)",
     model="Select Krea 2 UNET Checkpoint (Defaults to auto-detecting Muse v3.5)",
     wetness="Anti-sheen skin matte strength (-2.0 default, 0.0 normal, 1.0 glossy)",
     composition="Optional direct physical composition/pose locking (Off default, Medium 70%, Strong 50%)"
@@ -6911,6 +6955,7 @@ async def blend_krea(
     prompt: str = None,
     aspect_ratio: str = "16:9",
     character: str = None,
+    celebrity: str = None,
     model: app_commands.Choice[str] = None,
     wetness: float = -2.0,
     composition: app_commands.Choice[str] = None
@@ -6927,6 +6972,7 @@ async def blend_krea(
         selected_model = model.value if model else "muse"
         comp_val = composition.value if composition else "off"
         char_val = character.value if hasattr(character, "value") else (character if character else "none")
+        celeb_val = celebrity.value if hasattr(celebrity, "value") else (celebrity if celebrity else "none")
         await execute_blend_krea_core(
             interaction=interaction,
             image_bytes=image_bytes,
@@ -6937,7 +6983,8 @@ async def blend_krea(
             model=selected_model,
             wetness=wetness,
             composition=comp_val,
-            character=char_val
+            character=char_val,
+            celebrity=celeb_val
         )
     except Exception as e:
         logger.error(f"Error reading image for blend-krea: {e}")
@@ -6946,6 +6993,10 @@ async def blend_krea(
 @blend_krea.autocomplete('character')
 async def blend_krea_character_autocomplete(interaction: discord.Interaction, current: str):
     return get_character_autocomplete_choices(current, Architecture.KREA2)
+
+@blend_krea.autocomplete('celebrity')
+async def blend_krea_celebrity_autocomplete(interaction: discord.Interaction, current: str):
+    return get_celebrity_autocomplete_choices(current)
 
 
 

@@ -4,6 +4,22 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-11]
+
+### Added
+* 🌟 **Krea 2 Curated Celebrity Presets (`celebrities.py`)**: Added a dedicated celebrity registry and prompt injection system for 16 favorite actresses/icons (Audrey Hepburn, Grace Kelly, Nicole Kidman, Margot Robbie, Sandra Bullock, Emma Stone, Anya Taylor-Joy, Zendaya, Cameron Diaz, Saoirse Ronan, Emma Watson, Michelle Pfeiffer, Gal Gadot, Taylor Swift, Ariana Grande, Keira Knightley), taking advantage of Krea 2 Turbo's inherent facial knowledge without requiring extra LoRAs.
+* 🎭 **Independent Character & Celebrity Selection in `/blend-krea` (`views.BlendKreaButtons`)**:
+  * Retained the dedicated **Character LoRA selector** (Ogarla, Valerie) on Row 2.
+  * Added a dedicated 1-click **Celebrity selector** dropdown on Row 3 with intuitive emoji badges and descriptions.
+  * Re-organized Action & Engine buttons on Row 4 (`[🤖 Engine]`, `[💧 Skin]`, `[✏️ Edit Prompt]`, `[⚡ Generate Krea 2]`) within Discord's 5-row architecture.
+  * Displayed both Character and Celebrity status in the `/blend-krea` Studio pipeline settings embed.
+* 📸 **Slash Command Autocomplete & Prompt Flags for `/bertflow` and `/blend-krea`**:
+  * Added `celebrity` options to `/bertflow` and `/blend-krea` with live autocomplete.
+  * Added instant prompt shorthand flag parsing (e.g. `--audrey`, `--zendaya`, `--margot`, `--keira`, `--celeb <name>`) in `parsers.prepare_bertflow_workflow`.
+* 📖 **Curated Favorites Reference Guide (`docs/krea2_celebrity_reference.md`)**: Updated the community recognition reference guide with a dedicated *Curated Favorites (Bot Presets)* table detailing recognition tiers and iconic visual markers.
+* **Compact studio embed and add unified prompt editing modal**
+
+---
 ## [2026-09-10]
 
 ### Added
