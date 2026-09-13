@@ -3742,6 +3742,32 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(client.get_image.call_count, 4)
         self.assertEqual(len(download_order), 4)
 
+    def test_pipeline_defaults_and_checkpoint_display_names(self):
+        """Test centralized PipelineDefaults constants and get_checkpoint_display_name resolution."""
+        from config import PipelineDefaults, get_checkpoint_display_name
+
+        # Check default checkpoints
+        self.assertTrue(PipelineDefaults.DEFAULT_SDXL_CHECKPOINT.endswith(".safetensors"))
+        self.assertTrue(PipelineDefaults.DEFAULT_FLUX_CHECKPOINT.endswith(".safetensors"))
+        self.assertTrue(PipelineDefaults.DEFAULT_WAN_CHECKPOINT.endswith(".safetensors"))
+
+        # Check denoise values
+        self.assertEqual(PipelineDefaults.UPSCALE_DENOISE_SDXL, 0.55)
+        self.assertEqual(PipelineDefaults.UPSCALE_DENOISE_FLUX_SUBTLE, 0.26)
+        self.assertEqual(PipelineDefaults.UPSCALE_DENOISE_FLUX_MODERATE, 0.35)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_VERY_HIGH, 0.95)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["low"], 0.85)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["med"], 0.70)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["high"], 0.55)
+
+        # Check display name resolution
+        self.assertEqual(get_checkpoint_display_name("waiIllustriousSDXL_v170.safetensors"), "Wai Illustrious SDXL v1.70")
+        self.assertEqual(get_checkpoint_display_name("RealVisXL_V4.0.safetensors"), "RealVisXL V4.0")
+        self.assertEqual(get_checkpoint_display_name("wai"), "Wai Illustrious SDXL v1.70")
+        self.assertEqual(get_checkpoint_display_name("realvis"), "RealVisXL V4.0")
+        self.assertEqual(get_checkpoint_display_name(None), "Default Model")
+        self.assertEqual(get_checkpoint_display_name("custom_model.safetensors"), "custom_model")
+
 
 if __name__ == "__main__":
     unittest.main()

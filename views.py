@@ -4,6 +4,7 @@ import discord
 from core_helpers import send_error_fallback
 from characters import get_character_display_badge
 from celebrities import FAVORITE_CELEBRITIES, get_celebrity_display_badge, get_celebrity
+from config import get_checkpoint_display_name
 
 logger = logging.getLogger("DiscordBot")
 
@@ -588,25 +589,7 @@ def build_blend_complete_embed(
     expanded_prompts: list = None
 ) -> discord.Embed:
     """Builds a polished, 3-column inline studio dashboard embed for completed blend generations."""
-    model_friendly_names = {
-        "waiIllustriousSDXL_v170.safetensors": "Wai Illustrious SDXL v1.70",
-        "illustriousRealismBy_v10VAE.safetensors": "Illustrious Realism V1",
-        "RealVisXL_V4.0.safetensors": "RealVisXL V4.0",
-        "juggernautXL_ragnarok.safetensors": "Juggernaut XL Ragnarok",
-        "CopaxTimeLessXL.safetensors": "Copax Timeless XL",
-        "ultraRealisticByStable_v25.safetensors": "UltraRealistic V2.5",
-        "hyphoriaIlluNAI_v001.safetensors": "Hyphoria NAI v0.01",
-        "novaFurryXL_ilV180A.safetensors": "Nova Furry XL v1.8",
-        "wai": "Wai Illustrious SDXL v1.70",
-        "illustrious_realism": "Illustrious Realism V1",
-        "realvis": "RealVisXL V4.0",
-        "juggernaut": "Juggernaut XL Ragnarok",
-        "copax": "Copax Timeless XL",
-        "ultra": "UltraRealistic V2.5",
-        "hyphoria": "Hyphoria NAI v0.01",
-        "nova": "Nova Furry XL v1.8",
-    }
-    model_display = model_friendly_names.get(selected_model, selected_model.replace(".safetensors", ""))
+    model_display = get_checkpoint_display_name(selected_model)
 
     comp_map = {
         "style": "🎨 Style Only (0.20)",
@@ -728,25 +711,7 @@ def build_blended_image_embed(
     is_blend: bool = True
 ) -> discord.Embed:
     """Builds a polished 3-column inline studio dashboard embed for an isolated/blended single image."""
-    model_friendly_names = {
-        "waiIllustriousSDXL_v170.safetensors": "Wai Illustrious SDXL v1.70",
-        "illustriousRealismBy_v10VAE.safetensors": "Illustrious Realism V1",
-        "RealVisXL_V4.0.safetensors": "RealVisXL V4.0",
-        "juggernautXL_ragnarok.safetensors": "Juggernaut XL Ragnarok",
-        "CopaxTimeLessXL.safetensors": "Copax Timeless XL",
-        "ultraRealisticByStable_v25.safetensors": "UltraRealistic V2.5",
-        "hyphoriaIlluNAI_v001.safetensors": "Hyphoria NAI v0.01",
-        "novaFurryXL_ilV180A.safetensors": "Nova Furry XL v1.8",
-        "wai": "Wai Illustrious SDXL v1.70",
-        "illustrious_realism": "Illustrious Realism V1",
-        "realvis": "RealVisXL V4.0",
-        "juggernaut": "Juggernaut XL Ragnarok",
-        "copax": "Copax Timeless XL",
-        "ultra": "UltraRealistic V2.5",
-        "hyphoria": "Hyphoria NAI v0.01",
-        "nova": "Nova Furry XL v1.8",
-    }
-    model_display = model_friendly_names.get(checkpoint, str(checkpoint).replace(".safetensors", ""))
+    model_display = get_checkpoint_display_name(checkpoint)
 
     comp_map = {
         "style": "🎨 Style Only (0.20)",

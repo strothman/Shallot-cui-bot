@@ -4,6 +4,7 @@ Centralized Configuration & Constants for Shallot-CUI Bot.
 
 import os
 import logging
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 import discord
 from discord import app_commands
@@ -187,3 +188,64 @@ CHECKPOINT_CONFIGS = {
         "negative_addon": "anime, anime girl, manga, comic, cartoon, cel shaded, lineart, drawing, illustration, 2d, 3d cgi render, sketch, anime face, big eyes, flat shading, bad quality, blurry, distorted anatomy, bad hands, lowres",
     }
 }
+
+
+# =========================================================================
+# Centralized Pipeline Defaults & Generation Constants
+# =========================================================================
+
+class PipelineDefaults:
+    """Centralized constants for generation models, denoise strengths, and pipeline parameters."""
+    # Checkpoints
+    DEFAULT_SDXL_CHECKPOINT: str = os.getenv("COMFYUI_CHECKPOINT", "waiIllustriousSDXL_v170.safetensors")
+    DEFAULT_FLUX_CHECKPOINT: str = os.getenv("FLUX_CHECKPOINT", "flux1-dev-fp8.safetensors")
+    DEFAULT_WAN_CHECKPOINT: str = os.getenv("WAN_CHECKPOINT", "wan2.1_i2v_720p_14B_fp8.safetensors")
+
+    # Upscale Denoise Strengths
+    UPSCALE_DENOISE_SDXL: float = 0.55
+    UPSCALE_DENOISE_FLUX_SUBTLE: float = 0.26
+    UPSCALE_DENOISE_FLUX_MODERATE: float = 0.35
+
+    # Variation / Img2Img Denoise Profiles
+    VARIATION_DENOISE_VERY_HIGH: float = 0.95
+    VARIATION_DENOISE_HIGH_CHANGE: float = 0.85     # low similarity
+    VARIATION_DENOISE_MED_CHANGE: float = 0.70      # med similarity
+    VARIATION_DENOISE_SUBTLE_CHANGE: float = 0.55   # high similarity
+
+    VARIATION_DENOISE_MAP = {
+        "low": VARIATION_DENOISE_HIGH_CHANGE,
+        "med": VARIATION_DENOISE_MED_CHANGE,
+        "high": VARIATION_DENOISE_SUBTLE_CHANGE,
+    }
+
+    # Sampler Defaults
+    DEFAULT_STEPS_SDXL: int = 30
+    DEFAULT_STEPS_FLUX: int = 20
+    DEFAULT_CFG_SDXL: float = 5.0
+    DEFAULT_CFG_FLUX: float = 1.0
+
+
+# Friendly display names mapping for shorthand alias lookups
+CHECKPOINT_SHORTHAND_NAMES = {
+    "wai": "Wai Illustrious SDXL v1.70",
+    "illustrious_realism": "Illustrious Realism V1",
+    "realvis": "RealVisXL V4.0",
+    "juggernaut": "Juggernaut XL Ragnarok",
+    "copax": "Copax Timeless XL",
+    "ultra": "UltraRealistic V2.5",
+    "hyphoria": "Hyphoria NAI v0.01",
+    "nova": "Nova Furry XL v1.8",
+}
+
+
+def get_checkpoint_display_name(checkpoint: Optional[str]) -> str:
+    """Returns a clean, human-readable display name for any checkpoint or alias."""
+    if not checkpoint:
+        return "Default Model"
+    str_ckpt = str(checkpoint).strip()
+    if str_ckpt in CHECKPOINT_CONFIGS and "display_name" in CHECKPOINT_CONFIGS[str_ckpt]:
+        return CHECKPOINT_CONFIGS[str_ckpt]["display_name"]
+    if str_ckpt in CHECKPOINT_SHORTHAND_NAMES:
+        return CHECKPOINT_SHORTHAND_NAMES[str_ckpt]
+    return str_ckpt.replace(".safetensors", "")
+

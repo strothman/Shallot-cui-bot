@@ -7,6 +7,11 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-13]
 
 ### Added
+* 🪄 **Centralized Pipeline Defaults & Semantic Constants (`v2.6.6`)**:
+  * Introduced `class PipelineDefaults` in `config.py` consolidating checkpoints (`DEFAULT_SDXL_CHECKPOINT`, `DEFAULT_FLUX_CHECKPOINT`, `DEFAULT_WAN_CHECKPOINT`), upscale denoise constants (`UPSCALE_DENOISE_SDXL = 0.55`, `UPSCALE_DENOISE_FLUX_SUBTLE = 0.26`, `UPSCALE_DENOISE_FLUX_MODERATE = 0.35`), and variation similarity profiles.
+  * Added `get_checkpoint_display_name()` in `config.py` with alias lookup support (`wai`, `realvis`, `juggernaut`, etc.), eliminating duplicate 18-line dictionaries in `views.py`.
+  * Replaced raw magic floats in `bot.py` across upscale, variation, and blend workflows with semantic `PipelineDefaults` attributes.
+  * Added automated test `test_pipeline_defaults_and_checkpoint_display_names` in `suite_test.py` (88/88 tests passing).
 * 🧹 **Automated Scratch Disk Maintenance & Quadrant Pruner (`v2.6.5`)**:
   * Added automated `@tasks.loop(hours=6)` background maintenance worker in `bot.py` (`periodic_scratch_maintenance`) that purges orphaned quadrant cache files in `C:\ComfyUI\ComfyUI\output\Discord Bot\scratch` older than 48 hours or belonging to pruned generations.
   * Triggers an immediate non-blocking maintenance sweep on startup (`on_ready()`) offloaded to a background thread via `asyncio.to_thread()`.

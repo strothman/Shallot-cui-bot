@@ -153,7 +153,7 @@ IMAGE_SAVE_PREFIX = os.getenv("IMAGE_SAVE_PREFIX", "Discord Bot/")
 COMFYUI_BATCH_PATH = os.getenv("COMFYUI_BATCH_PATH", r"C:\ComfyUI\run_nvidia_gpu.bat")
 VRAM_CAUTION_THRESHOLD_PERCENT = float(os.getenv("VRAM_CAUTION_THRESHOLD_PERCENT", "85.0"))
 VRAM_MIN_FREE_GB = float(os.getenv("VRAM_MIN_FREE_GB", "2.0"))
-from config import BOT_OWNER_ID, is_authorized_admin
+from config import BOT_OWNER_ID, is_authorized_admin, PipelineDefaults, get_checkpoint_display_name
 
 # Curated SDXL Checkpoint choices for all SDXL workflows (keeps lists clean and free of non-SDXL models)
 SDXL_CHECKPOINT_CHOICES = [
@@ -1004,7 +1004,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
                     "class_type": "VAEEncode",
                     "_meta": {"title": "Flux VAE Encode Upscaled"}
                 }
-                denoise_val = 0.26 if upscale_factor <= 1.3 else 0.35
+                denoise_val = PipelineDefaults.UPSCALE_DENOISE_FLUX_SUBTLE if upscale_factor <= 1.3 else PipelineDefaults.UPSCALE_DENOISE_FLUX_MODERATE
                 if "11" in workflow:
                     workflow["11"]["inputs"]["seed"] = target_seed
                     workflow["11"]["inputs"]["steps"] = 20
@@ -1051,7 +1051,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
                 workflow["30"]["inputs"]["image"] = q_filename
                 workflow["11"]["inputs"]["seed"] = target_seed
                 workflow["11"]["inputs"]["cfg"] = cfg
-                workflow["11"]["inputs"]["denoise"] = 0.55
+                workflow["11"]["inputs"]["denoise"] = PipelineDefaults.UPSCALE_DENOISE_SDXL
                 workflow["13"]["inputs"]["filename_prefix"] = f"{get_dated_save_prefix(subfolder)}{prefix_tag}{seed_suffix}{sref_suffix}"
             else:
                 workflow["3"]["inputs"]["seed"] = target_seed
@@ -1073,7 +1073,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         return
 
     status_lbl = "Detail Reprocessing & Upscaling" if q_filename else "Latent Upscaling"
-    await interaction.followup.send(f"{status_lbl} Image {index} (Seed: {target_seed}, Denoise: 0.55)...", ephemeral=True)
+    await interaction.followup.send(f"{status_lbl} Image {index} (Seed: {target_seed}, Denoise: {PipelineDefaults.UPSCALE_DENOISE_SDXL})...", ephemeral=True)
     
     try:
         images = await comfy_client.generate(workflow, timeout=14400)
@@ -1099,7 +1099,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         desc_lines = [
             f"**Prompt:** {truncate_prompt(expanded_prompt, 250)}",
             f"**Model:** {checkpoint}",
-            f"**Detail Denoise:** 0.55",
+            f"**Detail Denoise:** {PipelineDefaults.UPSCALE_DENOISE_SDXL}",
             f"**Seed:** {target_seed}",
             f"**Size:** {out_w}x{out_h}"
         ]
@@ -1150,7 +1150,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
                     file = discord.File(fp=highres_file_io, filename=format_image_filename(f"upscale_{index}", target_seed, "png"))
                     embed = discord.Embed(
                         title=f"Detailed High-Res Upscale Image {index} (Auto-Fixed)", 
-                        description=f"**Prompt:** {truncate_prompt(original_prompt, 250)}\n**Model:** {checkpoint}\n**Detail Denoise:** 0.55\n**Seed:** {target_seed}\n**Size:** {out_w}x{out_h}\n*Note: Reduced resolution auto-fix applied.*"
+                        description=f"**Prompt:** {truncate_prompt(original_prompt, 250)}\n**Model:** {checkpoint}\n**Detail Denoise:** {PipelineDefaults.UPSCALE_DENOISE_SDXL}\n**Seed:** {target_seed}\n**Size:** {out_w}x{out_h}\n*Note: Reduced resolution auto-fix applied.*"
                     )
                     embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id})")
                     has_sref = sref_info is not None and "code" in sref_info
@@ -1367,7 +1367,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
 
     sref_info = gen_data.get("sref_info")
     sref_suffix = f"_sref{sref_info['code']}" if sref_info and "code" in sref_info else ""
-    denoise_val = 0.55
+    denoise_val = PipelineDefaults.UPSCALE_DENOISE_SDXL
     try:
         if is_flux:
             if "1" in workflow:
@@ -1398,7 +1398,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
                 }
                 if "11" in workflow:
                     workflow["11"]["inputs"]["latent_image"] = ["31_flux_vae", 0]
-                    denoise_val = denoise_override if denoise_override is not None else 0.85
+                    denoise_val = denoise_override if denoise_override is not None else PipelineDefaults.VARIATION_DENOISE_HIGH_CHANGE
                     workflow["11"]["inputs"]["denoise"] = denoise_val
                     logger.info(f"FLUX variation ({variation_type or 'img2img'}) applied (denoise: {denoise_val:.2f})")
         else:
@@ -1417,7 +1417,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
                     denoise_val = denoise_override
                 else:
                     current_mode = settings.get("variation_mode", "high")
-                    denoise_val = 0.95 if current_mode == "very_high" else 0.55
+                    denoise_val = PipelineDefaults.VARIATION_DENOISE_VERY_HIGH if current_mode == "very_high" else PipelineDefaults.VARIATION_DENOISE_SUBTLE_CHANGE
                 workflow["3"]["inputs"]["denoise"] = denoise_val
             elif "5" in workflow:
                 workflow["5"]["inputs"]["width"] = width
@@ -5507,8 +5507,7 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
     # If running in img2img mode, configure the input image and denoise parameter
     final_image_name = uploaded_image_name
     if use_img2img:
-        denoise_map = {"low": 0.85, "med": 0.70, "high": 0.55}
-        denoise_val = denoise_map.get(comp_strength, 0.70)
+        denoise_val = PipelineDefaults.VARIATION_DENOISE_MAP.get(comp_strength, PipelineDefaults.VARIATION_DENOISE_MED_CHANGE)
         
         # Download, crop/resize, and re-upload the image to match the target aspect ratio
         try:

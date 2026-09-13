@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.6.5`  
+> **Current Version:** `v2.6.6`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (87/87 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (88/88 Automated Tests Passing)  
 
 ---
 
@@ -137,6 +137,7 @@ The tool is built with **automatic state resumption**:
 10. **Non-Blocking Async Image I/O & Gateway Protection**: Offloaded all CPU-heavy PIL transformations (Lanczos isolation, outpaint padding calculation, grid cropping, vibrancy boosting, 1.5x upscaling, and disk reads/writes) to worker threads via `asyncio.to_thread()`. Added concurrent `asyncio.gather()` processing for quadrant image enhancements. Discord gateway heartbeats and button response times are completely protected from event loop stalls.
 11. **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**: Implemented intelligent model-affinity job batching across SDXL, Flux.1, Krea 2, Wan 2.2, LTX, and Florence-2. Groups pending jobs targeting the active architecture to eliminate PCIe model weight swapping (saving 20–45s per switch), automatically clears GPU VRAM during transitions, and incorporates anti-starvation age escalation with an upgraded `/queue` dashboard.
 12. **Semantic Workflow Adapter & Node Decoupling (`services/workflow_adapter.py`)**: Replaced brittle hardcoded numeric node IDs (`wf["3"]`, `wf["5"]`, `wf["6"]`, `wf["75"]`, `wf["76"]`, `wf["822"]`) with semantic discovery based on class types, titles, parameter signatures, and graph link tracing. Insulates the bot from GUI renumbering, verified through randomized node-scrambling tests.
+13. **Centralized Pipeline Defaults & Semantic Constants (`config.py` & `v2.6.6`)**: Consolidated generation checkpoints, upscale denoise floats (`UPSCALE_DENOISE_SDXL = 0.55`, `UPSCALE_DENOISE_FLUX_SUBTLE = 0.26`, `UPSCALE_DENOISE_FLUX_MODERATE = 0.35`), and variation similarity profiles into `class PipelineDefaults`. Added `get_checkpoint_display_name()` with shorthand alias resolution, eliminating duplicate dictionaries in `views.py`, and replaced raw magic floats in `bot.py`.
 
 ### 🛡️ Core Architecture Rules (Mandatory for Future Development)
 * **Async Event Loop Hygiene (Rule 1 in [`AGENTS.md`](AGENTS.md)):** Never run blocking PIL operations or synchronous disk I/O on the primary asyncio event loop. All image crops, upscales, grid stitches, and file saves must use the non-blocking `*_async` functions in [`image_utils.py`](image_utils.py) or `asyncio.to_thread()`.
@@ -174,7 +175,7 @@ The tool is built with **automatic state resumption**:
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **87 / 87 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **88 / 88 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

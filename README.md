@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-87%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-88%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
 

@@ -16,8 +16,8 @@ This document preserves the comprehensive architectural audit of Shallot-CUI Bot
 | **2** | **Disk / Scratch Cache** | `QUADRANT_CACHE_DIR` accumulates thousands of PNGs without auto-pruner | **High** | ✅ **Resolved** (`v2.6.5` - 6h pruner + vacuum) |
 | **3** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium** | Backlog (Submodule segregation) |
 | **4** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | ✅ **Resolved** (`v2.6.5` - concurrent `asyncio.gather`) |
-| **5** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Medium** | Backlog (User active job limiter) |
-| **6** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | Backlog (Semantic config presets) |
+| **5** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Medium** | Single-user workstation (Intentionally bypassed) |
+| **6** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | ✅ **Resolved** (`v2.6.6` - `PipelineDefaults` & display resolution) |
 
 ---
 
@@ -169,3 +169,9 @@ Several default settings, denoise floats, and checkpoint filenames are hardcoded
 ### Solution Blueprint
 - Consolidate all pipeline defaults and denoise profiles into [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py) and [`model_architecture.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/model_architecture.py).
 - Reference presets via semantic constants (e.g. `PipelineDefaults.UPSCALE_DENOISE_SDXL`, `PipelineDefaults.VARIATION_DENOISE_SUBTLE`).
+
+### ✅ Resolution (`v2.6.6`)
+1. Centralized generation defaults, upscale denoise constants (`UPSCALE_DENOISE_SDXL`, `UPSCALE_DENOISE_FLUX_SUBTLE`, `UPSCALE_DENOISE_FLUX_MODERATE`), and variation mapping profiles into `class PipelineDefaults` in [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py).
+2. Implemented `get_checkpoint_display_name(checkpoint)` in [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py) with alias resolution for shorthand codes (`wai`, `realvis`, `juggernaut`, etc.), eliminating duplicate 18-line dictionaries in [`views.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/views.py).
+3. Replaced raw magic floats throughout [`bot.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) with semantic `PipelineDefaults` references.
+
