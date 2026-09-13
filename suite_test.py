@@ -3565,129 +3565,172 @@ class TestCUIBotFunctions(unittest.TestCase):
     def test_pending_jobs_db_crud(self):
         """Test recording, reading, updating, and cleaning up pending jobs in SQLite."""
         import db
-        db.init_db()
+        import tempfile
 
-        test_prompt_id = "test_prompt_crash_123"
-        # 1. Record job
-        res = db.record_pending_job(
-            prompt_id=test_prompt_id,
-            generation_id="gen_test_999",
-            channel_id=123456789,
-            message_id=987654321,
-            user_id=456789012,
-            command_type="video",
-            metadata={"frames": 81, "fps": 16}
-        )
-        self.assertTrue(res)
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            temp_db = tf.name
 
-        # 2. Get pending jobs
-        jobs = db.get_pending_jobs(status="running")
-        found = [j for j in jobs if j["prompt_id"] == test_prompt_id]
-        self.assertEqual(len(found), 1)
-        job = found[0]
-        self.assertEqual(job["channel_id"], 123456789)
-        self.assertEqual(job["message_id"], 987654321)
-        self.assertEqual(job["user_id"], 456789012)
-        self.assertEqual(job["command_type"], "video")
-        self.assertEqual(job["metadata"].get("frames"), 81)
+        orig_db = db.DB_FILE
+        try:
+            db.DB_FILE = temp_db
+            db.init_db()
 
-        # 3. Complete job
-        update_res = db.complete_pending_job(test_prompt_id, status="completed")
-        self.assertTrue(update_res)
+            test_prompt_id = "test_prompt_crash_123"
+            # 1. Record job
+            res = db.record_pending_job(
+                prompt_id=test_prompt_id,
+                generation_id="gen_test_999",
+                channel_id=123456789,
+                message_id=987654321,
+                user_id=456789012,
+                command_type="video",
+                metadata={"frames": 81, "fps": 16}
+            )
+            self.assertTrue(res)
 
-        jobs_after = db.get_pending_jobs(status="running")
-        found_after = [j for j in jobs_after if j["prompt_id"] == test_prompt_id]
-        self.assertEqual(len(found_after), 0)
+            # 2. Get pending jobs
+            jobs = db.get_pending_jobs(status="running")
+            found = [j for j in jobs if j["prompt_id"] == test_prompt_id]
+            self.assertEqual(len(found), 1)
+            job = found[0]
+            self.assertEqual(job["channel_id"], 123456789)
+            self.assertEqual(job["message_id"], 987654321)
+            self.assertEqual(job["user_id"], 456789012)
+            self.assertEqual(job["command_type"], "video")
+            self.assertEqual(job["metadata"].get("frames"), 81)
 
-        # Check in all jobs
-        all_jobs = db.get_pending_jobs(status="")
-        found_completed = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
-        self.assertEqual(len(found_completed), 1)
-        self.assertEqual(found_completed[0]["status"], "completed")
+            # 3. Complete job
+            update_res = db.complete_pending_job(test_prompt_id, status="completed")
+            self.assertTrue(update_res)
 
-        # Cleanup
-        db.cleanup_stale_jobs(0.0)
+            jobs_after = db.get_pending_jobs(status="running")
+            found_after = [j for j in jobs_after if j["prompt_id"] == test_prompt_id]
+            self.assertEqual(len(found_after), 0)
+
+            # Check in all jobs
+            all_jobs = db.get_pending_jobs(status="")
+            found_completed = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+            self.assertEqual(len(found_completed), 1)
+            self.assertEqual(found_completed[0]["status"], "completed")
+
+            # Cleanup
+            db.cleanup_stale_jobs(0.0)
+        finally:
+            db.DB_FILE = orig_db
+            if os.path.exists(temp_db):
+                try:
+                    os.remove(temp_db)
+                except Exception:
+                    pass
 
     def test_crash_recovery_media_reconciliation(self):
         """Test crash reconciliation successfully recovers completed media and updates Discord."""
         import db
         from services.recovery_service import reconcile_pending_jobs
+        import tempfile
 
-        db.init_db()
-        test_prompt_id = "test_prompt_recov_media"
-        db.record_pending_job(
-            prompt_id=test_prompt_id,
-            channel_id=111222,
-            message_id=333444,
-            user_id=555666,
-            command_type="imagine",
-            metadata={"prompt": "beautiful fantasy landscape"}
-        )
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            temp_db = tf.name
 
-        mock_bot = MagicMock()
-        mock_channel = MagicMock()
-        mock_bot.get_channel.return_value = mock_channel
-        mock_msg = AsyncMock()
-        mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
-        mock_channel.send = AsyncMock()
+        orig_db = db.DB_FILE
+        try:
+            db.DB_FILE = temp_db
+            db.init_db()
+            test_prompt_id = "test_prompt_recov_media"
+            db.record_pending_job(
+                prompt_id=test_prompt_id,
+                channel_id=111222,
+                message_id=333444,
+                user_id=555666,
+                command_type="imagine",
+                metadata={"prompt": "beautiful fantasy landscape"}
+            )
 
-        mock_comfy = MagicMock()
-        mock_comfy.is_online = AsyncMock(return_value=True)
-        mock_comfy.get_history_output = AsyncMock(return_value={
-            "9": {
-                "images": [{"filename": "recovered_01.png", "subfolder": "", "type": "output"}]
-            }
-        })
-        mock_comfy.get_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\n\x00\x00fake_image_bytes")
+            mock_bot = MagicMock()
+            mock_channel = MagicMock()
+            mock_bot.get_channel.return_value = mock_channel
+            mock_msg = AsyncMock()
+            mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
+            mock_channel.send = AsyncMock()
 
-        async def run_recov():
-            return await reconcile_pending_jobs(mock_bot, mock_comfy)
+            mock_comfy = MagicMock()
+            mock_comfy.is_online = AsyncMock(return_value=True)
+            mock_comfy.get_history_output = AsyncMock(return_value={
+                "9": {
+                    "images": [{"filename": "recovered_01.png", "subfolder": "", "type": "output"}]
+                }
+            })
+            mock_comfy.get_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\n\x00\x00fake_image_bytes")
 
-        stats = asyncio.run(run_recov())
-        self.assertEqual(stats["recovered"], 1)
-        self.assertEqual(mock_msg.edit.call_count, 1)
+            async def run_recov():
+                return await reconcile_pending_jobs(mock_bot, mock_comfy)
 
-        # Verify job marked as recovered in DB
-        all_jobs = db.get_pending_jobs(status="recovered")
-        found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
-        self.assertEqual(len(found), 1)
+            stats = asyncio.run(run_recov())
+            self.assertEqual(stats["recovered"], 1)
+            self.assertEqual(mock_msg.edit.call_count, 1)
+
+            # Verify job marked as recovered in DB
+            all_jobs = db.get_pending_jobs(status="recovered")
+            found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+            self.assertEqual(len(found), 1)
+        finally:
+            db.DB_FILE = orig_db
+            if os.path.exists(temp_db):
+                try:
+                    os.remove(temp_db)
+                except Exception:
+                    pass
 
     def test_crash_recovery_execution_error(self):
         """Test crash reconciliation handles ComfyUI execution errors and notifies Discord."""
         import db
         from services.recovery_service import reconcile_pending_jobs
+        import tempfile
 
-        db.init_db()
-        test_prompt_id = "test_prompt_recov_err"
-        db.record_pending_job(
-            prompt_id=test_prompt_id,
-            channel_id=111222,
-            message_id=333444,
-            user_id=555666,
-            command_type="video"
-        )
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            temp_db = tf.name
 
-        mock_bot = MagicMock()
-        mock_channel = MagicMock()
-        mock_bot.get_channel.return_value = mock_channel
-        mock_msg = AsyncMock()
-        mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
+        orig_db = db.DB_FILE
+        try:
+            db.DB_FILE = temp_db
+            db.init_db()
+            test_prompt_id = "test_prompt_recov_err"
+            db.record_pending_job(
+                prompt_id=test_prompt_id,
+                channel_id=111222,
+                message_id=333444,
+                user_id=555666,
+                command_type="video"
+            )
 
-        mock_comfy = MagicMock()
-        mock_comfy.is_online = AsyncMock(return_value=True)
-        mock_comfy.get_history_output = AsyncMock(side_effect=Exception("ComfyUI execution error from history: CUDA out of memory"))
+            mock_bot = MagicMock()
+            mock_channel = MagicMock()
+            mock_bot.get_channel.return_value = mock_channel
+            mock_msg = AsyncMock()
+            mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
 
-        async def run_recov():
-            return await reconcile_pending_jobs(mock_bot, mock_comfy)
+            mock_comfy = MagicMock()
+            mock_comfy.is_online = AsyncMock(return_value=True)
+            mock_comfy.get_history_output = AsyncMock(side_effect=Exception("ComfyUI execution error from history: CUDA out of memory"))
 
-        stats = asyncio.run(run_recov())
-        self.assertEqual(stats["failed"], 1)
-        self.assertEqual(mock_msg.edit.call_count, 1)
+            async def run_recov():
+                return await reconcile_pending_jobs(mock_bot, mock_comfy)
 
-        # Verify job marked as failed in DB
-        all_jobs = db.get_pending_jobs(status="failed")
-        found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
-        self.assertEqual(len(found), 1)
+            stats = asyncio.run(run_recov())
+            self.assertEqual(stats["failed"], 1)
+            self.assertEqual(mock_msg.edit.call_count, 1)
+
+            # Verify job marked as failed in DB
+            all_jobs = db.get_pending_jobs(status="failed")
+            found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+            self.assertEqual(len(found), 1)
+        finally:
+            db.DB_FILE = orig_db
+            if os.path.exists(temp_db):
+                try:
+                    os.remove(temp_db)
+                except Exception:
+                    pass
 
     def test_cleanup_orphaned_quadrants_pruner(self):
         """Test that cleanup_orphaned_quadrants purges files older than max_age_hours or lacking DB records."""
