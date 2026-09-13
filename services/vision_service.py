@@ -442,16 +442,17 @@ async def execute_blend_message(interaction: discord.Interaction, message: disco
 
 async def execute_describe_core(interaction: discord.Interaction, image: discord.Attachment, model: str = None, client: ComfyClient = None):
     """Executes multi-architecture image interrogation using JoyCaption, Qwen2.5-VL, or Florence-2."""
-    selected_engine = model or user_vision_preferences.get(interaction.user.id, "joycaption")
+    selected_engine = model or user_vision_preferences.get(interaction.user.id, "florence2")
     user_vision_preferences[interaction.user.id] = selected_engine
 
-    friendly_name = {
-        "joycaption": "JoyCaption",
-        "qwen2.5-vl": "Qwen2.5-VL",
-        "florence2": "Florence-2"
-    }.get(selected_engine, "AI Vision")
+    status_messages = {
+        "florence2": "⚡ Analyzing image with Florence-2 (fast ~2s)...",
+        "joycaption": "🧠 Interrogating image with JoyCaption (deep vision analysis ~15s)...",
+        "qwen2.5-vl": "📸 Interrogating image with Qwen2.5-VL (photorealism analysis ~15s)..."
+    }
+    status_msg = status_messages.get(selected_engine, f"Analyzing image with {selected_engine}...")
 
-    await interaction.response.send_message(f"Analyzing image with {friendly_name}...", ephemeral=False)
+    await interaction.response.send_message(status_msg, ephemeral=False)
     
     if not image.content_type or not image.content_type.startswith("image/"):
         await edit_original_fallback(interaction, content="❌ Please upload a valid image file (PNG/JPG).")

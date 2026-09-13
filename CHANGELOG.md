@@ -6,6 +6,12 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-13]
 
+### Changed
+* ⚡ **Default `/describe` to Florence-2 with Dynamic Latency Status**:
+  * Set Florence-2 as the default model for `/describe` (fast sub-2s execution, minimal VRAM consumption, and 100% immune to CUDA out-of-memory errors on 8GB GPUs).
+  * Maintained JoyCaption and Qwen2.5-VL in command choices for deep vision analysis.
+  * Added dynamic response status messaging showing model name and expected turnaround time.
+
 ### Fixed
 * 🐛 **Resolve Text Workflow Output UnboundLocalError (`comfy_client.py`)**:
   * Fixed `UnboundLocalError: cannot access local variable 'has_outputs' where it is not associated with a value` in `ComfyClient._execute_direct()`. Text-only workflows (such as JoyCaption, Qwen2.5-VL, and Florence-2 description pipelines) produce non-media dictionary results, where `has_outputs` was uninitialized prior to output evaluation.
