@@ -271,56 +271,6 @@ def build_queue_embed(queue: Optional[dict], stats: Optional[dict]) -> discord.E
     return embed
 
 
-def build_diagnostics_embed(user_name: str) -> discord.Embed:
-    """Builds the diagnostics and speed benchmarks embed from SQLite database."""
-    summary = db.get_performance_summary()
-    recent = db.get_recent_metrics(limit=10)
-
-    embed = discord.Embed(
-        title="📊 Shallot-CUI Bot Performance & Telemetry Diagnostics",
-        color=discord.Color.blue()
-    )
-
-    if summary:
-        summary_text = ""
-        for cmd, data in summary.items():
-            total = data["total_runs"]
-            succ = data["successes"]
-            avg_d = data["avg_duration"]
-            avg_i = data.get("avg_init", 0.0)
-            avg_s = data.get("avg_sampling", 0.0)
-            avg_p = data.get("avg_post", 0.0)
-            min_d = data["min_duration"]
-            max_d = data["max_duration"]
-            summary_text += (
-                f"• **`/{cmd}`**: Avg `{avg_d:.1f}s` (Min: `{min_d:.1f}s` / Max: `{max_d:.1f}s`) • {succ}/{total} OK\n"
-                f"  ↳ *Breakdown:* Init `{avg_i:.1f}s` | Sample `{avg_s:.1f}s` | Post `{avg_p:.1f}s`\n"
-            )
-        embed.add_field(name="⚡ Speed Benchmarks by Generator", value=summary_text or "No metrics recorded yet.", inline=False)
-    else:
-        embed.add_field(name="⚡ Speed Benchmarks", value="No generation data recorded yet. Run `/imagine`, `/ltx`, or `/video` to gather benchmarks.", inline=False)
-
-    if recent:
-        recent_lines = []
-        for r in recent[:6]:
-            status_icon = "✅" if r["status"] == "success" else "❌"
-            res = r.get("resolution") or "N/A"
-            dur = r.get("duration_seconds") or 0.0
-            i_sec = r.get("init_seconds") or 0.0
-            s_sec = r.get("sampling_seconds") or 0.0
-            p_sec = r.get("post_seconds") or 0.0
-            cmd = r.get("command") or "unknown"
-            line = f"{status_icon} `/{cmd}` ({res}) - `{dur:.1f}s` (Init: `{i_sec:.1f}s` | Sample: `{s_sec:.1f}s` | Post: `{p_sec:.1f}s`)"
-            if r["status"] != "success" and r.get("error_message"):
-                err_snippet = r["error_message"][:60]
-                line += f"\n  ↳ *Err:* `{err_snippet}`"
-            recent_lines.append(line)
-        embed.add_field(name="🕒 Recent Runs (Last 6)", value="\n".join(recent_lines), inline=False)
-
-    embed.set_footer(text=f"Diagnostics requested by {user_name}")
-    return embed
-
-
 def build_models_embed(architecture: str = "all", model_type: str = "all") -> Optional[discord.Embed]:
     """Builds the registered models and LoRAs directory embed."""
     arch_filter = None if architecture == "all" else architecture

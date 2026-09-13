@@ -3903,7 +3903,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         expected_commands = [
             "cui-start", "cui-stop", "cui-status", 
             "free", "purge-vram", "queue", 
-            "diagnostics", "models", "scan_models", 
+            "models", "scan_models", 
             "variation_mode", "negative", "prompt", "style"
         ]
         for cmd in expected_commands:
@@ -3916,7 +3916,6 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(hasattr(bot, "free_vram_command"))
         self.assertTrue(hasattr(bot, "purge_vram_command"))
         self.assertTrue(hasattr(bot, "queue_command"))
-        self.assertTrue(hasattr(bot, "diagnostics_command"))
         self.assertTrue(hasattr(bot, "models_command"))
         self.assertTrue(hasattr(bot, "scan_models_command"))
         self.assertTrue(hasattr(bot, "variation_mode_command"))
@@ -3933,18 +3932,12 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(callable(system_service.fetch_comfyui_system_stats))
         self.assertTrue(callable(system_service.purge_vram_core))
         self.assertTrue(callable(system_service.build_queue_embed))
-        self.assertTrue(callable(system_service.build_diagnostics_embed))
         self.assertTrue(callable(system_service.build_models_embed))
 
         # Test queue embed generation
         q_embed = system_service.build_queue_embed(None, None)
         self.assertIsInstance(q_embed, bot.discord.Embed)
         self.assertIn("Could not connect", q_embed.description)
-
-        # Test diagnostics embed generation
-        d_embed = system_service.build_diagnostics_embed("TestUser")
-        self.assertIsInstance(d_embed, bot.discord.Embed)
-        self.assertIn("Diagnostics", d_embed.title)
 
 
 if __name__ == "__main__":

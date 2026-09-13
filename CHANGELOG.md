@@ -9,7 +9,9 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ### Fixed
 * 🐛 **Resolve Text Workflow Output UnboundLocalError (`comfy_client.py`)**:
   * Fixed `UnboundLocalError: cannot access local variable 'has_outputs' where it is not associated with a value` in `ComfyClient._execute_direct()`. Text-only workflows (such as JoyCaption, Qwen2.5-VL, and Florence-2 description pipelines) produce non-media dictionary results, where `has_outputs` was uninitialized prior to output evaluation.
-  * Added automated regression test `test_comfy_client_text_outputs_no_unbound_local_error` in `suite_test.py` (92/92 tests passing).
+### Removed
+* 🗑️ **Deprecated `/diagnostics` Command**:
+  * Removed redundant `/diagnostics` slash command and `build_diagnostics_embed()`. Real-time hardware telemetry and queue status are fully served by `/queue` and `/cui-status`. Eliminates Discord 1,024-character embed overflow exceptions.
 
 ### Added
 * 👁️ **Modular Vision Cog & Service Architecture (`v2.6.9`)**:

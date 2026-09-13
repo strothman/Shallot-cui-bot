@@ -151,7 +151,6 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 * **`/models`**: View all registered Checkpoints and LoRAs grouped by architecture (SDXL, Flux, Wan, LTX).
 * **`/scan_models`**: One-click scanner that scans your ComfyUI models folder and adds newly downloaded checkpoints and LoRAs to the bot.
 * **`/variation_mode`**: Toggle variation strength between **High** and **Very High**.
-* **`/diagnostics`**: View render speeds, GPU stats, and recent generations.
 * **❌ Delete Any Message**: React with the **❌** (red X) emoji on any bot message to instantly delete it.
 
 ---

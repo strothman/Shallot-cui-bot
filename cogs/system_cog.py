@@ -3,7 +3,6 @@ System & Administration Cog for Shallot-CUI Bot.
 Houses slash commands for:
 - ComfyUI server lifecycle: /cui-start, /cui-stop, /cui-status
 - GPU memory & queue management: /free, /purge-vram, /queue
-- Telemetry & performance benchmarks: /diagnostics
 - Model registry and discovery: /models, /scan_models
 - Personalization settings: /negative, /variation_mode, /prompt, /style
 """
@@ -46,7 +45,6 @@ from services.system_service import (
     fetch_comfyui_queue,
     fetch_comfyui_system_stats,
     build_queue_embed,
-    build_diagnostics_embed,
     build_models_embed,
     purge_vram_core
 )
@@ -340,17 +338,6 @@ class SystemCog(commands.Cog):
         stats = await fetch_comfyui_system_stats()
         embed = build_queue_embed(queue, stats)
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # =========================================================================
-    # Telemetry & Diagnostics
-    # =========================================================================
-
-    @app_commands.command(name="diagnostics", description="View bot generation metrics, speed benchmarks, and troubleshooting data.")
-    async def diagnostics(self, interaction: discord.Interaction):
-        """Displays telemetry benchmarks, average render times, and recent error diagnostics."""
-        await safe_defer(interaction, ephemeral=False)
-        embed = build_diagnostics_embed(interaction.user.name)
-        await send_followup_fallback(interaction, embed=embed)
 
     # =========================================================================
     # Model Architecture Registry & Discovery

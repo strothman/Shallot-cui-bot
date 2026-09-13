@@ -28,7 +28,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, coordinates startup lifecycle, and dispatches background tasks. |
-| [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/queue`), benchmarks (`/diagnostics`), and settings (`/negative`, `/style`, `/prompt`). |
+| [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/purge-vram`, `/queue`), model discovery (`/models`, `/scan_models`), and settings (`/negative`, `/style`, `/prompt`). |
 | [`services/system_service.py`](services/system_service.py) | **System Service:** Executes ComfyUI process lifecycle, GPU telemetry, VRAM purging, model auto-scanning, and configuration persistence. |
 | [`cogs/video_cog.py`](cogs/video_cog.py) | **Video Desk (Modular Cog):** Houses `/video`, `/ltx`, and `"Animate to Video"` context menus. |
 | [`services/video_service.py`](services/video_service.py) | **Video Service:** Executes Wan 2.2 I2V, RIFE frame interpolation, LTX-Video, re-roll, and remix operations. |

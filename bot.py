@@ -395,7 +395,6 @@ from services.system_service import (
     fetch_comfyui_queue,
     fetch_comfyui_system_stats,
     build_queue_embed,
-    build_diagnostics_embed,
     build_models_embed,
     purge_vram_core,
 )
@@ -435,7 +434,6 @@ cui_status_command = _system_cog.cui_status
 free_vram_command = _system_cog.free_vram
 purge_vram_command = _system_cog.purge_vram
 queue_command = _system_cog.queue_status
-diagnostics_command = _system_cog.diagnostics
 models_command = _system_cog.models
 scan_models_command = _system_cog.scan_models
 variation_mode_command = _system_cog.variation_mode
