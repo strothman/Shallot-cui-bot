@@ -275,6 +275,30 @@ async def create_grid_async(image_bytes_list: list, prompt: str, neg_prompt: str
     """Non-blocking async variant of create_grid."""
     return await asyncio.to_thread(create_grid, image_bytes_list, prompt, neg_prompt, seed, width, height)
 
+async def crop_to_aspect_ratio_async(image_bytes: bytes, target_w: int, target_h: int) -> bytes:
+    """Non-blocking async variant of crop_to_aspect_ratio."""
+    return await asyncio.to_thread(crop_to_aspect_ratio, image_bytes, target_w, target_h)
+
+async def upscale_isolated_image_async(image_bytes: bytes, target_w: int = 1024, target_h: int = 1024) -> tuple[bytes, int, int]:
+    """Non-blocking async variant of upscale_isolated_image."""
+    return await asyncio.to_thread(upscale_isolated_image, image_bytes, target_w, target_h)
+
+async def calculate_outpaint_padding_async(image_bytes: bytes, mode_or_ratio: str):
+    """Non-blocking async variant of calculate_outpaint_padding."""
+    return await asyncio.to_thread(calculate_outpaint_padding, image_bytes, mode_or_ratio)
+
+async def boost_image_vibrancy_and_contrast_async(image_bytes: bytes, saturation: float = 1.22, contrast: float = 1.08) -> bytes:
+    """Non-blocking async variant of boost_image_vibrancy_and_contrast."""
+    return await asyncio.to_thread(boost_image_vibrancy_and_contrast, image_bytes, saturation, contrast)
+
+async def crop_quadrant_from_grid_bytes_async(grid_bytes: bytes, index: int) -> bytes:
+    """Non-blocking async variant of crop_quadrant_from_grid_bytes."""
+    return await asyncio.to_thread(crop_quadrant_from_grid_bytes, grid_bytes, index)
+
+async def create_thumbnail_bytes_async(image_bytes: bytes, max_dim: int = 512) -> bytes:
+    """Non-blocking async variant of create_thumbnail_bytes."""
+    return await asyncio.to_thread(create_thumbnail_bytes, image_bytes, max_dim)
+
 def crop_quadrant_from_grid_bytes(grid_bytes: bytes, index: int) -> bytes:
     """Crops a 2x2 grid image (bytes) into quadrant index (1-4) PNG bytes."""
     img = Image.open(io.BytesIO(grid_bytes)).convert("RGB")
@@ -412,6 +436,10 @@ def convert_image_to_ico(image_bytes: bytes, rounded_corners: bool = True, radiu
     except Exception as e:
         logger.error(f"Error converting image to ICO: {e}")
         return None, None
+
+async def convert_image_to_ico_async(image_bytes: bytes, rounded_corners: bool = True, radius_ratio: float = 0.18) -> tuple:
+    """Non-blocking async variant of convert_image_to_ico."""
+    return await asyncio.to_thread(convert_image_to_ico, image_bytes, rounded_corners, radius_ratio)
 
 
 def detect_closest_aspect_ratio(width: int, height: int) -> str:

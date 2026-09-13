@@ -70,20 +70,30 @@ from parsers import (
 )
 from image_utils import (
     crop_to_aspect_ratio,
+    crop_to_aspect_ratio_async,
     create_grid,
+    create_grid_async,
     embed_metadata,
+    embed_metadata_async,
     calculate_outpaint_padding,
+    calculate_outpaint_padding_async,
     save_quadrant_images,
+    save_quadrant_images_async,
     get_quadrant_bytes,
+    get_quadrant_bytes_async,
     crop_quadrant_from_grid_bytes,
+    crop_quadrant_from_grid_bytes_async,
     format_image_filename,
     get_dated_save_prefix,
     upscale_isolated_image,
+    upscale_isolated_image_async,
     boost_image_vibrancy_and_contrast,
+    boost_image_vibrancy_and_contrast_async,
     get_checkpoint_abbrev,
     detect_closest_aspect_ratio,
     detect_closest_krea_aspect_ratio,
     create_thumbnail_bytes,
+    create_thumbnail_bytes_async,
     QUADRANT_CACHE_DIR,
 )
 from views import (
@@ -791,7 +801,7 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
     expanded_prompts = gen_data.get("expanded_prompts", [])
     prepend_quality = gen_data.get("prepend_quality", True)
 
-    save_quadrant_images(generation_id, images)
+    await save_quadrant_images_async(generation_id, images)
 
     sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
     grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, seed, width, height)
@@ -920,7 +930,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         upscale_factor = 1.25
 
     # 1. Retrieve quadrant bytes from cache
-    q_bytes = get_quadrant_bytes(generation_id, index)
+    q_bytes = await get_quadrant_bytes_async(generation_id, index)
     q_filename = None
 
     if q_bytes:
@@ -1074,7 +1084,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         
         out_w = int(round((width * upscale_factor) / 64) * 64)
         out_h = int(round((height * upscale_factor) / 64) * 64)
-        highres_file_io = embed_metadata(images[0], expanded_prompt, neg_prompt, target_seed, out_w, out_h)
+        highres_file_io = await embed_metadata_async(images[0], expanded_prompt, neg_prompt, target_seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         ckpt_abbrev = get_checkpoint_abbrev(checkpoint)
         if is_blend:
@@ -1136,7 +1146,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
                 retry_images = await comfy_client.generate(workflow, timeout=14400)
                 if retry_images:
                     out_w, out_h = int(round((width * upscale_factor) / 64) * 64), int(round((height * upscale_factor) / 64) * 64)
-                    highres_file_io = embed_metadata(retry_images[0], original_prompt, neg_prompt, target_seed, out_w, out_h)
+                    highres_file_io = await embed_metadata_async(retry_images[0], original_prompt, neg_prompt, target_seed, out_w, out_h)
                     file = discord.File(fp=highres_file_io, filename=format_image_filename(f"upscale_{index}", target_seed, "png"))
                     embed = discord.Embed(
                         title=f"Detailed High-Res Upscale Image {index} (Auto-Fixed)", 
@@ -1171,7 +1181,7 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
         await interaction.followup.send("Could not find generation session data. It may have expired.", ephemeral=True)
         return
 
-    q_bytes = get_quadrant_bytes(generation_id, index)
+    q_bytes = await get_quadrant_bytes_async(generation_id, index)
     if not q_bytes:
         await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
         await interaction.followup.send("Could not find the cached quadrant image. You may need to re-roll the grid.", ephemeral=True)
@@ -1188,11 +1198,11 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
     sref_info = gen_data.get("sref_info")
 
     # Automatically upscale low-res grid quadrant slice to full HD resolution
-    q_bytes, width, height = upscale_isolated_image(q_bytes, target_w=width, target_h=height)
+    q_bytes, width, height = await upscale_isolated_image_async(q_bytes, target_w=width, target_h=height)
 
     try:
         # Embed metadata to the isolated PNG
-        metadata_io = embed_metadata(q_bytes, original_prompt, neg_prompt, target_seed, width, height)
+        metadata_io = await embed_metadata_async(q_bytes, original_prompt, neg_prompt, target_seed, width, height)
         png_bytes = metadata_io.getvalue()
 
         # Save copy to ComfyUI output highres / flux / blend folder inside MM/DD
@@ -1325,7 +1335,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
     sref_weight = gen_data.get("sref_weight", 0.6)
 
     # 1. Retrieve quadrant bytes from cache
-    q_bytes = get_quadrant_bytes(generation_id, index)
+    q_bytes = await get_quadrant_bytes_async(generation_id, index)
     q_filename = None
 
     if q_bytes:
@@ -1475,7 +1485,7 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
             return
 
         # Cache the new quadrant images for future variations
-        save_quadrant_images(new_gen_id, images)
+        await save_quadrant_images_async(new_gen_id, images)
 
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         grid_file_io = await asyncio.to_thread(create_grid, images, expanded_prompt, neg_prompt, new_base_seed, width, height)
@@ -1700,7 +1710,7 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
             return
 
         # Cache quadrant images for future visual variations
-        save_quadrant_images(new_gen_id, images)
+        await save_quadrant_images_async(new_gen_id, images)
 
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, new_seed, width, height)
@@ -1858,7 +1868,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
     seed = random.randint(1, 1125899906842624)
 
     # 1. Obtain input image bytes (from quadrant cache or message attachment)
-    q_bytes = get_quadrant_bytes(generation_id, index)
+    q_bytes = await get_quadrant_bytes_async(generation_id, index)
     if not q_bytes and interaction.message and interaction.message.attachments:
         try:
             att = interaction.message.attachments[0]
@@ -1873,7 +1883,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
 
     # 2. Calculate padding parameters and rescale base image to SDXL 1024 resolution if needed
     try:
-        left, top, right, bottom, input_img_bytes, out_w, out_h = calculate_outpaint_padding(q_bytes, target_ratio)
+        left, top, right, bottom, input_img_bytes, out_w, out_h = await calculate_outpaint_padding_async(q_bytes, target_ratio)
     except Exception as e:
         logger.error(f"Error calculating outpaint padding: {e}")
         await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
@@ -1971,9 +1981,9 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         save_generations()
 
         # Cache outpainted image for future operations
-        save_quadrant_images(new_gen_id, [images[0]])
+        await save_quadrant_images_async(new_gen_id, [images[0]])
 
-        out_file_io = embed_metadata(images[0], expanded_original, neg_prompt, seed, out_w, out_h)
+        out_file_io = await embed_metadata_async(images[0], expanded_original, neg_prompt, seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{target_ratio.replace(':', '_')}", seed, "png", sref=sref_code))
 
@@ -2156,9 +2166,9 @@ async def handle_change_sref(interaction: discord.Interaction, generation_id: st
         save_generations()
 
         # Save quadrant cache for new_gen_id at index 1 so variations / upscales work on it
-        save_quadrant_images(new_gen_id, [images[0]])
+        await save_quadrant_images_async(new_gen_id, [images[0]])
 
-        metadata_io = embed_metadata(images[0], new_full_prompt, neg_prompt, target_seed, width, height)
+        metadata_io = await embed_metadata_async(images[0], new_full_prompt, neg_prompt, target_seed, width, height)
         file_code = str(sref_info['code']) if sref_info and "code" in sref_info else "custom"
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         file = discord.File(fp=metadata_io, filename=format_image_filename(f"isolated_sref_{file_code}", target_seed, "png", sref=sref_code))
@@ -2321,6 +2331,20 @@ async def on_ready():
                 pass
 
         await comfy_client.start()
+        try:
+            from services.engine_queue import set_engine_queue_client
+            _eq = set_engine_queue_client(comfy_client)
+            _eq.start()
+            logger.info("🟢 EngineAwareQueue worker started with model-affinity scheduling.")
+        except Exception as eq_err:
+            logger.warning(f"EngineAwareQueue initialization warning: {eq_err}")
+
+        try:
+            from services.recovery_service import start_crash_recovery
+            start_crash_recovery(bot, comfy_client)
+            logger.info("🟢 Crash recovery service initialized and listening for pending jobs.")
+        except Exception as rec_err:
+            logger.warning(f"Crash recovery startup warning: {rec_err}")
         
         # ComfyUI status check
         try:
@@ -3708,10 +3732,30 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         if is_flux:
             results = []
             for idx, wf in enumerate(workflows_list):
-                res = await comfy_client.generate(wf, generation_id=generation_id, progress_callback=make_grid_progress_cb(idx))
+                res = await comfy_client.generate(
+                    wf,
+                    generation_id=generation_id,
+                    progress_callback=make_grid_progress_cb(idx),
+                    channel_id=interaction.channel_id if interaction else None,
+                    message_id=msg.id if msg else None,
+                    user_id=interaction.user.id if interaction and interaction.user else None,
+                    command_type="flux",
+                    metadata={"prompt": prompt, "checkpoint": selected_model}
+                )
                 results.append(res)
         else:
-            tasks = [comfy_client.generate(wf, generation_id=generation_id, progress_callback=make_grid_progress_cb(idx)) for idx, wf in enumerate(workflows_list)]
+            tasks = [
+                comfy_client.generate(
+                    wf,
+                    generation_id=generation_id,
+                    progress_callback=make_grid_progress_cb(idx),
+                    channel_id=interaction.channel_id if interaction else None,
+                    message_id=msg.id if msg else None,
+                    user_id=interaction.user.id if interaction and interaction.user else None,
+                    command_type="imagine",
+                    metadata={"prompt": prompt, "checkpoint": selected_model}
+                ) for idx, wf in enumerate(workflows_list)
+            ]
             results = await asyncio.gather(*tasks)
 
         elapsed_time = time.perf_counter() - start_time
@@ -3751,7 +3795,7 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         # Apply automatic color vibrancy & contrast boost for realistic models (bypassed for anime/illustrious to prevent oversaturation)
         is_anime_model = any(k in str(selected_model).lower() for k in ["illustrious", "wai", "hyphoria", "anime", "nai", "furry", "pony"])
         if (use_reference_img2img or reference_image_url or cref_image_name) and not is_anime_model:
-            images = [boost_image_vibrancy_and_contrast(img_bytes, saturation=1.22, contrast=1.08) for img_bytes in raw_images]
+            images = await asyncio.gather(*[boost_image_vibrancy_and_contrast_async(img_bytes, saturation=1.22, contrast=1.08) for img_bytes in raw_images])
         else:
             images = raw_images
         
@@ -4417,7 +4461,16 @@ async def execute_video_core(
         logger.info(f"Executing high-speed GGUF Wan 2.2 I2V workflow ({width}x{height}, {wan_frames} frames @ {wan_fps} fps, seed {video_seed})...")
         start_time = time.perf_counter()
         try:
-            outputs = await comfy_client.generate(workflow, timeout=14400, progress_callback=on_video_progress)
+            outputs = await comfy_client.generate(
+                workflow,
+                timeout=14400,
+                progress_callback=on_video_progress,
+                channel_id=interaction.channel_id if interaction else None,
+                message_id=status_msg[0].id if (status_msg and status_msg[0]) else None,
+                user_id=interaction.user.id if (interaction and interaction.user) else None,
+                command_type="video",
+                metadata={"prompt": prompt, "width": width, "height": height, "model": wan_high_gguf}
+            )
             elapsed_time = time.perf_counter() - start_time
             t_breakdown = comfy_client.get_execution_timing()
             init_sec = t_breakdown.get("init_duration", 0.0)
@@ -5445,7 +5498,7 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
                         raise Exception(f"ComfyUI view returned status {resp.status}")
                     orig_image_bytes = await resp.read()
             
-            cropped_bytes = crop_to_aspect_ratio(orig_image_bytes, width, height)
+            cropped_bytes = await crop_to_aspect_ratio_async(orig_image_bytes, width, height)
             target_filename = f"blend_crop_{generation_id}_{width}_{height}.png"
             upload_res = await comfy_client.upload_image(cropped_bytes, target_filename)
             final_image_name = upload_res.get("name", uploaded_image_name)
@@ -5535,7 +5588,7 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
             await send_followup_fallback(interaction, content=f"Expected 4 images from blend generation, but only got {len(images)}.")
             return
 
-        save_quadrant_images(generation_id, images)
+        await save_quadrant_images_async(generation_id, images)
 
         grid_file_io = await asyncio.to_thread(create_grid, images, cleaned_prompt, neg_prompt, seed, width, height)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
@@ -6023,6 +6076,24 @@ async def queue_command(interaction: discord.Interaction):
                     value=f"`{name}`\n{vram_bar} {vram_used / (1024**3):.1f} / {vram_total / (1024**3):.1f} GB ({pct:.0f}%)",
                     inline=False
                 )
+
+    # Engine-Aware Priority Queue Status
+    try:
+        from services.engine_queue import get_engine_queue
+        eq_status = get_engine_queue().get_status()
+        if eq_status.get("is_running"):
+            engine_text = f"**Current Engine:** `{eq_status['current_engine_name']}`"
+            if eq_status.get("active_job"):
+                aj = eq_status["active_job"]
+                engine_text += f"\n⚡ **Active Task:** [{aj['engine'].upper()}] {aj['description']} ({aj['running_seconds']}s)"
+            if eq_status.get("pending_by_engine"):
+                breakdown = ", ".join(f"`{k.upper()}`: {v}" for k, v in eq_status["pending_by_engine"].items())
+                engine_text += f"\n⏳ **Queued by Engine:** {breakdown}"
+            if eq_status.get("stats", {}).get("switches_prevented", 0) > 0:
+                engine_text += f"\n🚀 **VRAM Swaps Prevented:** {eq_status['stats']['switches_prevented']}"
+            embed.add_field(name="🧠 Engine-Aware Scheduler", value=engine_text, inline=False)
+    except Exception as eq_ui_err:
+        logger.debug(f"Engine-Aware Queue UI status error: {eq_ui_err}")
 
     # Active jobs
     if running:

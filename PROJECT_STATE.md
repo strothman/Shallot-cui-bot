@@ -1,10 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.4.6`  
+> **Current Version:** `v2.6.0`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (74/74 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (85/85 Automated Tests Passing)  
 
 ---
 
@@ -29,6 +28,9 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, handles slash commands (`/imagine`, `/flux`, `/video`), and coordinates tasks. |
+| [`services/recovery_service.py`](services/recovery_service.py) | **Crash Recovery & Reconciliation:** Automatically rescues interrupted generations on restart, retrieves completed outputs from ComfyUI history, and delivers them to Discord. |
+| [`services/workflow_adapter.py`](services/workflow_adapter.py) | **Semantic Workflow Adapter:** Insulates the bot from ComfyUI node renumbering by manipulating nodes by class type, title, and inputs rather than hardcoded IDs. |
+| [`services/engine_queue.py`](services/engine_queue.py) | **Engine-Aware Priority Queue:** Prevents VRAM thrashing on 8GB GPUs via model affinity, anti-starvation age escalation, and auto VRAM purging. |
 | [`cogs/vision_cog.py`](cogs/vision_cog.py) | **Vision Desk (Modular Cog):** Houses `/blend-sdxl`, `/blend`, and context menus in a clean modular cog. |
 | [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes Florence-2 interrogation, prompt synthesis, and blend preparation. |
 | [`cogs/krea_cog.py`](cogs/krea_cog.py) | **Krea Desk (Modular Cog):** Houses `/bertflow` and `/blend-krea` commands along with character, celebrity, and favorite prompt autocompletes. |
@@ -36,11 +38,11 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
 | [`parsers.py`](parsers.py) | **Prompt Translator:** Reads flags like `--ar 16:9` (widescreen), `--smart` (auto-lighting), `--sref` (style copy), and wildcards `{a\|b\|c}`. |
 | [`views.py`](views.py) | **Interactive Buttons:** Creates all clickable buttons in Discord (U1–U4, V1–V4, `🛑 Cancel`, unified Blend Studio, and `✏️ Remix` popup windows). |
-| [`comfy_client.py`](comfy_client.py) | **The Messenger:** Talks to ComfyUI on your computer, tracks render progress, and automatically frees GPU memory when needed. |
-| [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes. |
-| [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) that remembers your favorite prompts, style codes, and past creations. |
+| [`comfy_client.py`](comfy_client.py) | **The Messenger:** Talks to ComfyUI on your computer, tracks render progress, journals active jobs, and automatically frees GPU memory when needed. |
+| [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes asynchronously. |
+| [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) with WAL mode that journals active jobs, stores favorite prompts, and tracks generation metrics. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 74 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 85 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 
@@ -121,7 +123,7 @@ The tool is built with **automatic state resumption**:
 
 ---
 
-## 🌟 5. What's New in v2.4.0 & Latest Updates
+## 🌟 5. What's New in v2.4.7 & Latest Updates
 
 1. **Centralized Character Display Badges (`characters.get_character_display_badge`)**: Unified character badge formatting across all embed builders (`/describe`, `/blend`, `/blend-krea`, and prompt refine views). Replaced over 80 lines of duplicate manual mappings with a single source of truth.
 2. **Silent Singleton Lock for Automated Tests**: Added `silent: bool = False` to `acquire_instance_lock` in `bot.py` and `suite_test.py`. Unit testing collision detection now executes cleanly without false-alarm console warning banners.
@@ -132,6 +134,14 @@ The tool is built with **automatic state resumption**:
 7. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
 8. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
 9. **Automatic Memory Cleaning (VRAM Auto-Purge)**: The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+10. **Non-Blocking Async Image I/O & Gateway Protection**: Offloaded all CPU-heavy PIL transformations (Lanczos isolation, outpaint padding calculation, grid cropping, vibrancy boosting, 1.5x upscaling, and disk reads/writes) to worker threads via `asyncio.to_thread()`. Added concurrent `asyncio.gather()` processing for quadrant image enhancements. Discord gateway heartbeats and button response times are completely protected from event loop stalls.
+11. **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**: Implemented intelligent model-affinity job batching across SDXL, Flux.1, Krea 2, Wan 2.2, LTX, and Florence-2. Groups pending jobs targeting the active architecture to eliminate PCIe model weight swapping (saving 20–45s per switch), automatically clears GPU VRAM during transitions, and incorporates anti-starvation age escalation with an upgraded `/queue` dashboard.
+12. **Semantic Workflow Adapter & Node Decoupling (`services/workflow_adapter.py`)**: Replaced brittle hardcoded numeric node IDs (`wf["3"]`, `wf["5"]`, `wf["6"]`, `wf["75"]`, `wf["76"]`, `wf["822"]`) with semantic discovery based on class types, titles, parameter signatures, and graph link tracing. Insulates the bot from GUI renumbering, verified through randomized node-scrambling tests.
+
+### 🛡️ Core Architecture Rules (Mandatory for Future Development)
+* **Async Event Loop Hygiene (Rule 1 in [`AGENTS.md`](AGENTS.md)):** Never run blocking PIL operations or synchronous disk I/O on the primary asyncio event loop. All image crops, upscales, grid stitches, and file saves must use the non-blocking `*_async` functions in [`image_utils.py`](image_utils.py) or `asyncio.to_thread()`.
+* **Modular Cog & Service Architecture (Rule 2 in [`AGENTS.md`](AGENTS.md)):** Keep `bot.py` clean; place Discord UI and slash commands in `cogs/` and pure business logic in `services/`.
+* **Single-Source Style & Character Registry (Rule 3 in [`AGENTS.md`](AGENTS.md)):** Register all character LoRAs, triggers, and privacy filters in [`characters.py`](characters.py). All automated tests in [`suite_test.py`](suite_test.py) must pass 100% green before completing changes.
 
 ---
 
@@ -155,12 +165,16 @@ The tool is built with **automatic state resumption**:
     3. **Turnkey Installer Package:** 1-click `setup.bat` (creates isolated `.venv` and installs dependencies), `run_bot.bat` launcher, and a friendly 5-minute setup guide (`README_FRIEND.md`).
   * 📋 **Detailed Feasibility Plan:** See [`docs/client_distribution_packaging_plan.md`](docs/client_distribution_packaging_plan.md) for full gap analysis, architecture adapters, and packaging roadmap.
 
+* **Phase 5: Technical Debt & Performance Optimizations [ACTIVE ROADMAP & AUDIT]**
+  * Preserved full architectural gap analysis covering the 6,100-line `bot.py` monolith, unchecked quadrant scratch cache accumulation, monolithic `parsers.py`, sequential media downloading, and queue concurrency limits.
+  * 📋 **Detailed Audit & Solutions:** See [`docs/technical_debt_and_optimization_audit.md`](docs/technical_debt_and_optimization_audit.md) for full issue breakdowns, risk analyses, and implementation blueprints.
+
 ---
 
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **71 / 71 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **85 / 85 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

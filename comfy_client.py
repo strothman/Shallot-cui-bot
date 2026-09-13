@@ -265,8 +265,85 @@ class ComfyClient:
                 raise e
         return None
 
-    async def generate(self, workflow, timeout=14400, retries=1, generation_id=None, progress_callback=None, on_progress=None):
-        """Submit prompt to ComfyUI and await the generated images with automatic retry for transient errors."""
+    async def generate(
+        self,
+        workflow,
+        timeout=14400,
+        retries=1,
+        generation_id=None,
+        progress_callback=None,
+        on_progress=None,
+        use_queue=None,
+        priority=None,
+        engine=None,
+        description="Generation",
+        channel_id=None,
+        message_id=None,
+        user_id=None,
+        command_type="imagine",
+        metadata=None,
+        **kwargs
+    ):
+        """
+        Submit prompt to ComfyUI and await the generated images.
+        If EngineAwareQueue is running and use_queue is not False, routes through the priority queue.
+        """
+        try:
+            from services.engine_queue import get_engine_queue, JobPriority
+            queue = get_engine_queue()
+            should_queue = use_queue if use_queue is not None else queue.get_status().get("is_running", False)
+            if should_queue:
+                job_prio = priority or JobPriority.NORMAL
+                future = await queue.enqueue(
+                    workflow=workflow,
+                    engine=engine,
+                    priority=job_prio,
+                    progress_callback=progress_callback or on_progress,
+                    generation_id=generation_id,
+                    user_id=user_id,
+                    channel_id=channel_id,
+                    message_id=message_id,
+                    command_type=command_type,
+                    metadata=metadata,
+                    description=description,
+                    timeout=timeout,
+                    retries=retries
+                )
+                return await future
+        except Exception as q_err:
+            logger.debug(f"Queue dispatch bypassed or not available: {q_err}")
+
+        return await self._execute_direct(
+            workflow=workflow,
+            timeout=timeout,
+            retries=retries,
+            generation_id=generation_id,
+            progress_callback=progress_callback,
+            on_progress=on_progress,
+            channel_id=channel_id,
+            message_id=message_id,
+            user_id=user_id,
+            command_type=command_type,
+            metadata=metadata,
+            **kwargs
+        )
+
+    async def _execute_direct(
+        self,
+        workflow,
+        timeout=14400,
+        retries=1,
+        generation_id=None,
+        progress_callback=None,
+        on_progress=None,
+        channel_id=None,
+        message_id=None,
+        user_id=None,
+        command_type="imagine",
+        metadata=None,
+        **kwargs
+    ):
+        """Directly submit prompt to ComfyUI and await generated images without queue scheduling."""
         if progress_callback is None and on_progress is not None:
             progress_callback = on_progress
 
@@ -324,6 +401,20 @@ class ComfyClient:
                                 gen_data["prompt_ids"].append(prompt_id)
                             db.save_generation(generation_id, gen_data)
 
+                    # Journal in-flight job into SQLite for crash recovery
+                    try:
+                        db.record_pending_job(
+                            prompt_id=prompt_id,
+                            generation_id=generation_id,
+                            channel_id=channel_id,
+                            message_id=message_id,
+                            user_id=user_id,
+                            command_type=command_type,
+                            metadata=metadata
+                        )
+                    except Exception as rec_err:
+                        logger.debug(f"Crash recovery journaling note for {prompt_id}: {rec_err}")
+
                 future = self.loop.create_future()
                 self.futures[prompt_id] = future
                 self.results[prompt_id] = {}
@@ -375,8 +466,10 @@ class ComfyClient:
                                             output_bytes_list.append(file_bytes)
                         
                         if has_outputs:
+                            db.complete_pending_job(prompt_id, status="completed")
                             return output_bytes_list
                         else:
+                            db.complete_pending_job(prompt_id, status="completed")
                             return results_dict
 
                     finally:
@@ -402,6 +495,8 @@ class ComfyClient:
                     last_exception = e
 
             except StasisInterruptException as e:
+                if 'prompt_id' in locals() and prompt_id:
+                    db.complete_pending_job(prompt_id, status="interrupted")
                 raise e
             except Exception as e:
                 last_exception = e
@@ -418,6 +513,8 @@ class ComfyClient:
                 logger.warning(f"Generation attempt {attempt} failed ({last_exception}). Retrying in 2 seconds...")
                 await asyncio.sleep(2)
 
+        if 'prompt_id' in locals() and prompt_id:
+            db.complete_pending_job(prompt_id, status="failed")
         raise last_exception
 
     async def pause_generation(self, generation_id):

@@ -10,8 +10,12 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import unittest
+import copy
 import random
 import logging
+import asyncio
+import time
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Disable log output during test execution to prevent mock errors and DB setup messages from cluttering the console
 logging.disable(logging.CRITICAL)
@@ -1501,12 +1505,22 @@ class TestCUIBotFunctions(unittest.TestCase):
             get_quadrant_bytes_async, 
             embed_metadata_async,
             create_grid_async,
+            crop_to_aspect_ratio_async,
+            upscale_isolated_image_async,
+            calculate_outpaint_padding_async,
+            boost_image_vibrancy_and_contrast_async,
+            crop_quadrant_from_grid_bytes_async,
+            create_thumbnail_bytes_async,
+            convert_image_to_ico_async,
             QUADRANT_CACHE_DIR
         )
 
         async def run_async_test():
             gen_id = "test_async_gen_999"
-            dummy_img = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+            test_img = Image.new("RGB", (64, 64), color="blue")
+            buf = io.BytesIO()
+            test_img.save(buf, format="PNG")
+            dummy_img = buf.getvalue()
             images = [dummy_img, dummy_img, dummy_img, dummy_img]
 
             # 1. Test async quadrant save
@@ -1519,6 +1533,33 @@ class TestCUIBotFunctions(unittest.TestCase):
             # 3. Test async metadata embed
             meta_img_io = await embed_metadata_async(dummy_img, "async prompt", neg_prompt="low quality", seed=12345, width=1, height=1)
             self.assertTrue(len(meta_img_io.getvalue()) > 0)
+
+            # 4. Test async grid creation
+            grid_io = await create_grid_async(images, "async prompt", seed=12345, width=1, height=1)
+            self.assertTrue(len(grid_io.getvalue()) > 0)
+
+            # 5. Test async crop to aspect ratio & upscale
+            cropped = await crop_to_aspect_ratio_async(dummy_img, 64, 64)
+            self.assertTrue(len(cropped) > 0)
+
+            upscaled_bytes, uw, uh = await upscale_isolated_image_async(dummy_img, target_w=64, target_h=64)
+            self.assertTrue(len(upscaled_bytes) > 0)
+            self.assertGreaterEqual(uw, 1)
+
+            # 6. Test async outpaint calculation & vibrancy boost
+            left, top, right, bottom, pad_bytes, tw, th = await calculate_outpaint_padding_async(dummy_img, "16:9")
+            self.assertTrue(len(pad_bytes) > 0)
+
+            boosted = await boost_image_vibrancy_and_contrast_async(dummy_img)
+            self.assertTrue(len(boosted) > 0)
+
+            # 7. Test async thumbnail and ICO conversion
+            thumb = await create_thumbnail_bytes_async(dummy_img, max_dim=64)
+            self.assertTrue(len(thumb) > 0)
+
+            png_b, ico_b = await convert_image_to_ico_async(dummy_img)
+            self.assertIsNotNone(png_b)
+            self.assertIsNotNone(ico_b)
 
             # Cleanup
             for idx in range(1, 5):
@@ -3226,6 +3267,410 @@ class TestCUIBotFunctions(unittest.TestCase):
         with patch("bot.handle_update_blend_view", new=AsyncMock()) as mock_update:
             asyncio.run(bot.on_interaction(mock_interaction))
             mock_update.assert_called_once_with(mock_interaction, gen_id, new_sref="nosref")
+
+    def test_engine_queue_workflow_detection(self):
+        """Test detect_workflow_engine accurately detects all supported architectures."""
+        from services.engine_queue import detect_workflow_engine, EngineType
+
+        # SDXL
+        wf_sdxl = {"1": {"class_type": "KSampler", "inputs": {"model": "wai-ani-illustrious.safetensors"}}}
+        self.assertEqual(detect_workflow_engine(wf_sdxl), EngineType.SDXL)
+
+        # Krea 2
+        wf_krea = {"822": {"inputs": {"lora_name": "Krea2\\wetness_krea2_loraholic.safetensors"}}}
+        self.assertEqual(detect_workflow_engine(wf_krea), EngineType.KREA2)
+
+        # Flux
+        wf_flux = {"1": {"class_type": "FluxGuidance", "inputs": {"model": "flux1-dev.safetensors"}}}
+        self.assertEqual(detect_workflow_engine(wf_flux), EngineType.FLUX)
+
+        # Wan 2.2 Video
+        wf_wan = {"1": {"class_type": "WanVideo", "inputs": {"model": "wan2.1_i2v.safetensors"}}}
+        self.assertEqual(detect_workflow_engine(wf_wan), EngineType.WAN)
+
+        # LTX Video
+        wf_ltx = {"1": {"class_type": "LTXVideo", "inputs": {"model": "ltx-video-2b.safetensors"}}}
+        self.assertEqual(detect_workflow_engine(wf_ltx), EngineType.LTX)
+
+        # Florence-2 Vision
+        wf_florence = {"1": {"class_type": "Florence2Run", "inputs": {"image": "test.png"}}}
+        self.assertEqual(detect_workflow_engine(wf_florence), EngineType.FLORENCE2)
+
+    def test_engine_affinity_scheduling_and_thrashing_prevention(self):
+        """Verify scheduler prioritizes same-engine jobs to avoid VRAM swapping thrash."""
+        from services.engine_queue import EngineAwareQueue, QueueJob, JobPriority, EngineType
+
+        queue = EngineAwareQueue(starvation_timeout=45.0, enable_affinity=True)
+        # Simulate active engine in VRAM is Krea 2
+        queue._current_engine = EngineType.KREA2
+
+        # Enqueue interleaved jobs: Wan, Krea2, SDXL, Krea2
+        loop = asyncio.new_event_loop()
+        f1 = loop.create_future()
+        f2 = loop.create_future()
+        f3 = loop.create_future()
+        f4 = loop.create_future()
+
+        job_wan = QueueJob("job_wan", {}, EngineType.WAN, JobPriority.NORMAL, f1, enqueued_at=time.time())
+        job_krea1 = QueueJob("job_krea1", {}, EngineType.KREA2, JobPriority.NORMAL, f2, enqueued_at=time.time() + 1)
+        job_sdxl = QueueJob("job_sdxl", {}, EngineType.SDXL, JobPriority.NORMAL, f3, enqueued_at=time.time() + 2)
+        job_krea2 = QueueJob("job_krea2", {}, EngineType.KREA2, JobPriority.NORMAL, f4, enqueued_at=time.time() + 3)
+
+        queue._queue = [job_wan, job_krea1, job_sdxl, job_krea2]
+
+        # First picked job MUST be Krea2 due to active engine affinity bonus
+        first_picked = queue._select_next_job()
+        self.assertEqual(first_picked.engine, EngineType.KREA2)
+
+        # Second picked job MUST ALSO be Krea2 because Krea2 is still current engine
+        second_picked = queue._select_next_job()
+        self.assertEqual(second_picked.engine, EngineType.KREA2)
+
+        # Verified that switches_prevented was incremented!
+        self.assertGreater(queue.stats["switches_prevented"], 0)
+        loop.close()
+
+    def test_engine_queue_starvation_prevention(self):
+        """Verify jobs for other engines escalate and run if waiting exceeds starvation timeout."""
+        from services.engine_queue import EngineAwareQueue, QueueJob, JobPriority, EngineType
+
+        queue = EngineAwareQueue(starvation_timeout=45.0, enable_affinity=True)
+        queue._current_engine = EngineType.KREA2
+
+        loop = asyncio.new_event_loop()
+        f1 = loop.create_future()
+        f2 = loop.create_future()
+
+        # Job Wan has been waiting for 50 seconds (exceeding 45s threshold)
+        job_wan_old = QueueJob("job_wan_old", {}, EngineType.WAN, JobPriority.NORMAL, f1, enqueued_at=time.time() - 50.0)
+        # Job Krea just arrived 1 second ago
+        job_krea_fresh = QueueJob("job_krea_fresh", {}, EngineType.KREA2, JobPriority.NORMAL, f2, enqueued_at=time.time() - 1.0)
+
+        queue._queue = [job_krea_fresh, job_wan_old]
+
+        # Wan job must win despite Krea affinity because it passed the starvation limit!
+        next_job = queue._select_next_job()
+        self.assertEqual(next_job.job_id, "job_wan_old")
+        loop.close()
+
+    def test_engine_queue_vram_purge_on_switch(self):
+        """Verify automatic VRAM cache purging occurs when transitioning model architectures."""
+        from services.engine_queue import EngineAwareQueue, JobPriority, EngineType
+
+        mock_client = MagicMock()
+        mock_client.free_memory = AsyncMock(return_value=True)
+        mock_client._execute_direct = AsyncMock(return_value=[b"fake_output_bytes"])
+
+        queue = EngineAwareQueue(comfy_client=mock_client, starvation_timeout=45.0, enable_affinity=True)
+
+        async def run_transition():
+            queue.start()
+            # 1. Enqueue Krea 2 job
+            f1 = await queue.enqueue({"class_type": "wetness_krea2"}, priority=JobPriority.HIGH)
+            res1 = await f1
+            self.assertEqual(queue.current_engine, EngineType.KREA2)
+            mock_client.free_memory.assert_not_called()
+
+            # 2. Enqueue Wan 2.2 Video job (triggers engine transition)
+            f2 = await queue.enqueue({"class_type": "WanVideo"}, priority=JobPriority.HIGH)
+            res2 = await f2
+            self.assertEqual(queue.current_engine, EngineType.WAN)
+            # Free memory MUST have been called during transition!
+            mock_client.free_memory.assert_called_once_with(unload_models=True, free_memory=True)
+            self.assertEqual(queue.stats["engine_switches"], 1)
+            await queue.stop()
+
+        asyncio.run(run_transition())
+
+    def test_engine_queue_cancellation_and_status(self):
+        """Test queue status reporting and job cancellation mechanics."""
+        from services.engine_queue import EngineAwareQueue, JobPriority
+
+        queue = EngineAwareQueue()
+        loop = asyncio.new_event_loop()
+        f = loop.create_future()
+        from services.engine_queue import QueueJob
+        job = QueueJob("job_cancel_test", {}, "sdxl", JobPriority.NORMAL, f)
+        queue._queue = [job]
+
+        self.assertEqual(queue.pending_count, 1)
+        cancelled = queue.cancel("job_cancel_test")
+        self.assertTrue(cancelled)
+        self.assertEqual(queue.pending_count, 0)
+        self.assertTrue(f.cancelled())
+
+        status = queue.get_status()
+        self.assertIn("current_engine_name", status)
+        self.assertIn("pending_count", status)
+        self.assertEqual(status["stats"]["total_cancelled"], 1)
+        loop.close()
+
+    def test_semantic_workflow_discovery(self):
+        """Test semantic node discovery by class_type, title, and input keys."""
+        from services.workflow_adapter import find_nodes, find_node, get_positive_negative_nodes
+
+        wf = {
+            "node_a": {"class_type": "KSampler", "_meta": {"title": "Main Sampler"}, "inputs": {"seed": 100, "positive": ["node_b", 0], "negative": ["node_c", 0]}},
+            "node_b": {"class_type": "CLIPTextEncode", "_meta": {"title": "CLIP Text (Positive)"}, "inputs": {"text": "hello"}},
+            "node_c": {"class_type": "CLIPTextEncode", "_meta": {"title": "CLIP Text (Negative)"}, "inputs": {"text": "bad"}},
+            "node_d": {"class_type": "EmptyLatentImage", "inputs": {"width": 1024, "height": 1024}}
+        }
+
+        # 1. Discover by class
+        samplers = find_nodes(wf, class_type="KSampler")
+        self.assertEqual(len(samplers), 1)
+        self.assertEqual(samplers[0][0], "node_a")
+
+        # 2. Discover by title
+        pos_by_title = find_node(wf, title_contains="positive")
+        self.assertIsNotNone(pos_by_title)
+        self.assertEqual(pos_by_title[0], "node_b")
+
+        # 3. Discover positive/negative via graph tracing
+        pos_match, neg_match = get_positive_negative_nodes(wf)
+        self.assertIsNotNone(pos_match)
+        self.assertIsNotNone(neg_match)
+        self.assertEqual(pos_match[0], "node_b")
+        self.assertEqual(neg_match[0], "node_c")
+
+    def test_semantic_workflow_setters(self):
+        """Test semantic setters update prompts, seed, dimensions, and checkpoint."""
+        from services.workflow_adapter import (
+            set_workflow_prompt,
+            set_workflow_seed,
+            set_workflow_dimensions,
+            set_workflow_checkpoint,
+            set_workflow_sampler_params,
+            set_workflow_filename_prefix
+        )
+
+        wf = {
+            "node_sampler": {"class_type": "KSampler", "inputs": {"seed": 1, "steps": 20, "cfg": 4.0, "positive": ["node_pos", 0], "negative": ["node_neg", 0]}},
+            "node_pos": {"class_type": "CLIPTextEncode", "_meta": {"title": "Positive"}, "inputs": {"text": "old pos"}},
+            "node_neg": {"class_type": "CLIPTextEncode", "_meta": {"title": "Negative"}, "inputs": {"text": "old neg"}},
+            "node_latent": {"class_type": "EmptyLatentImage", "inputs": {"width": 512, "height": 512, "batch_size": 1}},
+            "node_ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "old.safetensors"}},
+            "node_save": {"class_type": "SaveImage", "inputs": {"filename_prefix": "old_prefix"}}
+        }
+
+        # Set prompts
+        set_workflow_prompt(wf, positive="masterpiece, new character", negative="low quality, blur")
+        self.assertEqual(wf["node_pos"]["inputs"]["text"], "masterpiece, new character")
+        self.assertEqual(wf["node_neg"]["inputs"]["text"], "low quality, blur")
+
+        # Set seed
+        set_workflow_seed(wf, 888999)
+        self.assertEqual(wf["node_sampler"]["inputs"]["seed"], 888999)
+
+        # Set dimensions
+        set_workflow_dimensions(wf, width=1920, height=1080, batch_size=4)
+        self.assertEqual(wf["node_latent"]["inputs"]["width"], 1920)
+        self.assertEqual(wf["node_latent"]["inputs"]["height"], 1080)
+        self.assertEqual(wf["node_latent"]["inputs"]["batch_size"], 4)
+
+        # Set checkpoint & sampler params
+        set_workflow_checkpoint(wf, ckpt_name="waiIllustriousSDXL_v170.safetensors")
+        self.assertEqual(wf["node_ckpt"]["inputs"]["ckpt_name"], "waiIllustriousSDXL_v170.safetensors")
+
+        set_workflow_sampler_params(wf, steps=35, cfg=6.5)
+        self.assertEqual(wf["node_sampler"]["inputs"]["steps"], 35)
+        self.assertEqual(wf["node_sampler"]["inputs"]["cfg"], 6.5)
+
+        # Set filename prefix
+        set_workflow_filename_prefix(wf, "Discord Bot/custom/new_output")
+        self.assertEqual(wf["node_save"]["inputs"]["filename_prefix"], "Discord Bot/custom/new_output")
+
+    def test_renumbered_workflow_immunity(self):
+        """
+        Critical Resilience Test:
+        Scrambles all node IDs in a full SDXL workflow to arbitrary 4-digit numbers,
+        rewires link pointers, and verifies semantic adapter successfully modifies
+        the renumbered workflow without any KeyErrors or failures.
+        """
+        from parsers import load_workflow_template, apply_loras_to_workflow
+        from services.workflow_adapter import (
+            set_workflow_prompt,
+            set_workflow_seed,
+            set_workflow_dimensions,
+            set_workflow_checkpoint
+        )
+
+        orig_wf = load_workflow_template("workflows/txt2img_lowres.json")
+
+        # Mapping of original node IDs to completely scrambled new IDs
+        id_map = {
+            "3": "8103",   # KSampler
+            "4": "8104",   # CheckpointLoaderSimple
+            "5": "8105",   # EmptyLatentImage
+            "6": "8106",   # CLIPTextEncode (Positive)
+            "7": "8107",   # CLIPTextEncode (Negative)
+            "8": "8108",   # VAEDecode
+            "9": "8109",   # PreviewImage
+            "75": "8175",  # Load LoRA: Semi-Realism
+            "76": "8176",  # Load LoRA: Ogarla
+        }
+
+        # Build scrambled workflow with updated inter-node link references
+        scrambled_wf = {}
+        for old_id, node in orig_wf.items():
+            new_id = id_map.get(old_id, f"9{old_id}")
+            node_copy = copy.deepcopy(node)
+            for k, val in node_copy.get("inputs", {}).items():
+                if isinstance(val, list) and len(val) == 2 and str(val[0]) in id_map:
+                    val[0] = id_map[str(val[0])]
+            scrambled_wf[new_id] = node_copy
+
+        # Confirm old numeric IDs DO NOT exist in scrambled workflow
+        self.assertNotIn("3", scrambled_wf)
+        self.assertNotIn("75", scrambled_wf)
+        self.assertNotIn("76", scrambled_wf)
+
+        # 1. Apply Prompt Semantically
+        set_workflow_prompt(scrambled_wf, positive="scrambled test positive", negative="scrambled test negative")
+        self.assertEqual(scrambled_wf["8106"]["inputs"]["text"], "scrambled test positive")
+        self.assertEqual(scrambled_wf["8107"]["inputs"]["text"], "scrambled test negative")
+
+        # 2. Apply Seed Semantically
+        set_workflow_seed(scrambled_wf, 999111)
+        self.assertEqual(scrambled_wf["8103"]["inputs"]["seed"], 999111)
+
+        # 3. Apply Dimensions Semantically
+        set_workflow_dimensions(scrambled_wf, width=1280, height=720, batch_size=2)
+        self.assertEqual(scrambled_wf["8105"]["inputs"]["width"], 1280)
+        self.assertEqual(scrambled_wf["8105"]["inputs"]["height"], 720)
+        self.assertEqual(scrambled_wf["8105"]["inputs"]["batch_size"], 2)
+
+        # 4. Apply LoRAs Semantically to Renumbered Workflow
+        updated_lora_wf = apply_loras_to_workflow(scrambled_wf, [("semi-realism", 0.85), ("ogarla", 0.70)])
+        self.assertEqual(updated_lora_wf["8175"]["inputs"]["strength_model"], 0.85)
+        self.assertEqual(updated_lora_wf["8176"]["inputs"]["strength_model"], 0.70)
+
+    def test_pending_jobs_db_crud(self):
+        """Test recording, reading, updating, and cleaning up pending jobs in SQLite."""
+        import db
+        db.init_db()
+
+        test_prompt_id = "test_prompt_crash_123"
+        # 1. Record job
+        res = db.record_pending_job(
+            prompt_id=test_prompt_id,
+            generation_id="gen_test_999",
+            channel_id=123456789,
+            message_id=987654321,
+            user_id=456789012,
+            command_type="video",
+            metadata={"frames": 81, "fps": 16}
+        )
+        self.assertTrue(res)
+
+        # 2. Get pending jobs
+        jobs = db.get_pending_jobs(status="running")
+        found = [j for j in jobs if j["prompt_id"] == test_prompt_id]
+        self.assertEqual(len(found), 1)
+        job = found[0]
+        self.assertEqual(job["channel_id"], 123456789)
+        self.assertEqual(job["message_id"], 987654321)
+        self.assertEqual(job["user_id"], 456789012)
+        self.assertEqual(job["command_type"], "video")
+        self.assertEqual(job["metadata"].get("frames"), 81)
+
+        # 3. Complete job
+        update_res = db.complete_pending_job(test_prompt_id, status="completed")
+        self.assertTrue(update_res)
+
+        jobs_after = db.get_pending_jobs(status="running")
+        found_after = [j for j in jobs_after if j["prompt_id"] == test_prompt_id]
+        self.assertEqual(len(found_after), 0)
+
+        # Check in all jobs
+        all_jobs = db.get_pending_jobs(status="")
+        found_completed = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+        self.assertEqual(len(found_completed), 1)
+        self.assertEqual(found_completed[0]["status"], "completed")
+
+        # Cleanup
+        db.cleanup_stale_jobs(0.0)
+
+    def test_crash_recovery_media_reconciliation(self):
+        """Test crash reconciliation successfully recovers completed media and updates Discord."""
+        import db
+        from services.recovery_service import reconcile_pending_jobs
+
+        db.init_db()
+        test_prompt_id = "test_prompt_recov_media"
+        db.record_pending_job(
+            prompt_id=test_prompt_id,
+            channel_id=111222,
+            message_id=333444,
+            user_id=555666,
+            command_type="imagine",
+            metadata={"prompt": "beautiful fantasy landscape"}
+        )
+
+        mock_bot = MagicMock()
+        mock_channel = MagicMock()
+        mock_bot.get_channel.return_value = mock_channel
+        mock_msg = AsyncMock()
+        mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
+        mock_channel.send = AsyncMock()
+
+        mock_comfy = MagicMock()
+        mock_comfy.is_online = AsyncMock(return_value=True)
+        mock_comfy.get_history_output = AsyncMock(return_value={
+            "9": {
+                "images": [{"filename": "recovered_01.png", "subfolder": "", "type": "output"}]
+            }
+        })
+        mock_comfy.get_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\n\x00\x00fake_image_bytes")
+
+        async def run_recov():
+            return await reconcile_pending_jobs(mock_bot, mock_comfy)
+
+        stats = asyncio.run(run_recov())
+        self.assertEqual(stats["recovered"], 1)
+        self.assertEqual(mock_msg.edit.call_count, 1)
+
+        # Verify job marked as recovered in DB
+        all_jobs = db.get_pending_jobs(status="recovered")
+        found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+        self.assertEqual(len(found), 1)
+
+    def test_crash_recovery_execution_error(self):
+        """Test crash reconciliation handles ComfyUI execution errors and notifies Discord."""
+        import db
+        from services.recovery_service import reconcile_pending_jobs
+
+        db.init_db()
+        test_prompt_id = "test_prompt_recov_err"
+        db.record_pending_job(
+            prompt_id=test_prompt_id,
+            channel_id=111222,
+            message_id=333444,
+            user_id=555666,
+            command_type="video"
+        )
+
+        mock_bot = MagicMock()
+        mock_channel = MagicMock()
+        mock_bot.get_channel.return_value = mock_channel
+        mock_msg = AsyncMock()
+        mock_channel.fetch_message = AsyncMock(return_value=mock_msg)
+
+        mock_comfy = MagicMock()
+        mock_comfy.is_online = AsyncMock(return_value=True)
+        mock_comfy.get_history_output = AsyncMock(side_effect=Exception("ComfyUI execution error from history: CUDA out of memory"))
+
+        async def run_recov():
+            return await reconcile_pending_jobs(mock_bot, mock_comfy)
+
+        stats = asyncio.run(run_recov())
+        self.assertEqual(stats["failed"], 1)
+        self.assertEqual(mock_msg.edit.call_count, 1)
+
+        # Verify job marked as failed in DB
+        all_jobs = db.get_pending_jobs(status="failed")
+        found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
+        self.assertEqual(len(found), 1)
 
 
 if __name__ == "__main__":

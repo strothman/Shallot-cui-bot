@@ -377,15 +377,17 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
         await interaction.followup.send("Could not retrieve cached image for upscaling. It may have expired.", ephemeral=True)
         return
 
+    def _resize_1_5x(data: bytes):
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        w_orig, h_orig = img.size
+        w_new, h_new = int(w_orig * 1.5), int(h_orig * 1.5)
+        upscaled = img.resize((w_new, h_new), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        upscaled.save(out, format="PNG")
+        return out.getvalue(), w_orig, h_orig, w_new, h_new
+
     try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        w, h = img.size
-        new_w = int(w * 1.5)
-        new_h = int(h * 1.5)
-        upscaled_img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        out_io = io.BytesIO()
-        upscaled_img.save(out_io, format="PNG")
-        upscaled_bytes = out_io.getvalue()
+        upscaled_bytes, w, h, new_w, new_h = await asyncio.to_thread(_resize_1_5x, image_bytes)
 
         upscale_embed = discord.Embed(
             title="🔍 Bertflow Upscale (1.5x)",

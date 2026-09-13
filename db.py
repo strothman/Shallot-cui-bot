@@ -102,6 +102,19 @@ def init_db():
                     updated_at REAL DEFAULT (julianday('now'))
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_jobs (
+                    prompt_id TEXT PRIMARY KEY,
+                    generation_id TEXT,
+                    channel_id INTEGER,
+                    message_id INTEGER,
+                    user_id INTEGER,
+                    command_type TEXT,
+                    status TEXT DEFAULT 'running',
+                    metadata TEXT DEFAULT '{}',
+                    created_at REAL DEFAULT (julianday('now'))
+                )
+            """)
             try:
                 conn.execute("ALTER TABLE generation_metrics ADD COLUMN init_seconds REAL DEFAULT 0.0")
             except Exception:
@@ -124,6 +137,7 @@ def init_db():
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_command_status ON generation_metrics(command, status, timestamp DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_user_id ON generation_metrics(user_id)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_model_registry_arch ON model_registry(base_architecture, model_type)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_jobs_status ON pending_jobs(status, created_at)")
             except Exception as e:
                 logger.debug(f"Index creation note: {e}")
 
@@ -721,4 +735,114 @@ def clear_live_status():
             conn.commit()
     except Exception as e:
         logger.debug(f"Error clearing live status: {e}")
+
+
+def record_pending_job(
+    prompt_id: str,
+    generation_id: str = None,
+    channel_id: int = None,
+    message_id: int = None,
+    user_id: int = None,
+    command_type: str = "imagine",
+    metadata: dict = None
+) -> bool:
+    """Store an in-flight ComfyUI job in SQLite for crash recovery."""
+    if not prompt_id:
+        return False
+    try:
+        meta_json = json.dumps(metadata or {})
+        with get_db_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO pending_jobs
+                (prompt_id, generation_id, channel_id, message_id, user_id, command_type, status, metadata, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'running', ?, julianday('now'))
+            """, (prompt_id, generation_id, channel_id, message_id, user_id, command_type, meta_json))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error recording pending job {prompt_id}: {e}")
+        return False
+
+
+def complete_pending_job(prompt_id: str, status: str = "completed") -> bool:
+    """Update status of an in-flight pending job (e.g. 'completed', 'recovered', 'failed', 'interrupted')."""
+    if not prompt_id:
+        return False
+    try:
+        with get_db_connection() as conn:
+            conn.execute("""
+                UPDATE pending_jobs SET status = ? WHERE prompt_id = ?
+            """, (status, prompt_id))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error completing pending job {prompt_id}: {e}")
+        return False
+
+
+def get_pending_jobs(status: str = "running") -> list:
+    """Retrieve all pending jobs with given status (default 'running')."""
+    try:
+        with get_db_connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if status:
+                cursor.execute("""
+                    SELECT prompt_id, generation_id, channel_id, message_id, user_id,
+                           command_type, status, metadata,
+                           (julianday('now') - created_at) * 86400 as age_seconds
+                    FROM pending_jobs
+                    WHERE status = ?
+                    ORDER BY created_at ASC
+                """, (status,))
+            else:
+                cursor.execute("""
+                    SELECT prompt_id, generation_id, channel_id, message_id, user_id,
+                           command_type, status, metadata,
+                           (julianday('now') - created_at) * 86400 as age_seconds
+                    FROM pending_jobs
+                    ORDER BY created_at ASC
+                """)
+            rows = cursor.fetchall()
+            jobs = []
+            for row in rows:
+                meta = {}
+                try:
+                    if row["metadata"]:
+                        meta = json.loads(row["metadata"])
+                except Exception:
+                    pass
+                jobs.append({
+                    "prompt_id": row["prompt_id"],
+                    "generation_id": row["generation_id"],
+                    "channel_id": row["channel_id"],
+                    "message_id": row["message_id"],
+                    "user_id": row["user_id"],
+                    "command_type": row["command_type"],
+                    "status": row["status"],
+                    "metadata": meta,
+                    "age_seconds": round(row["age_seconds"], 1) if row["age_seconds"] is not None else 0.0
+                })
+            return jobs
+    except Exception as e:
+        logger.error(f"Error fetching pending jobs: {e}")
+        return []
+
+
+def cleanup_stale_jobs(max_age_hours: float = 24.0) -> int:
+    """Purge pending jobs older than max_age_hours from SQLite."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM pending_jobs
+                WHERE (julianday('now') - created_at) * 24.0 > ?
+            """, (max_age_hours,))
+            deleted = cursor.rowcount
+            conn.commit()
+            return deleted
+    except Exception as e:
+        logger.error(f"Error cleaning up stale pending jobs: {e}")
+        return 0
+
 

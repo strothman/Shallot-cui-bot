@@ -531,20 +531,25 @@ def apply_loras_to_workflow(workflow, loras):
     is_flux = ("12" in workflow and "1" in workflow and "4" not in workflow) or ("76" in workflow and workflow["76"].get("class_type") == "LoraLoaderModelOnly")
     target_arch = Architecture.FLUX if is_flux else Architecture.SDXL
     
-    # 1. Reset pre-wired static LoRA nodes to 0.0 (disabled) by default
-    if "75" in workflow and workflow["75"].get("class_type") == "LoraLoader":
-        workflow["75"]["inputs"]["strength_model"] = 0.0
-        workflow["75"]["inputs"]["strength_clip"] = 0.0
-        workflow["75"]["inputs"]["lora_name"] = "Semi-realism_illustrious.safetensors"
+    # 1. Semantically locate pre-wired static LoRA nodes (Node 75 Semi-realism, Node 76 Ogarla)
+    from services.workflow_adapter import find_node
+    node_75_match = find_node(workflow, class_type="LoraLoader", title_contains="Semi-Realism", fallback_id="75")
+    node_76_match = find_node(workflow, class_type=["LoraLoader", "LoraLoaderModelOnly"], title_contains="Ogarla", fallback_id="76")
+
+    # Reset pre-wired static LoRA nodes to 0.0 (disabled) by default
+    if node_75_match and node_75_match[1].get("class_type") == "LoraLoader":
+        node_75_match[1]["inputs"]["strength_model"] = 0.0
+        node_75_match[1]["inputs"]["strength_clip"] = 0.0
+        node_75_match[1]["inputs"]["lora_name"] = "Semi-realism_illustrious.safetensors"
         
-    if "76" in workflow:
-        if workflow["76"].get("class_type") == "LoraLoaderModelOnly":
-            workflow["76"]["inputs"]["strength_model"] = 0.0
-            workflow["76"]["inputs"]["lora_name"] = "ogarlaflux_epoch_5.safetensors"
-        elif workflow["76"].get("class_type") == "LoraLoader":
-            workflow["76"]["inputs"]["strength_model"] = 0.0
-            workflow["76"]["inputs"]["strength_clip"] = 0.0
-            workflow["76"]["inputs"]["lora_name"] = "ogarla_epoch_5.safetensors"
+    if node_76_match:
+        if node_76_match[1].get("class_type") == "LoraLoaderModelOnly":
+            node_76_match[1]["inputs"]["strength_model"] = 0.0
+            node_76_match[1]["inputs"]["lora_name"] = "ogarlaflux_epoch_5.safetensors"
+        elif node_76_match[1].get("class_type") == "LoraLoader":
+            node_76_match[1]["inputs"]["strength_model"] = 0.0
+            node_76_match[1]["inputs"]["strength_clip"] = 0.0
+            node_76_match[1]["inputs"]["lora_name"] = "ogarla_epoch_5.safetensors"
 
     extra_loras = []
     
@@ -552,16 +557,16 @@ def apply_loras_to_workflow(workflow, loras):
         for lora_name, weight in loras:
             resolved_lora = resolve_lora_for_architecture(lora_name, target_arch)
             lname_clean = resolved_lora.lower()
-            if "semi-realism" in lname_clean and "75" in workflow:
-                workflow["75"]["inputs"]["strength_model"] = weight
-                workflow["75"]["inputs"]["strength_clip"] = weight
-                workflow["75"]["inputs"]["lora_name"] = "Semi-realism_illustrious.safetensors"
-            elif "ogarla" in lname_clean and "76" in workflow:
+            if "semi-realism" in lname_clean and node_75_match:
+                node_75_match[1]["inputs"]["strength_model"] = weight
+                node_75_match[1]["inputs"]["strength_clip"] = weight
+                node_75_match[1]["inputs"]["lora_name"] = "Semi-realism_illustrious.safetensors"
+            elif "ogarla" in lname_clean and node_76_match:
                 target_file = "ogarlaflux_epoch_5.safetensors" if is_flux else "ogarla_epoch_5.safetensors"
-                workflow["76"]["inputs"]["strength_model"] = weight
-                if "strength_clip" in workflow["76"]["inputs"]:
-                    workflow["76"]["inputs"]["strength_clip"] = weight
-                workflow["76"]["inputs"]["lora_name"] = target_file
+                node_76_match[1]["inputs"]["strength_model"] = weight
+                if "strength_clip" in node_76_match[1]["inputs"]:
+                    node_76_match[1]["inputs"]["strength_clip"] = weight
+                node_76_match[1]["inputs"]["lora_name"] = target_file
             else:
                 candidate_fname = resolved_lora if resolved_lora.endswith((".safetensors", ".ckpt")) else f"{resolved_lora}.safetensors"
                 try:
@@ -587,8 +592,14 @@ def apply_loras_to_workflow(workflow, loras):
                 extra_loras.append((candidate_fname, weight))
 
     # 2. If workflow has no pre-wired Node 75/76 or there are extra custom LoRAs, dynamically chain them
-    current_model_source = ["76", 0] if "76" in workflow else (["1", 0] if is_flux else ["4", 0])
-    current_clip_source = ["76", 1] if ("76" in workflow and not is_flux) else (["12", 0] if is_flux else ["4", 1])
+    model_loader_match = find_node(workflow, class_type="UnetLoaderGGUF", fallback_id="1") if is_flux else find_node(workflow, class_type="CheckpointLoaderSimple", fallback_id="4")
+    clip_loader_match = find_node(workflow, class_type="DualCLIPLoader", fallback_id="12") if is_flux else find_node(workflow, class_type="CheckpointLoaderSimple", fallback_id="4")
+
+    base_model_id = model_loader_match[0] if model_loader_match else ("1" if is_flux else "4")
+    base_clip_id = clip_loader_match[0] if clip_loader_match else ("12" if is_flux else "4")
+
+    current_model_source = [node_76_match[0], 0] if node_76_match else [base_model_id, 0]
+    current_clip_source = [node_76_match[0], 1] if (node_76_match and not is_flux) else ([base_clip_id, 0] if is_flux else [base_clip_id, 1])
 
     start_node_id = 100
     for idx, (lora_name, weight) in enumerate(extra_loras):
@@ -1982,37 +1993,52 @@ def prepare_bertflow_workflow(
         if not any(k in cleaned_prompt.lower() for k in ["smooth natural shaft", "clean coronal sulcus"]):
             cleaned_prompt = f"{cleaned_prompt}, {clean_anatomy_anchor}"
 
-    if "627" in wf:
-        wf["627"]["inputs"]["text"] = cleaned_prompt
-    if "649" in wf:
-        wf["649"]["inputs"]["seed"] = final_seed
-    if "698" in wf:
-        wf["698"]["inputs"]["width"] = width
-        wf["698"]["inputs"]["height"] = height
-    if "599" in wf:
-        wf["599"]["inputs"]["steps"] = steps
+    # Apply semantic setters with fallback to known node IDs
+    from services.workflow_adapter import (
+        set_workflow_prompt,
+        set_workflow_seed,
+        set_workflow_dimensions,
+        set_workflow_sampler_params,
+        set_workflow_checkpoint,
+        set_workflow_filename_prefix,
+        find_node
+    )
+
+    set_workflow_prompt(wf, positive=cleaned_prompt)
+    set_workflow_seed(wf, final_seed)
+    set_workflow_dimensions(wf, width=width, height=height)
+    set_workflow_sampler_params(wf, steps=steps)
+    if "599" in wf and "inputs" in wf["599"]:
         wf["599"]["inputs"]["end_at_step"] = steps
-        wf["599"]["inputs"]["noise_seed"] = ["649", 0]
-    if "761" in wf:
-        wf["761"]["inputs"]["unet_name"] = model_name
-    if "822" in wf and "inputs" in wf["822"]:
-        if "lora_1" in wf["822"]["inputs"]:
-            wf["822"]["inputs"]["lora_1"]["strength"] = float(wetness_strength)
-            wf["822"]["inputs"]["lora_1"]["on"] = (wetness_strength != 0.0)
+        if "649" in wf:
+            wf["599"]["inputs"]["noise_seed"] = ["649", 0]
+
+    set_workflow_checkpoint(wf, unet_name=model_name)
+
+    # rgthree / LoRA Stack configuration (Node 822)
+    lora_stack_node = find_node(wf, class_type=["lorastack", "powerloraloader", "loraloader"], title_contains="lora", fallback_id="822")
+    if lora_stack_node and "inputs" in lora_stack_node[1]:
+        inputs = lora_stack_node[1]["inputs"]
+        if "lora_1" in inputs:
+            inputs["lora_1"]["strength"] = float(wetness_strength)
+            inputs["lora_1"]["on"] = (wetness_strength != 0.0)
         if char_lora_file:
-            wf["822"]["inputs"]["lora_2"] = {
+            inputs["lora_2"] = {
                 "on": True,
                 "lora": char_lora_file,
                 "strength": float(char_weight if char_weight is not None else 0.85)
             }
-        elif "lora_2" in wf["822"]["inputs"]:
-            wf["822"]["inputs"]["lora_2"]["on"] = False
-    if "830" in wf and "inputs" in wf["830"]:
-        try:
-            from image_utils import get_dated_save_prefix
-            wf["830"]["inputs"]["filename_prefix"] = filename_prefix or f"{get_dated_save_prefix('bertflow')}bertflow_seed{final_seed}"
-        except Exception:
-            wf["830"]["inputs"]["filename_prefix"] = filename_prefix or f"Discord Bot/bertflow/bertflow_seed{final_seed}"
+        elif "lora_2" in inputs:
+            inputs["lora_2"]["on"] = False
+
+    # Filename prefix
+    try:
+        from image_utils import get_dated_save_prefix
+        chosen_prefix = filename_prefix or f"{get_dated_save_prefix('bertflow')}bertflow_seed{final_seed}"
+    except Exception:
+        chosen_prefix = filename_prefix or f"Discord Bot/bertflow/bertflow_seed{final_seed}"
+
+    set_workflow_filename_prefix(wf, chosen_prefix)
 
     # Optional direct compositional reference (img2img / VAE latent injection)
     if init_image and comp_strength and str(comp_strength).lower() not in ["off", "none", "style", "false"]:

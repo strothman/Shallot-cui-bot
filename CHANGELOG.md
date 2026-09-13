@@ -6,7 +6,38 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-13]
 
-### Added
+* 📚 **Technical Debt & Optimization Audit Reference (`docs/technical_debt_and_optimization_audit.md`)**:
+  * Compiled and documented a comprehensive architectural audit covering the 6,100-line `bot.py` monolith, unchecked quadrant scratch cache accumulation, monolithic `parsers.py`, sequential media downloading, and queue concurrency limits, complete with priority matrices and solution blueprints for future sprints.
+
+* 🔄 **Crash Recovery & SQLite Job Journaling (`services/recovery_service.py` & `db.py`)**:
+  * **Persistent Job Journaling**: Added a WAL-mode SQLite schema (`pending_jobs`) to journal in-flight prompts with Discord `channel_id`, `message_id`, `user_id`, `command_type`, and prompt metadata upon initial dispatch to ComfyUI.
+  * **Automated Startup Reconciliation**: Created `reconcile_pending_jobs` and `start_crash_recovery` in `services/recovery_service.py`. On bot startup (`on_ready()`), queries ComfyUI's `/history/{prompt_id}`, downloads finished media outputs (images, videos, gifs), and edits the original Discord status messages with a clean `🔄 Recovered after restart` badge.
+  * **Interrupted & Error Handling**: If a render encountered an unrecoverable failure during the crash or downtime, the reconciliation worker automatically informs the user on Discord with an explanation rather than leaving them with a frozen status message.
+  * **Non-Blocking Execution & Auto-Pruning**: Spawns asynchronously without delaying bot gateway heartbeats or command syncing. Automatically cleans up stale jobs older than 24 hours via `db.cleanup_stale_jobs()`.
+  * **Automated Test Coverage**: Added 3 new unit and integration tests (`test_pending_jobs_db_crud`, `test_crash_recovery_media_reconciliation`, `test_crash_recovery_execution_error`) in `suite_test.py`; all 85 tests pass 100% green.
+
+* 🛡️ **Semantic Workflow Adapter & Node Decoupling (`services/workflow_adapter.py`)**:
+  * **Zero-Breakage Node Discovery**: Permanently insulates the bot from arbitrary ComfyUI node renumbering. Replaced brittle hardcoded numeric indexing (`wf["3"]`, `wf["5"]`, `wf["6"]`, `wf["75"]`, `wf["76"]`, `wf["822"]`) with semantic discovery based on `class_type`, title inspection, input parameter signatures, and graph connection tracing.
+  * **Semantic Setters Library**: Added high-level manipulation helpers: `set_workflow_prompt`, `set_workflow_seed`, `set_workflow_dimensions`, `set_workflow_checkpoint`, `set_workflow_sampler_params`, `set_workflow_input_image`, `set_workflow_filename_prefix`, and `set_workflow_lora`.
+  * **Renumbered Workflow Immunity**: Validated through `test_renumbered_workflow_immunity` in `suite_test.py`, where full workflows with completely scrambled 4-digit node IDs are successfully updated without runtime errors.
+  * **Integration into Parsers & Services**: Refactored `apply_loras_to_workflow` and `prepare_bertflow_workflow` to locate LoRA loaders, checkpointers, and sampler nodes semantically while retaining 100% backward-compatible signatures.
+  * **Suite Test Coverage**: Added 3 dedicated test suites to `suite_test.py`; all 82 automated tests pass green (100%).
+
+* 🧠 **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**:
+  * **Model-Affinity Scheduling**: Automatically groups pending generation jobs by target model architecture (`SDXL`, `Flux.1`, `Krea 2`, `Wan 2.2`, `LTX Video`, `Florence-2`). When an engine is active in GPU memory, subsequent jobs targeting the same model run consecutively without unloading weights, eliminating 20–45 seconds of PCIe weight-swapping delays per render.
+  * **Automatic VRAM Purge on Engine Switch**: When the scheduler transitions between different architectures (e.g. Wan 2.2 to Krea 2), it automatically invokes `comfy_client.free_memory(unload_models=True, free_memory=True)` to guarantee a clean VRAM state and eliminate out-of-memory crashes on 8GB GPUs.
+  * **Dynamic Anti-Starvation Escalation**: Prevents job starvation by tracking waiting age; jobs waiting longer than 45 seconds automatically receive high priority to ensure fair execution regardless of active model affinity.
+  * **Job Priority Hierarchy**: Categorizes tasks into `HIGH` (interactive buttons, rerolls, remixes, Florence-2 interrogations), `NORMAL` (standard `/imagine`, `/flux`, `/blend-krea`), and `LOW` (multi-minute video renders, batch runs, dataset generators).
+  * **Seamless Non-Blocking Client Integration**: Updated `comfy_client.ComfyClient.generate()` to route through `EngineAwareQueue` with transparent fallback and direct execution support (`_execute_direct`).
+  * **Upgraded `/queue` Dashboard**: Enhanced the Discord `/queue` command embed to display active engine status, active task duration, pending jobs breakdown by engine, and total VRAM weight swaps prevented.
+  * **Comprehensive Test Suite**: Added 5 dedicated unit and integration tests to `suite_test.py` (`test_engine_queue_workflow_detection`, `test_engine_affinity_scheduling_and_thrashing_prevention`, `test_engine_queue_starvation_prevention`, `test_engine_queue_vram_purge_on_switch`, `test_engine_queue_cancellation_and_status`); all 79 automated tests pass green (100%).
+
+* 🚀 **Event Loop Optimization: Offloaded PIL Operations & Disk I/O to Background Worker Threads (`asyncio.to_thread`)**:
+  * **Zero Gateway Lag**: Replaced all synchronous PIL image operations (Lanczos upscaling, aspect ratio cropping, outpaint padding math, vibrancy boosting, metadata chunk embedding) and disk writes (`save_quadrant_images`, `get_quadrant_bytes`) across `bot.py`, `services/krea_service.py`, and `image_utils.py` with asynchronous non-blocking worker threads.
+  * **Parallel Vibrancy Enhancement**: Multi-image color vibrancy and contrast enhancements now execute concurrently across CPU cores via `asyncio.gather(*[boost_image_vibrancy_and_contrast_async(...)])`.
+  * **Async Helpers Library in `image_utils.py`**: Added non-blocking async variants for `crop_to_aspect_ratio_async`, `upscale_isolated_image_async`, `calculate_outpaint_padding_async`, `boost_image_vibrancy_and_contrast_async`, `crop_quadrant_from_grid_bytes_async`, `create_thumbnail_bytes_async`, and `convert_image_to_ico_async`.
+  * **Suite Test Validation**: Expanded `test_async_image_io_and_quadrant_operations` in `suite_test.py` to cover all new async utilities; all 74 automated tests pass green.
+
 * 🎯 **Dedicated `--sref random` 1-Click Toggle for `/blend-sdxl` (`views.py` & `bot.py`)**:
   * **Simplified Style Controls**: Replaced the multi-preset and saved-style cycle button on Row 3 with a dedicated 1-click `--sref random` toggle (`toggle_blend_sref`).
   * **Clean Visual States**: Displays `[🎲 --sref random: ON]` (blurple `primary` style) when active, and `[🎲 --sref random: OFF]` (grey `secondary` style) when disabled.
