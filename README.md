@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-85%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-87%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
 
@@ -173,7 +173,7 @@ Shallot-CUI Bot is engineered for ultra-responsive Discord interactions and 24/7
 * **Semantic Workflow Adapter:** Decouples the bot from ComfyUI GUI node renumbering via semantic node role discovery and graph link tracing, eliminating runtime `KeyError` crashes.
 * **Gateway Heartbeat Protection:** Discord heartbeat ping intervals remain completely unblocked even when rendering multi-megapixel images or processing large file datasets.
 * **Modular Cog & Service Layers:** Features are partitioned into dedicated Discord UI cogs (`cogs/`) and decoupled execution services (`services/`).
-* **Strict Automated Testing:** Every feature, parser, and async helper is tested across 85 automated unit/integration checks in [`suite_test.py`](suite_test.py).
+* **Strict Automated Testing:** Every feature, parser, and async helper is tested across 87 automated unit/integration checks in [`suite_test.py`](suite_test.py).
 
 ---
 

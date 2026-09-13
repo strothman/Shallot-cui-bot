@@ -3672,6 +3672,76 @@ class TestCUIBotFunctions(unittest.TestCase):
         found = [j for j in all_jobs if j["prompt_id"] == test_prompt_id]
         self.assertEqual(len(found), 1)
 
+    def test_cleanup_orphaned_quadrants_pruner(self):
+        """Test that cleanup_orphaned_quadrants purges files older than max_age_hours or lacking DB records."""
+        import tempfile
+        import db
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict(os.environ, {"QUADRANT_CACHE_DIR": tmpdir}):
+                # Create a file with a generation ID that does not exist in DB
+                stale_file = os.path.join(tmpdir, "orphan9999_1.png")
+                with open(stale_file, "wb") as f:
+                    f.write(b"dummy_bytes_123456789")
+                
+                # Set mtime to 3 hours ago (older than 120s grace period)
+                past_time = time.time() - 10800
+                os.utime(stale_file, (past_time, past_time))
+
+                # Also create a file with max_age exceeded
+                old_file = os.path.join(tmpdir, "oldgen9999_2.png")
+                with open(old_file, "wb") as f:
+                    f.write(b"dummy_bytes_987654321")
+                old_time = time.time() - (50 * 3600)
+                os.utime(old_file, (old_time, old_time))
+
+                stats = db.cleanup_orphaned_quadrants(max_age_hours=48.0)
+                self.assertGreaterEqual(stats["deleted"], 2)
+                self.assertFalse(os.path.exists(stale_file))
+                self.assertFalse(os.path.exists(old_file))
+
+    def test_concurrent_image_downloads_comfy_client(self):
+        """Test that comfy_client downloads multi-image batch outputs concurrently via asyncio.gather."""
+        from comfy_client import ComfyClient
+
+        client = ComfyClient()
+        client.session = MagicMock()
+        client.is_online = AsyncMock(return_value=True)
+
+        download_order = []
+        async def mock_get_image(filename, subfolder, img_type):
+            download_order.append(filename)
+            await asyncio.sleep(0.01)
+            return f"bytes_{filename}".encode("utf-8")
+
+        client.get_image = AsyncMock(side_effect=mock_get_image)
+
+        # Mock results dict with 4 images (standard 2x2 grid)
+        mock_results = {
+            "9": {
+                "images": [
+                    {"filename": "img_01.png", "subfolder": "", "type": "output"},
+                    {"filename": "img_02.png", "subfolder": "", "type": "output"},
+                    {"filename": "img_03.png", "subfolder": "", "type": "output"},
+                    {"filename": "img_04.png", "subfolder": "", "type": "output"}
+                ]
+            }
+        }
+
+        # Mock session post
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={"prompt_id": "test_concurrent_prompt"})
+        client.session.post = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_resp), __aexit__=AsyncMock()))
+
+        # Mock history output to return results immediately
+        client.get_history_output = AsyncMock(return_value=mock_results)
+
+        outputs = asyncio.run(client._execute_direct(workflow={}, use_queue=False))
+        self.assertEqual(len(outputs), 4)
+        self.assertEqual(client.get_image.call_count, 4)
+        self.assertEqual(len(download_order), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

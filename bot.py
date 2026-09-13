@@ -2314,6 +2314,22 @@ async def update_presence():
 async def before_update_presence():
     await bot.wait_until_ready()
 
+@tasks.loop(hours=6)
+async def periodic_scratch_maintenance():
+    """Periodically purges orphaned quadrant scratch files and vacuums SQLite database."""
+    try:
+        stats = await asyncio.to_thread(db.cleanup_orphaned_quadrants, 48.0)
+        await asyncio.to_thread(db.vacuum_database)
+        if stats.get("deleted", 0) > 0:
+            reclaimed_mb = round(stats.get("reclaimed_bytes", 0) / (1024 * 1024), 2)
+            logger.info(f"🧹 Scratch maintenance: evicted {stats['deleted']} stale scratch file(s) ({reclaimed_mb} MB reclaimed).")
+    except Exception as e:
+        logger.debug(f"Periodic scratch maintenance warning: {e}")
+
+@periodic_scratch_maintenance.before_loop
+async def before_periodic_scratch_maintenance():
+    await bot.wait_until_ready()
+
 @bot.event
 async def on_ready():
     # on_ready fires on EVERY reconnect, not just startup.
@@ -2345,6 +2361,9 @@ async def on_ready():
             logger.info("🟢 Crash recovery service initialized and listening for pending jobs.")
         except Exception as rec_err:
             logger.warning(f"Crash recovery startup warning: {rec_err}")
+
+        # Launch non-blocking background scratch maintenance on startup
+        asyncio.create_task(asyncio.to_thread(db.cleanup_orphaned_quadrants, 48.0))
         
         # ComfyUI status check
         try:
@@ -2408,9 +2427,11 @@ async def on_ready():
         except Exception as e:
             logger.warning(f"Failed to restart ComfyUI client on reconnect: {e}")
     logger.info(f"Bot connected as {bot.user}")
-    # Start the presence update loop
+    # Start background loops
     if not update_presence.is_running():
         update_presence.start()
+    if not periodic_scratch_maintenance.is_running():
+        periodic_scratch_maintenance.start()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):

@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import time
 import logging
 import threading
 
@@ -224,34 +225,60 @@ def vacuum_database() -> bool:
         logger.error(f"Error vacuuming SQLite database: {e}")
         return False
 
-def cleanup_orphaned_quadrants():
-    """Removes any quadrant cache files that are no longer in the database."""
+def cleanup_orphaned_quadrants(max_age_hours: float = 48.0) -> dict:
+    """
+    Removes scratch quadrant cache files that:
+    1. Belong to generation IDs no longer in the SQLite database, OR
+    2. Are older than max_age_hours (default 48 hours).
+    Returns dict with count of files deleted and total bytes reclaimed.
+    """
+    stats = {"deleted": 0, "reclaimed_bytes": 0}
     try:
         quadrant_dir = os.getenv("QUADRANT_CACHE_DIR", r"C:\ComfyUI\ComfyUI\output\Discord Bot\scratch")
         if not os.path.exists(quadrant_dir):
-            return
+            return stats
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM generations")
             valid_prefixes = set(row[0] for row in cursor.fetchall())
             
-        cleaned_count = 0
+        now = time.time()
+        max_age_sec = max_age_hours * 3600.0
+
         for filename in os.listdir(quadrant_dir):
-            parts = filename.split("_")
-            if parts:
-                gen_id = parts[0]
-                if gen_id not in valid_prefixes:
-                    path = os.path.join(quadrant_dir, filename)
-                    try:
-                        os.remove(path)
-                        cleaned_count += 1
-                    except Exception:
-                        pass
-        if cleaned_count > 0:
-            logger.info(f"Cleaned up {cleaned_count} orphaned cached quadrant images.")
+            if not filename.endswith(".png"):
+                continue
+            path = os.path.join(quadrant_dir, filename)
+            try:
+                file_stat = os.stat(path)
+                file_age_sec = now - file_stat.st_mtime
+                file_size = file_stat.st_size
+
+                parts = filename.split("_")
+                gen_id = parts[0] if parts else ""
+
+                should_delete = False
+                # Delete if generation record no longer exists (grace period of 120s for in-flight writes)
+                if gen_id not in valid_prefixes and file_age_sec > 120:
+                    should_delete = True
+                # Delete if older than max_age_hours
+                elif file_age_sec > max_age_sec:
+                    should_delete = True
+
+                if should_delete:
+                    os.remove(path)
+                    stats["deleted"] += 1
+                    stats["reclaimed_bytes"] += file_size
+            except Exception:
+                pass
+
+        if stats["deleted"] > 0:
+            reclaimed_mb = round(stats["reclaimed_bytes"] / (1024 * 1024), 2)
+            logger.info(f"Cleaned up {stats['deleted']} scratch quadrant image(s) (reclaimed {reclaimed_mb} MB).")
     except Exception as e:
         logger.error(f"Error during quadrant cleanup sweep: {e}")
+    return stats
 
 def get_user_generations(user_id: int) -> list[dict]:
     """Fetch all generations matching the user_id efficiently using indexed JSON extraction."""

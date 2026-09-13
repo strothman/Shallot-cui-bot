@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.6.0`  
+> **Current Version:** `v2.6.5`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (85/85 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (87/87 Automated Tests Passing)  
 
 ---
 
@@ -174,7 +174,7 @@ The tool is built with **automatic state resumption**:
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **85 / 85 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **87 / 87 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

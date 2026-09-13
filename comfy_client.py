@@ -415,6 +415,8 @@ class ComfyClient:
                     except Exception as rec_err:
                         logger.debug(f"Crash recovery journaling note for {prompt_id}: {rec_err}")
 
+                if not self.loop:
+                    self.loop = asyncio.get_running_loop()
                 future = self.loop.create_future()
                 self.futures[prompt_id] = future
                 self.results[prompt_id] = {}
@@ -453,21 +455,24 @@ class ComfyClient:
                         results_dict = future.result()
                         
                         # Check if there are any images, gifs, or videos in the outputs
-                        output_bytes_list = []
-                        has_outputs = False
-                        
+                        media_tasks = []
                         for node_id, output in results_dict.items():
                             if output:
                                 for key in ["images", "gifs", "videos"]:
                                     if key in output:
                                         has_outputs = True
                                         for item in output[key]:
-                                            file_bytes = await self.get_image(item["filename"], item.get("subfolder", ""), item.get("type", "output"))
-                                            output_bytes_list.append(file_bytes)
+                                            media_tasks.append(
+                                                self.get_image(item["filename"], item.get("subfolder", ""), item.get("type", "output"))
+                                            )
                         
-                        if has_outputs:
+                        if has_outputs and media_tasks:
+                            output_bytes_list = await asyncio.gather(*media_tasks)
                             db.complete_pending_job(prompt_id, status="completed")
-                            return output_bytes_list
+                            return list(output_bytes_list)
+                        elif has_outputs:
+                            db.complete_pending_job(prompt_id, status="completed")
+                            return []
                         else:
                             db.complete_pending_job(prompt_id, status="completed")
                             return results_dict

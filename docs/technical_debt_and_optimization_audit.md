@@ -10,14 +10,14 @@ This document preserves the comprehensive architectural audit of Shallot-CUI Bot
 
 ## 📋 Executive Summary of Areas Audited
 
-| # | Domain | Core Issue | Priority | Impact / Risk |
+| # | Domain | Core Issue | Priority | Status / Version |
 | :-: | :--- | :--- | :-: | :--- |
-| **1** | **Monolithic Structure** | `bot.py` is 6,100+ lines with a 500-line `on_interaction` switch | **High** | Fragility, blast radius on errors, test friction |
-| **2** | **Disk / Scratch Cache** | `QUADRANT_CACHE_DIR` accumulates thousands of PNGs without auto-pruner | **High** | Silent SSD storage exhaustion over time |
-| **3** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium** | Circular import risks, violation of Single Responsibility |
-| **4** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | 200–500ms delay per generation delivery |
-| **5** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Medium** | Server-wide GPU starvation on multi-minute videos |
-| **6** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | High friction when changing default models or settings |
+| **1** | **Monolithic Structure** | `bot.py` is 6,100+ lines with a 500-line `on_interaction` switch | **High** | Backlog (Phase 3 Cog decomposition) |
+| **2** | **Disk / Scratch Cache** | `QUADRANT_CACHE_DIR` accumulates thousands of PNGs without auto-pruner | **High** | ✅ **Resolved** (`v2.6.5` - 6h pruner + vacuum) |
+| **3** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium** | Backlog (Submodule segregation) |
+| **4** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | ✅ **Resolved** (`v2.6.5` - concurrent `asyncio.gather`) |
+| **5** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Medium** | Backlog (User active job limiter) |
+| **6** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | Backlog (Semantic config presets) |
 
 ---
 

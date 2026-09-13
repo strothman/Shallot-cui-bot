@@ -100,23 +100,31 @@ async def reconcile_pending_jobs(bot: discord.Client, comfy_client: Any) -> Dict
 
             if outputs is not None:
                 # ComfyUI finished rendering this job!
-                output_bytes_list = []
+                media_tasks = []
+                media_meta = []
                 for node_id, node_out in outputs.items():
                     if isinstance(node_out, dict):
                         for media_key in ["images", "videos", "gifs"]:
                             if media_key in node_out:
                                 for item in node_out[media_key]:
-                                    try:
-                                        data = await comfy_client.get_image(
+                                    media_tasks.append(
+                                        comfy_client.get_image(
                                             filename=item.get("filename"),
                                             subfolder=item.get("subfolder", ""),
                                             img_type=item.get("type", "output")
                                         )
-                                        if data:
-                                            ext = os.path.splitext(item.get("filename", ".png"))[1] or ".png"
-                                            output_bytes_list.append((data, ext))
-                                    except Exception as img_err:
-                                        logger.warning(f"Could not retrieve media file {item}: {img_err}")
+                                    )
+                                    ext = os.path.splitext(item.get("filename", ".png"))[1] or ".png"
+                                    media_meta.append(ext)
+
+                output_bytes_list = []
+                if media_tasks:
+                    downloaded_results = await asyncio.gather(*media_tasks, return_exceptions=True)
+                    for res, ext in zip(downloaded_results, media_meta):
+                        if isinstance(res, bytes) and res:
+                            output_bytes_list.append((res, ext))
+                        elif isinstance(res, Exception):
+                            logger.warning(f"Could not retrieve media file: {res}")
 
                 if output_bytes_list:
                     # Deliver recovered media to Discord
