@@ -20,6 +20,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from characters import get_character, CHARACTERS
 from comfy_client import ComfyClient
+try:
+    from config import DATASETS_DIR
+except ImportError:
+    DATASETS_DIR = r"C:\ComfyUI\ComfyUI\output\Discord Bot\datasets"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("DatasetBuilder")
@@ -197,7 +201,7 @@ async def run_dataset_builder(
 
     # Determine default output directory
     if not output_dir:
-        output_dir = f"datasets/{character_id}_krea2"
+        output_dir = os.path.join(DATASETS_DIR, f"{character_id}_krea2")
 
     gen_trigger = char.trained_trigger
     train_trigger = char.id  # Trigger to write in Florence-2 captions (e.g. 'valerie')
@@ -277,7 +281,7 @@ async def run_dataset_builder(
         if needed <= 0:
             logger.info(f"Target count of {count} already met in {output_dir} ({len(existing_indices)} images found).")
             # Ensure AI-Toolkit config is up to date
-            config_yaml_path = os.path.join("datasets", f"{character_id}_krea2_ai_toolkit_config.yaml")
+            config_yaml_path = os.path.join(DATASETS_DIR, f"{character_id}_krea2_ai_toolkit_config.yaml")
             write_ai_toolkit_config(train_trigger, output_dir, config_yaml_path)
             return
 
@@ -422,7 +426,7 @@ async def run_dataset_builder(
             logger.info(f"Saved: {file_base}.png + {file_base}.txt")
 
         # Automatically output AI-Toolkit training config
-        config_yaml_path = os.path.join("datasets", f"{character_id}_krea2_ai_toolkit_config.yaml")
+        config_yaml_path = os.path.join(DATASETS_DIR, f"{character_id}_krea2_ai_toolkit_config.yaml")
         write_ai_toolkit_config(train_trigger, output_dir, config_yaml_path)
 
         logger.info("==================================================================")
@@ -437,7 +441,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic character dataset for Krea 2 training")
     parser.add_argument("--character", type=str, default="ogarla", help="Character ID from characters.py (default: ogarla)")
     parser.add_argument("--count", type=int, default=30, help="Number of image+caption pairs to generate (default: 30)")
-    parser.add_argument("--output-dir", type=str, default=None, help="Destination folder (defaults to datasets/<character>_krea2)")
+    parser.add_argument("--output-dir", type=str, default=None, help=f"Destination folder (defaults to {DATASETS_DIR}/<character>_krea2)")
     parser.add_argument("--engine", type=str, choices=["auto", "flux", "sdxl"], default="auto", help="Engine to use: 'auto', 'flux', or 'sdxl'")
     parser.add_argument("--checkpoint", type=str, default="hyphoriaIlluNAI_v001.safetensors", help="SDXL checkpoint (default: hyphoriaIlluNAI_v001.safetensors)")
     parser.add_argument("--resolution", type=int, default=1024, help="Image resolution width & height (default: 1024)")

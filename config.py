@@ -21,6 +21,7 @@ COMFYUI_CHECKPOINT = os.getenv("COMFYUI_CHECKPOINT", "waiIllustriousSDXL_v170.sa
 DEFAULT_NEGATIVE_PROMPT = os.getenv("DEFAULT_NEGATIVE_PROMPT", "blurry, low quality, distorted")
 IMAGE_SAVE_PREFIX = os.getenv("IMAGE_SAVE_PREFIX", "Discord Bot/")
 COMFYUI_BATCH_PATH = os.getenv("COMFYUI_BATCH_PATH", r"C:\ComfyUI\run_nvidia_gpu.bat")
+DATASETS_DIR = os.getenv("DATASETS_DIR", r"C:\ComfyUI\ComfyUI\output\Discord Bot\datasets")
 VRAM_CAUTION_THRESHOLD_PERCENT = float(os.getenv("VRAM_CAUTION_THRESHOLD_PERCENT", "85.0"))
 VRAM_MIN_FREE_GB = float(os.getenv("VRAM_MIN_FREE_GB", "2.0"))
 try:

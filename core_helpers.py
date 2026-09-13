@@ -48,6 +48,17 @@ def set_active_bot(bot_instance):
 def get_active_bot():
     return _active_bot
 
+# Reference to the active model architecture across bot commands and services
+_active_architecture = None
+
+def set_active_architecture(arch):
+    global _active_architecture
+    _active_architecture = arch
+
+def get_active_architecture():
+    global _active_architecture
+    return _active_architecture
+
 
 async def safe_defer(interaction: discord.Interaction, thinking: bool = False, ephemeral: bool = False):
     """Safely defers an interaction response without raising 404 Unknown Interaction errors if token expired."""

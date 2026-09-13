@@ -1,9 +1,10 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.4.1`  
-> **Last Updated:** September 10, 2026  
-> **Status:** 🟢 Stable & Healthy (67/67 Automated Tests Passing)  
+> **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
+> **Current Version:** `v2.4.5`  
+> **Last Updated:** September 13, 2026  
+> **Status:** 🟢 Stable & Healthy (73/73 Automated Tests Passing)  
 
 ---
 
@@ -28,14 +29,18 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, handles slash commands (`/imagine`, `/flux`, `/video`), and coordinates tasks. |
+| [`cogs/vision_cog.py`](cogs/vision_cog.py) | **Vision Desk (Modular Cog):** Houses `/blend-sdxl`, `/blend`, and context menus in a clean modular cog. |
+| [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes Florence-2 interrogation, prompt synthesis, and blend preparation. |
+| [`cogs/krea_cog.py`](cogs/krea_cog.py) | **Krea Desk (Modular Cog):** Houses `/bertflow` and `/blend-krea` commands along with character, celebrity, and favorite prompt autocompletes. |
+| [`services/krea_service.py`](services/krea_service.py) | **Krea Service:** Executes Bertflow flow-matching generation, interactive button callbacks, upscale, and blend studio setup. |
 | [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
 | [`parsers.py`](parsers.py) | **Prompt Translator:** Reads flags like `--ar 16:9` (widescreen), `--smart` (auto-lighting), `--sref` (style copy), and wildcards `{a\|b\|c}`. |
-| [`views.py`](views.py) | **Interactive Buttons:** Creates all clickable buttons in Discord (U1–U4, V1–V4, `🛑 Cancel`, and `✏️ Remix` popup windows). |
+| [`views.py`](views.py) | **Interactive Buttons:** Creates all clickable buttons in Discord (U1–U4, V1–V4, `🛑 Cancel`, unified Blend Studio, and `✏️ Remix` popup windows). |
 | [`comfy_client.py`](comfy_client.py) | **The Messenger:** Talks to ComfyUI on your computer, tracks render progress, and automatically frees GPU memory when needed. |
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) that remembers your favorite prompts, style codes, and past creations. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 56 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 73 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 
@@ -46,7 +51,8 @@ Here is a simple breakdown of the main files in the project and what each one is
 ### 🎨 Image Generation
 * **`/imagine`**: Creates a 2x2 grid of 4 pictures using SDXL. Supports aspect ratios (`--ar`), style references (`--sref`), and character presets.
 * **`/flux`**: Creates ultra-detailed, photographic pictures using the next-generation **Flux.1** AI model.
-* **`/blend`**: Blends 2 to 5 different images together into a brand new creation.
+* **`/blend-sdxl`**: Dedicated 100% SDXL Blend Studio. Stripped of bloat: single `image` input, zero-tab unified 1-page dashboard, 1-click toggles (Semi-Realism), 1-click cycles (Aspect Ratio & Style Presets), and instant Florence-2 vision interrogation (~1.5s).
+* **`/blend-krea`**: Dedicated Krea 2 Photorealism Studio. Streamlined to single `image` upload; all settings (AR, Direct Composition, Character, Celebrity, Engine, and Wetness) managed via the interactive Phase 2 studio dashboard.
 
 ### 🎭 Character Presets (Consistent Faces)
 * **Cheri (`--cheri`)**: Character preset (Epoch 6 default, supports `--cheri4`). Automatically injects signature blonde hair!
@@ -136,16 +142,25 @@ The tool is built with **automatic state resumption**:
   * Silenced test-induced multi-instance warning banner.
 * **Phase 2: Dynamic Character Autocomplete [COMPLETED]**
   * Replaced static `app_commands.choices` arrays with dynamic `app_commands.autocomplete` querying `characters.py` and `scan_krea2_loras()`. Newly added LoRAs dropped into models folders immediately appear in Discord autocomplete without code edits or command re-syncing.
-* **Phase 3: Modular Cog Architecture [PLANNED - READY WHEN NEEDED]**
-  * Decompose monolithic `bot.py` into specialized Discord Cogs (`cogs/imagine.py`, `cogs/krea.py`, `cogs/video.py`, `cogs/admin.py`) and a business service layer (`services/`). Reduces `bot.py` from 6,900+ lines down to ~300 lines.
-  * 📋 **Detailed Execution Blueprint:** See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for full step-by-step instructions, circular import mitigations, and verification checkpoints.
+* **Phase 3: Modular Cog Architecture [PILOT COMPLETED — EXPAND WHEN READY]**
+  * ✅ **Pilot Phase Verified:** Successfully extracted `/blend-sdxl`, `/blend` alias, and `Blend Image (SDXL)` context menu into [`cogs/vision_cog.py`](cogs/vision_cog.py) and pure execution logic into [`services/vision_service.py`](services/vision_service.py), eliminating 468 lines from `bot.py` with 100% backward compatibility and 71/71 tests passing.
+  * 📋 **Remaining Roadmap:** Decompose remaining modules (`cogs/krea_cog.py`, `cogs/video_cog.py`, `cogs/imagine_cog.py`, `cogs/admin_cog.py`) whenever ready. See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for execution blueprint.
+* **Phase 4: Client Distribution & Custom Hardware Packaging [FUTURE ROADMAP — TARGET: NEXT MONTH / NOT NOW]**
+  * Package Shallot-CUI Bot for standalone deployment on an external user's PC with their own ComfyUI server, custom checkpoints, and custom LoRAs.
+  * 🟢 **Feasibility Rating:** Highly Feasible (8.5/10). Because the bot communicates via standard ComfyUI REST/WebSocket APIs (`127.0.0.1:8188`), it is already decoupled from local hardware.
+  * ⏳ **Timeline Note:** This is scheduled for future implementation next month. The feasibility plan is preserved in the docs archive for when we are ready to build it.
+  * **Core Deliverables Required:**
+    1. **Dynamic Model Discovery:** Query ComfyUI `/object_info` at startup to populate Discord autocomplete directly with the user's installed checkpoints and LoRAs, replacing hardcoded lists.
+    2. **Pre-Flight Environment Validator (`tools/check_comfy_env.py`):** Automatically verifies ComfyUI connectivity, core nodes, and extension nodes (Florence-2, VideoHelperSuite, GGUF) and provides 1-click install links for missing components.
+    3. **Turnkey Installer Package:** 1-click `setup.bat` (creates isolated `.venv` and installs dependencies), `run_bot.bat` launcher, and a friendly 5-minute setup guide (`README_FRIEND.md`).
+  * 📋 **Detailed Feasibility Plan:** See [`docs/client_distribution_packaging_plan.md`](docs/client_distribution_packaging_plan.md) for full gap analysis, architecture adapters, and packaging roadmap.
 
 ---
 
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **67 / 67 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **71 / 71 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

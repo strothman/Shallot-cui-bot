@@ -558,22 +558,18 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIsNotNone(info15)
         self.assertEqual(info15.get("batch_count"), 15)
 
-        # 2. Test BlendButtons Canvas and Style tab dropdowns
-        # Canvas tab has AR, Model, Comp selects and tab switch button
-        v_canvas = BlendButtons("gen123", tab="canvas")
-        select_ar = [item for item in v_canvas.children if "set_blend_ar" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(select_ar)
-        self.assertEqual(len(select_ar.options), 6)
-
-        tab_btn = [item for item in v_canvas.children if "switch_blend_tab" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(tab_btn.custom_id, "switch_blend_tab:gen123:style")
-
-        # Style tab has Character LoRA, Semi-Realism, and Style Mode dropdowns
-        v_style = BlendButtons("gen123", tab="style", char_choice="sully", sr="sr80", sref_rand="sref5")
+        # 2. Test BlendButtons Unified Single-Page Dashboard
+        v = BlendButtons("gen123", ar="16:9", char_choice="sully", sr="sr80", sref_rand="preset_junji_ito")
         
-        # Test Character select
-        select_char = [item for item in v_style.children if "set_blend_char" in getattr(item, "custom_id", "")][0]
+        # Test Model select (Row 0)
+        select_model = [item for item in v.children if "set_blend_model" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_model)
+        self.assertEqual(select_model.row, 0)
+
+        # Test Character select (Row 1)
+        select_char = [item for item in v.children if "set_blend_char" in getattr(item, "custom_id", "")][0]
         self.assertIsNotNone(select_char)
+        self.assertEqual(select_char.row, 1)
         char_vals = [opt.value for opt in select_char.options]
         self.assertIn("none", char_vals)
         self.assertIn("ogarla", char_vals)
@@ -581,35 +577,39 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("sully", char_vals)
         self.assertIn("cheri", char_vals)
         self.assertIn("mageill", char_vals)
-        # Verify default selected option matches char_choice
         selected_char_opt = [opt for opt in select_char.options if opt.default][0]
         self.assertEqual(selected_char_opt.value, "sully")
 
-        # Test Semi-Realism select
-        select_sr = [item for item in v_style.children if "set_blend_sr" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(select_sr)
-        sr_vals = [opt.value for opt in select_sr.options]
-        self.assertEqual(sr_vals, ["nosr", "sr60", "sr70", "sr75", "sr80", "sr90"])
-        selected_sr_opt = [opt for opt in select_sr.options if opt.default][0]
-        self.assertEqual(selected_sr_opt.value, "sr80")
+        # Test Reference & Composition select (Row 2)
+        select_comp = [item for item in v.children if "set_blend_comp" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_comp)
+        self.assertEqual(select_comp.row, 2)
 
-        # Test Style & Sref select
-        select_style = [item for item in v_style.children if "set_blend_style" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(select_style)
-        style_vals = [opt.value for opt in select_style.options]
-        self.assertIn("nosref", style_vals)
-        self.assertIn("sref", style_vals)
-        self.assertIn("sref5", style_vals)
-        self.assertIn("sref10", style_vals)
-        self.assertIn("sref15", style_vals)
-        self.assertIn("preset_junji_ito", style_vals)
-        self.assertIn("preset_martine_johanna", style_vals)
-        selected_style_opt = [opt for opt in select_style.options if opt.default][0]
-        self.assertEqual(selected_style_opt.value, "sref5")
+        # Test Toggles & Cycles in Row 3 (SR toggle, AR cycle, Style cycle)
+        sr_btn = [item for item in v.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(sr_btn)
+        self.assertEqual(sr_btn.row, 3)
+        self.assertIn("ON", sr_btn.label)
 
-        # Test Style tab switch button back to canvas
-        back_tab_btn = [item for item in v_style.children if "switch_blend_tab" in getattr(item, "custom_id", "")][0]
-        self.assertEqual(back_tab_btn.custom_id, "switch_blend_tab:gen123:canvas")
+        ar_btn = [item for item in v.children if "cycle_blend_ar" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(ar_btn)
+        self.assertEqual(ar_btn.row, 3)
+        self.assertEqual(ar_btn.label, "📐 AR: 16:9")
+
+        style_btn = [item for item in v.children if "cycle_blend_style" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(style_btn)
+        self.assertEqual(style_btn.row, 3)
+        self.assertIn("Junji Ito", style_btn.label)
+
+        # Test Action Launchers in Row 4 (Edit prompt, Blend image)
+        edit_btn = [item for item in v.children if "edit_blend_prompt" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(edit_btn)
+        self.assertEqual(edit_btn.row, 4)
+
+        blend_btn = [item for item in v.children if "blend_desc" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(blend_btn)
+        self.assertEqual(blend_btn.row, 4)
+        self.assertEqual(blend_btn.custom_id, "blend_desc:gen123:blend")
 
     def test_module13_followup_fallback_no_view_type_error(self):
         """Test send_followup_fallback omits view parameter when view=None so discord.py does not raise TypeError."""
@@ -1159,7 +1159,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         
         # Verify blend_image_context exists and is registered in the command tree
         ctx_names = [cmd.name for cmd in bot.tree.get_commands()]
-        self.assertIn("Blend Image", ctx_names)
+        self.assertTrue("Blend Image (SDXL)" in ctx_names or "Blend Image" in ctx_names)
         self.assertIn("Adopt Post / Image", ctx_names)
         self.assertIn("Adopt Midjourney Post", ctx_names)
 
@@ -1570,14 +1570,16 @@ class TestCUIBotFunctions(unittest.TestCase):
 
     def test_discord_command_description_lengths(self):
         """Validates that all Discord slash command descriptions are <= 100 characters."""
-        import re
-        with open("bot.py", "r", encoding="utf-8") as f:
-            bot_code = f.read()
-
-        matches = re.findall(r'@(?:tree|bot\.tree)\.command\([^)]*description=[\x22\x27](.*?)[\x22\x27]', bot_code, re.DOTALL)
-        for desc in matches:
-            clean_desc = desc.replace('\n', ' ').strip()
-            self.assertLessEqual(len(clean_desc), 100, f"Command description exceeds Discord 100 char limit ({len(clean_desc)}): '{clean_desc}'")
+        from bot import bot
+        for cmd in bot.tree.get_commands():
+            desc = getattr(cmd, "description", None)
+            if desc:
+                clean_desc = desc.replace('\n', ' ').strip()
+                self.assertLessEqual(
+                    len(clean_desc), 
+                    100, 
+                    f"Command '{cmd.name}' description exceeds Discord 100 char limit ({len(clean_desc)}): '{clean_desc}'"
+                )
 
     def test_single_instance_lock(self):
         """Test that acquire_instance_lock successfully binds and prevents secondary bindings on the same port."""
@@ -1936,31 +1938,18 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("👓 Sully (--sully.85)", field_dict["🎭 Aesthetics"])
         self.assertIn("🖋️ Junji Ito", field_dict["🎭 Aesthetics"])
 
-        # 3. Test BlendButtons 2-tab view and dynamic user favorites
+        # 3. Test BlendButtons unified view and dynamic user favorites
         user_favs = [
             {"code": 112233, "name": "Vaporwave Neon", "prompt": "cyberpunk neon colors"}
         ]
-        # Canvas Tab
-        view_canvas = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", tab="canvas", user_favorites=user_favs)
-        self.assertLessEqual(len(view_canvas.children), 25)
-        canvas_rows = set(child.row for child in view_canvas.children)
-        self.assertLessEqual(len(canvas_rows), 5)
-        # Check tab switch button peek
-        tab_btn = next((c for c in view_canvas.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("switch_blend_tab:") and ":style" in c.custom_id), None)
-        self.assertIsNotNone(tab_btn)
-        self.assertIn("Valerie", tab_btn.label)
-        self.assertIn("--sr70", tab_btn.label)
-
-        # Style Tab
-        view_style = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", tab="style", user_favorites=user_favs)
-        style_rows = set(child.row for child in view_style.children)
-        self.assertLessEqual(len(style_rows), 5)
-        # Verify user favorite in style dropdown
-        style_select = next((c for c in view_style.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("set_blend_style:")), None)
-        self.assertIsNotNone(style_select)
-        fav_option = next((opt for opt in style_select.options if opt.value == "saved_112233"), None)
-        self.assertIsNotNone(fav_option)
-        self.assertIn("Vaporwave Neon", fav_option.label)
+        view = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", sref_rand="saved_112233", user_favorites=user_favs)
+        self.assertLessEqual(len(view.children), 25)
+        rows = set(child.row for child in view.children)
+        self.assertLessEqual(len(rows), 5)
+        # Verify style cycle button reflects favorite style
+        style_btn = next((c for c in view.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("cycle_blend_style:")), None)
+        self.assertIsNotNone(style_btn)
+        self.assertIn("Vaporwave Neon", style_btn.label)
 
         # 4. Test handle_generate_blended character flag assembly and saved style resolution
         bot.db.save_generation("gen_test_char", gen_data)
@@ -2413,6 +2402,63 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(len(krea2_btns), 1, "There should be exactly one Krea 2 button")
         self.assertTrue(krea2_btns[0].startswith("gen_desc:desc_test_888:krea2:16:9:"))
 
+    def test_module60b_handle_generate_described(self):
+        """Test handle_generate_described dispatching for caption, detailed, and krea2 with correct params."""
+        import bot
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+
+        mock_gen_data = {
+            "caption": "A blonde woman in green scarf with tea cup",
+            "detailed_caption": "A hyper-realistic digital painting features a nude, slender, blonde woman with small breasts, wearing a green scarf, standing beside a teapot and cup.",
+            "krea2_prompt": "A hyper-realistic digital painting of a slender blonde woman beside teapot.",
+        }
+        bot.db.save_generation("test_desc_123", mock_gen_data)
+        bot.active_generations["test_desc_123"] = mock_gen_data
+
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        # 1. Test Generate Caption -> execute_imagine with checkpoint="hyphoriaIlluNAI_v001.safetensors"
+        with patch.object(bot, "execute_imagine", new=AsyncMock()) as mock_imagine:
+            asyncio.run(bot.handle_generate_described(
+                mock_interaction, "test_desc_123", desc_type="caption",
+                ar="16:9", use_sr="sr90", use_oga=False, model_choice="hyphoria"
+            ))
+            mock_imagine.assert_called_once()
+            call_kwargs = mock_imagine.call_args[1]
+            self.assertIn("A blonde woman in green scarf with tea cup", call_kwargs["prompt"])
+            self.assertIn("--sr.90", call_kwargs["prompt"])
+            self.assertIn("--ar 16:9", call_kwargs["prompt"])
+            self.assertEqual(call_kwargs["checkpoint"], "hyphoriaIlluNAI_v001.safetensors")
+
+        # 2. Test Generate Detailed -> execute_imagine with default checkpoint
+        with patch.object(bot, "execute_imagine", new=AsyncMock()) as mock_imagine:
+            asyncio.run(bot.handle_generate_described(
+                mock_interaction, "test_desc_123", desc_type="detailed",
+                ar="21:9", use_sr="nosr", use_oga=True, model_choice="default"
+            ))
+            mock_imagine.assert_called_once()
+            call_kwargs = mock_imagine.call_args[1]
+            self.assertIn("hyper-realistic digital painting", call_kwargs["prompt"])
+            self.assertIn("ogarla,", call_kwargs["prompt"])
+            self.assertIn("--ogarla.70", call_kwargs["prompt"])
+            self.assertIn("--ar 21:9", call_kwargs["prompt"])
+            self.assertIsNone(call_kwargs["checkpoint"])
+
+        # 3. Test Generate Krea 2 -> execute_bertflow
+        with patch.object(bot, "execute_bertflow", new=AsyncMock()) as mock_bert:
+            asyncio.run(bot.handle_generate_described(
+                mock_interaction, "test_desc_123", desc_type="krea2",
+                ar="16:9", use_oga=True
+            ))
+            mock_bert.assert_called_once()
+            call_kwargs = mock_bert.call_args[1]
+            self.assertEqual(call_kwargs["prompt"], "A hyper-realistic digital painting of a slender blonde woman beside teapot.")
+            self.assertEqual(call_kwargs["aspect_ratio"], "16:9")
+            self.assertEqual(call_kwargs["character"], "ogarla.85")
+
     def test_module61_blend_krea_integration(self):
         """Test Krea 2 blend prompt fusion, workflow wetness tuning, view layouts, and command registration."""
         from parsers import fuse_krea2_blend_prompt, prepare_bertflow_workflow
@@ -2572,25 +2618,39 @@ class TestCUIBotFunctions(unittest.TestCase):
         edit_btn = next(item for item in view.children if getattr(item, "custom_id", None) == "edit_blend_krea_prompt:krea_blend_777")
         self.assertEqual(edit_btn.label, "✏️ Edit Prompt")
 
-        # 5. Test BlendButtons includes Krea 2 button and Krea 2 models in select dropdown
+        # 5. Test BlendButtons excludes Krea 2 button and Krea 2 models (strictly decoupled)
         blend_view = BlendButtons(generation_id="blend_gen_123")
         blend_btn_ids = [item.custom_id for item in blend_view.children if hasattr(item, "custom_id")]
-        self.assertIn("blend_desc:blend_gen_123:krea2", blend_btn_ids)
+        self.assertNotIn("blend_desc:blend_gen_123:krea2", blend_btn_ids, "Krea 2 button must NOT be in BlendButtons")
+        self.assertIn("blend_desc:blend_gen_123:blend", blend_btn_ids)
 
         model_select = next(item for item in blend_view.children if getattr(item, "custom_id", "").startswith("set_blend_model:"))
         model_values = [opt.value for opt in model_select.options]
-        self.assertIn("muse", model_values)
-        self.assertIn("pornmaster", model_values)
+        self.assertNotIn("muse", model_values, "Krea 2 muse model must NOT be in BlendButtons")
+        self.assertNotIn("pornmaster", model_values, "Krea 2 pornmaster model must NOT be in BlendButtons")
+        self.assertIn("wai", model_values)
+
+        # 5b. Test workflows/DESCRIBE_blend.json dedicated SDXL workflow exists and excludes Krea nodes
+        blend_wf_path = "workflows/DESCRIBE_blend.json"
+        self.assertTrue(os.path.exists(blend_wf_path), "workflows/DESCRIBE_blend.json must exist")
+        with open(blend_wf_path, "r", encoding="utf-8") as f:
+            blend_wf = json.load(f)
+        self.assertIn("3", blend_wf, "Node 3 (caption) must be in DESCRIBE_blend.json")
+        self.assertIn("4", blend_wf, "Node 4 (detailed_caption) must be in DESCRIBE_blend.json")
+        self.assertNotIn("5", blend_wf, "Node 5 (Krea 2 Florence run) must NOT be in DESCRIBE_blend.json")
+        self.assertNotIn("11", blend_wf, "Node 11 (Krea 2 text) must NOT be in DESCRIBE_blend.json")
+        self.assertNotIn("21", blend_wf, "Node 21 (Krea 2 replace) must NOT be in DESCRIBE_blend.json")
 
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("blend-krea", commands)
         bk_cmd = commands["blend-krea"]
-        ar_param = next((p for p in bk_cmd.parameters if p.name == "aspect_ratio"), None)
-        self.assertIsNotNone(ar_param)
-        self.assertFalse(ar_param.required)
+        self.assertEqual(len(bk_cmd.parameters), 1, "blend-krea must only require the image parameter")
+        img_param = bk_cmd.parameters[0]
+        self.assertEqual(img_param.name, "image")
+        self.assertTrue(img_param.required)
 
         # 7. Test dynamic character autocomplete attached to commands
-        for cmd_name in ["bertflow", "blend-krea", "imagine", "flux"]:
+        for cmd_name in ["bertflow", "imagine", "flux"]:
             self.assertIn(cmd_name, commands)
             cmd = commands[cmd_name]
             char_param = next((p for p in cmd.parameters if p.name == "character"), None)
@@ -2860,8 +2920,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("celebrity", [p.name for p in bert_cmd.parameters])
 
         blend_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "blend-krea")
-        self.assertIn("character", [p.name for p in blend_cmd.parameters])
-        self.assertIn("celebrity", [p.name for p in blend_cmd.parameters])
+        self.assertEqual([p.name for p in blend_cmd.parameters], ["image"], "blend-krea is streamlined to image only")
 
     def test_module67_lora_workflow_architecture_audit(self):
         """Audit all workflows, character profiles, resolvers, and parsers for 100% LoRA architecture match."""
@@ -2929,6 +2988,192 @@ class TestCUIBotFunctions(unittest.TestCase):
         # 5. Test bot vision interrogate availability
         self.assertTrue(hasattr(bot, "run_vision_interrogate"))
         self.assertTrue(hasattr(bot, "user_vision_preferences"))
+
+    def test_module72_blend_studio_debloated_unified_dashboard(self):
+        """Test the de-bloated unified 1-page Blend Studio layout, 1-click toggles, cycles, and blend generation."""
+        import bot
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        from views import BlendButtons
+
+        # 1. Test 5-Row Component Layout and item distribution
+        gen_id = "blend_debloat_999"
+        view = BlendButtons(
+            generation_id=gen_id,
+            ar="16:9",
+            sr=True,
+            model_choice="wai",
+            comp_strength="style",
+            sref_rand="nosref",
+            char_choice="valerie"
+        )
+        self.assertLessEqual(len(view.children), 25)
+        rows = sorted(list(set(c.row for c in view.children)))
+        self.assertEqual(rows, [0, 1, 2, 3, 4], "Dashboard must strictly use rows 0 through 4 without tabs")
+
+        # Row 0: Model Checkpoint Select
+        row0_items = [c for c in view.children if c.row == 0]
+        self.assertEqual(len(row0_items), 1)
+        self.assertEqual(row0_items[0].custom_id, f"set_blend_model:{gen_id}")
+        self.assertNotIn("muse", [opt.value for opt in row0_items[0].options])
+
+        # Row 1: Character LoRA Select
+        row1_items = [c for c in view.children if c.row == 1]
+        self.assertEqual(len(row1_items), 1)
+        self.assertEqual(row1_items[0].custom_id, f"set_blend_char:{gen_id}")
+        char_selected = next(opt for opt in row1_items[0].options if opt.default)
+        self.assertEqual(char_selected.value, "valerie")
+
+        # Row 2: Composition Select
+        row2_items = [c for c in view.children if c.row == 2]
+        self.assertEqual(len(row2_items), 1)
+        self.assertEqual(row2_items[0].custom_id, f"set_blend_comp:{gen_id}")
+
+        # Row 3: 1-Click Toggles & Cycles (3 buttons)
+        row3_items = [c for c in view.children if c.row == 3]
+        self.assertEqual(len(row3_items), 3)
+        sr_btn = next(c for c in row3_items if c.custom_id.startswith("toggle_blend_sr:"))
+        ar_btn = next(c for c in row3_items if c.custom_id.startswith("cycle_blend_ar:"))
+        style_btn = next(c for c in row3_items if c.custom_id.startswith("cycle_blend_style:"))
+        self.assertIn("ON", sr_btn.label)
+        self.assertEqual(ar_btn.label, "📐 AR: 16:9")
+        self.assertIn("Off", style_btn.label)
+
+        # Row 4: Action Launchers (2 buttons)
+        row4_items = [c for c in view.children if c.row == 4]
+        self.assertEqual(len(row4_items), 2)
+        edit_btn = next(c for c in row4_items if c.custom_id.startswith("edit_blend_prompt:"))
+        blend_btn = next(c for c in row4_items if c.custom_id.startswith("blend_desc:"))
+        self.assertEqual(edit_btn.label, "✏️ Edit Prompt")
+        self.assertEqual(blend_btn.label, "🎨 Blend Image")
+        self.assertEqual(blend_btn.custom_id, f"blend_desc:{gen_id}:blend")
+
+        # 2. Test handle_generate_blended with desc_type == "blend"
+        gen_data = {
+            "caption": "a lone warrior standing in the rain",
+            "detailed_caption": "masterpiece digital painting of a lone samurai with glowing katana under volumetric rain and neon signs",
+            "uploaded_image_name": "samurai_input.png",
+            "image_url": "https://cdn.discordapp.com/samurai_thumb.jpg",
+            "ar": "16:9",
+            "sr": True,
+            "char_choice": "valerie",
+            "model_choice": "wai",
+            "comp_strength": "style",
+            "sref_rand": "nosref"
+        }
+        bot.db.save_generation("gen_blend_exec_test", gen_data)
+        bot.active_generations["gen_blend_exec_test"] = gen_data
+
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction,
+                "gen_blend_exec_test",
+                desc_type="blend",
+                ar="16:9",
+                use_sr=True,
+                char_choice="valerie",
+                model_choice="wai",
+                comp_strength="style",
+                use_sref_rand="nosref"
+            ))
+            mock_exec.assert_called_once()
+            called_prompt = mock_exec.call_args.kwargs.get("prompt") or mock_exec.call_args.args[1]
+            self.assertIn("samurai with glowing katana", called_prompt)
+
+    def test_module73_krea_cog_modular_architecture(self):
+        """Verify KreaCog and KreaService modular separation, registration, and backward compatibility."""
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        import bot
+        from cogs.krea_cog import KreaCog
+        from services.krea_service import (
+            BERTFLOW_MODEL_CHOICES,
+            execute_bertflow,
+            handle_bertflow_reroll,
+            handle_bertflow_remix,
+            handle_bertflow_toggle_char,
+            handle_bertflow_upscale,
+            handle_update_blend_krea_view,
+            handle_submit_edit_blend_krea_prompt,
+            handle_generate_blend_krea,
+            execute_blend_krea_core,
+        )
+
+        # 1. Test KreaCog registration in bot
+        cog = bot.bot.get_cog("KreaCog")
+        self.assertIsNotNone(cog, "KreaCog must be loaded and registered in bot")
+        self.assertIsInstance(cog, KreaCog)
+
+        # 2. Test slash commands registered in tree
+        commands = {cmd.name: cmd for cmd in bot.bot.tree.get_commands()}
+        self.assertIn("bertflow", commands)
+        self.assertIn("blend-krea", commands)
+
+        # Verify bertflow command parameters
+        bert_cmd = commands["bertflow"]
+        bert_params = {p.name: p for p in bert_cmd.parameters}
+        self.assertIn("prompt", bert_params)
+        self.assertIn("aspect_ratio", bert_params)
+        self.assertIn("character", bert_params)
+        self.assertIn("celebrity", bert_params)
+        self.assertIn("favorite_prompt", bert_params)
+        self.assertIn("model", bert_params)
+        self.assertIn("steps", bert_params)
+        self.assertIn("seed", bert_params)
+
+        # Verify blend-krea streamlined parameter (image only)
+        krea_cmd = commands["blend-krea"]
+        self.assertEqual(len(krea_cmd.parameters), 1)
+        self.assertEqual(krea_cmd.parameters[0].name, "image")
+
+        # 3. Test backward-compatibility re-exports on bot module
+        self.assertTrue(callable(bot.execute_bertflow))
+        self.assertTrue(callable(bot.handle_bertflow_reroll))
+        self.assertTrue(callable(bot.handle_bertflow_remix))
+        self.assertTrue(callable(bot.handle_bertflow_toggle_char))
+        self.assertTrue(callable(bot.handle_bertflow_upscale))
+        self.assertTrue(callable(bot.handle_update_blend_krea_view))
+        self.assertTrue(callable(bot.handle_submit_edit_blend_krea_prompt))
+        self.assertTrue(callable(bot.handle_generate_blend_krea))
+        self.assertTrue(callable(bot.execute_blend_krea_core))
+        self.assertEqual(bot.BERTFLOW_MODEL_CHOICES, BERTFLOW_MODEL_CHOICES)
+        self.assertEqual(bot.bertflow, cog.bertflow)
+        self.assertEqual(bot.blend_krea, cog.blend_krea)
+
+        # 4. Test services/krea_service function executions (mocked)
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        gen_id = "test_krea_service_gen_777"
+        gen_data = {
+            "prompt": "a test scene",
+            "original_prompt": "a test scene",
+            "aspect_ratio": "16:9",
+            "steps": 8,
+            "seed": 99999,
+            "unet_model": "museByStableYogi_v35Int8Extended.safetensors",
+            "character": "ogarla.85",
+            "celebrity": None
+        }
+        bot.db.save_generation(gen_id, gen_data)
+
+        # Test handle_bertflow_reroll calls execute_bertflow
+        with patch("services.krea_service.execute_bertflow", new=AsyncMock()) as mock_exec:
+            asyncio.run(handle_bertflow_reroll(mock_interaction, gen_id))
+            mock_exec.assert_called_once()
+            self.assertEqual(mock_exec.call_args.kwargs["prompt"], "a test scene")
+            self.assertNotEqual(mock_exec.call_args.kwargs["seed"], 99999)
+
+        # Test handle_bertflow_toggle_char toggles character
+        with patch("services.krea_service.execute_bertflow", new=AsyncMock()) as mock_exec:
+            asyncio.run(handle_bertflow_toggle_char(mock_interaction, gen_id))
+            mock_exec.assert_called_once()
+            self.assertIsNone(mock_exec.call_args.kwargs["character"])
 
 
 if __name__ == "__main__":

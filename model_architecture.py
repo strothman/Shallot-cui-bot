@@ -4,6 +4,7 @@ Provides fast safetensors header inspection, architecture resolution, and cross-
 """
 
 import os
+import re
 import json
 import struct
 import logging
@@ -158,7 +159,8 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.WAN, wan_subtype)
 
     # 2. Heuristic Pattern Detection based on Filename & Dialects
-    model_type = ModelType.LORA if ("lora" in clean_name or "epoch" in clean_name or "sr" in clean_name or "semi-realism" in clean_name) else ModelType.CHECKPOINT
+    is_lora_heuristic = any(k in clean_name for k in ["lora", "epoch", "semi-realism"]) or bool(re.search(r'(?:^|[-_.\s])sr(?:$|[-_.\s0-9])', clean_name))
+    model_type = ModelType.LORA if is_lora_heuristic else ModelType.CHECKPOINT
 
     # Krea 2 and Lumina 2
     if "krea2" in clean_name or "krea" in clean_name or "muse" in clean_name or "pornmaster" in clean_name:

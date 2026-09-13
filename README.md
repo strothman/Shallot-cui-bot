@@ -87,7 +87,7 @@ Turn any still image into a smooth, animated video:
 
 * **`/describe` (AI Vision & Krea 2 Descriptor)**: Upload any image and Florence-2 will analyze it, write standard captions, detailed descriptions, and an optimized **Krea 2 natural language prompt**, plus 1-click buttons to remake it with Hyphoria NAI or immediately send to **`/bertflow` (Krea 2 Turbo)**!
 * **`/study` (Read Hidden Prompts)**: Upload any AI picture you found on the web. The bot inspects the hidden file data and extracts the exact prompt used to make it!
-* **`/blend` (Image Blend Studio)**: Upload an image to mix it with new styles, checkpoints, and text ideas.
+* **`/blend-sdxl` / `/blend` (SDXL Blend Studio)**: Upload an image to mix it with new styles, SDXL checkpoints, and text ideas using instant Florence-2 vision analysis.
 * **`/blend-krea` (Krea 2 Photorealism Blend)**: Upload an image to remix it with Florence-2 vision analysis and Bert's photorealistic Krea 2 Turbo flow-matching pipeline! Features an optional **Direct Composition** toggle (`Off`, `Medium 70%`, `Strong 50%`) to lock subject silhouettes and poses via VAE latent encoding.
 * **`/upscale` (1920px AI Upscaler)**: Upload any picture to make it sharp and high-resolution.
 * **`/free` / `/purge-vram` (Purge VRAM & Memory)**: Unloads active models from ComfyUI and purges PyTorch GPU memory caches immediately to release 8GB VRAM for gaming or fresh generation tasks.
@@ -99,7 +99,7 @@ Turn any still image into a smooth, animated video:
 You can skip typing slash commands entirely! In Discord, **right-click any picture** (or hold down on mobile) and hover over **Apps**:
 
 * **`🎬 Animate to Video`**: Opens a quick popup window to turn that picture into a video!
-* **`🎨 Blend Image`**: Opens the Blend Studio to remix the picture with other styles.
+* **`🎨 Blend Image (SDXL)`**: Opens the SDXL Blend Studio to remix the picture with other styles.
 * **`📥 Adopt Post / Image`**: Extracts the prompt and settings from an image post so you can tweak it.
 * **`⛵ Adopt Midjourney Post`**: Turns Midjourney posts into Shallot-CUI bot commands.
 

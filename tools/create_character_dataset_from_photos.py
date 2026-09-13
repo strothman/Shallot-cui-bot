@@ -21,6 +21,10 @@ from typing import List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from comfy_client import ComfyClient
+try:
+    from config import DATASETS_DIR
+except ImportError:
+    DATASETS_DIR = r"C:\ComfyUI\ComfyUI\output\Discord Bot\datasets"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("PhotoDatasetBuilder")
@@ -315,7 +319,7 @@ async def run_photo_dataset_builder(
 ):
     """Executes synthetic dataset generation using reference photos and IP-Adapter with automatic resume."""
     if not output_dir:
-        output_dir = f"datasets/{trigger}_krea2"
+        output_dir = os.path.join(DATASETS_DIR, f"{trigger}_krea2")
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(input_dir, exist_ok=True)
@@ -369,7 +373,7 @@ async def run_photo_dataset_builder(
 
         if needed <= 0:
             logger.info(f"🎉 Target count of {count} already met in {output_dir}! (Found {completed_count} completed pairs)")
-            yaml_path = os.path.join("datasets", f"{trigger}_krea2_ai_toolkit_config.yaml")
+            yaml_path = os.path.join(DATASETS_DIR, f"{trigger}_krea2_ai_toolkit_config.yaml")
             write_ai_toolkit_config(trigger, output_dir, yaml_path)
             return
 
@@ -474,7 +478,7 @@ async def run_photo_dataset_builder(
             logger.info(f"✅ Finished [{completed_count + i + 1}/{count}]: {file_base}.png + {file_base}.txt")
 
         # 5. Generate AI-Toolkit Training Config
-        yaml_path = os.path.join("datasets", f"{trigger}_krea2_ai_toolkit_config.yaml")
+        yaml_path = os.path.join(DATASETS_DIR, f"{trigger}_krea2_ai_toolkit_config.yaml")
         write_ai_toolkit_config(trigger, output_dir, yaml_path)
 
         logger.info("==================================================================")
@@ -492,7 +496,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_dir", type=str, default="inputs/reference_character", help="Folder containing 1-12 reference photos")
     parser.add_argument("--trigger", type=str, default="mychar", help="Trigger word for the character LoRA (e.g. samantha, mychar)")
     parser.add_argument("--count", type=int, default=30, help="Total number of image+caption pairs to generate (default: 30)")
-    parser.add_argument("--output_dir", type=str, default=None, help="Destination folder (defaults to datasets/<trigger>_krea2)")
+    parser.add_argument("--output_dir", type=str, default=None, help=f"Destination folder (defaults to {DATASETS_DIR}/<trigger>_krea2)")
     parser.add_argument("--checkpoint", type=str, default="RealVisXL_V4.0.safetensors", help="Base photorealism checkpoint")
     parser.add_argument("--resolution", type=int, default=1024, help="Image resolution width/height (default: 1024)")
     parser.add_argument("--server", type=str, default="127.0.0.1:8188", help="ComfyUI server address")
