@@ -2500,6 +2500,23 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertEqual(call_kwargs["aspect_ratio"], "16:9")
             self.assertEqual(call_kwargs["character"], "ogarla.85")
 
+    def test_module60c_describe_command_and_cog_registration(self):
+        """Test /describe command registration on bot tree and VisionCog export."""
+        import bot
+        self.assertTrue(hasattr(bot, "describe"), "bot should re-export describe")
+        self.assertTrue(hasattr(bot, "handle_update_describe_view"), "bot should re-export handle_update_describe_view")
+        self.assertTrue(hasattr(bot, "handle_generate_described"), "bot should re-export handle_generate_described")
+        
+        # Verify VisionCog registration
+        cog = bot.bot.get_cog("VisionCog")
+        self.assertIsNotNone(cog, "VisionCog should be registered on bot")
+        self.assertTrue(hasattr(cog, "describe"), "VisionCog should have describe method")
+        
+        # Verify tree command exists
+        cmd = bot.bot.tree.get_command("describe")
+        self.assertIsNotNone(cmd, "/describe command should exist on bot.tree")
+        self.assertEqual(cmd.name, "describe")
+
     def test_module61_blend_krea_integration(self):
         """Test Krea 2 blend prompt fusion, workflow wetness tuning, view layouts, and command registration."""
         from parsers import fuse_krea2_blend_prompt, prepare_bertflow_workflow
@@ -3767,6 +3784,93 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(get_checkpoint_display_name("realvis"), "RealVisXL V4.0")
         self.assertEqual(get_checkpoint_display_name(None), "Default Model")
         self.assertEqual(get_checkpoint_display_name("custom_model.safetensors"), "custom_model")
+
+    def test_video_cog_registration_and_exports(self):
+        """Test VideoCog registration in bot.tree and backward-compatibility re-exports."""
+        import bot
+        from cogs.video_cog import VideoCog
+        import services.video_service as video_service
+
+        # 1. Verify commands in bot.tree
+        cmd_names = [c.name for c in bot.bot.tree.get_commands()]
+        self.assertIn("video", cmd_names)
+        self.assertIn("ltx", cmd_names)
+        self.assertIn("Animate to Video", cmd_names)
+
+        # 2. Verify re-exports on bot module
+        self.assertTrue(hasattr(bot, "video"))
+        self.assertTrue(hasattr(bot, "video_command"))
+        self.assertTrue(hasattr(bot, "ltx"))
+        self.assertTrue(hasattr(bot, "ltx_command"))
+        self.assertTrue(hasattr(bot, "animate_to_video_context"))
+        self.assertTrue(hasattr(bot, "execute_video_core"))
+        self.assertTrue(hasattr(bot, "handle_video_reroll"))
+        self.assertTrue(hasattr(bot, "handle_video_remix"))
+        self.assertTrue(hasattr(bot, "handle_video_toggle_fps"))
+        self.assertTrue(hasattr(bot, "execute_animate_message"))
+        self.assertTrue(hasattr(bot, "execute_ltx_core"))
+
+        # 3. Verify service functions are callable
+        self.assertTrue(callable(video_service.execute_video_core))
+        self.assertTrue(callable(video_service.execute_ltx_core))
+        self.assertTrue(callable(video_service.handle_video_reroll))
+        self.assertTrue(callable(video_service.handle_video_remix))
+        self.assertTrue(callable(video_service.handle_video_toggle_fps))
+        self.assertTrue(callable(video_service.execute_animate_message))
+
+    def test_system_cog_registration_and_exports(self):
+        """Test SystemCog registration in bot.tree and backward-compatibility re-exports."""
+        import bot
+        from cogs.system_cog import SystemCog
+        import services.system_service as system_service
+
+        # 1. Verify commands in bot.tree
+        cmd_names = [c.name for c in bot.bot.tree.get_commands()]
+        expected_commands = [
+            "cui-start", "cui-stop", "cui-status", 
+            "free", "purge-vram", "queue", 
+            "diagnostics", "models", "scan_models", 
+            "variation_mode", "negative", "prompt", "style"
+        ]
+        for cmd in expected_commands:
+            self.assertIn(cmd, cmd_names, f"Expected /{cmd} to be registered in bot.tree")
+
+        # 2. Verify re-exports on bot module
+        self.assertTrue(hasattr(bot, "cui_start_command"))
+        self.assertTrue(hasattr(bot, "cui_stop_command"))
+        self.assertTrue(hasattr(bot, "cui_status_command"))
+        self.assertTrue(hasattr(bot, "free_vram_command"))
+        self.assertTrue(hasattr(bot, "purge_vram_command"))
+        self.assertTrue(hasattr(bot, "queue_command"))
+        self.assertTrue(hasattr(bot, "diagnostics_command"))
+        self.assertTrue(hasattr(bot, "models_command"))
+        self.assertTrue(hasattr(bot, "scan_models_command"))
+        self.assertTrue(hasattr(bot, "variation_mode_command"))
+        self.assertTrue(hasattr(bot, "negative_command"))
+        self.assertTrue(hasattr(bot, "prompt_group"))
+        self.assertTrue(hasattr(bot, "style_group"))
+        self.assertTrue(hasattr(bot, "settings"))
+        self.assertTrue(hasattr(bot, "load_settings"))
+        self.assertTrue(hasattr(bot, "save_settings"))
+
+        # 3. Verify service functions & embed builders
+        self.assertTrue(callable(system_service.terminate_existing_comfyui))
+        self.assertTrue(callable(system_service.fetch_comfyui_queue))
+        self.assertTrue(callable(system_service.fetch_comfyui_system_stats))
+        self.assertTrue(callable(system_service.purge_vram_core))
+        self.assertTrue(callable(system_service.build_queue_embed))
+        self.assertTrue(callable(system_service.build_diagnostics_embed))
+        self.assertTrue(callable(system_service.build_models_embed))
+
+        # Test queue embed generation
+        q_embed = system_service.build_queue_embed(None, None)
+        self.assertIsInstance(q_embed, bot.discord.Embed)
+        self.assertIn("Could not connect", q_embed.description)
+
+        # Test diagnostics embed generation
+        d_embed = system_service.build_diagnostics_embed("TestUser")
+        self.assertIsInstance(d_embed, bot.discord.Embed)
+        self.assertIn("Diagnostics", d_embed.title)
 
 
 if __name__ == "__main__":

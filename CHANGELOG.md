@@ -7,6 +7,24 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-13]
 
 ### Added
+* 👁️ **Modular Vision Cog & Service Architecture (`v2.6.9`)**:
+  * Extracted `/describe` slash command and multi-architecture prompt synthesis logic from `bot.py` into `cogs/vision_cog.py` and `services/vision_service.py`.
+  * Encapsulated `execute_describe_core`, `handle_generate_described`, and `handle_update_describe_view` inside `services/vision_service.py`.
+  * Restored missing interaction callback in `bot.py`'s `on_interaction` under `set_desc_ar:` where `await handle_update_describe_view(...)` was omitted after toggle resolution.
+  * Preserved backward-compatible exports on `bot.py` (`describe`, `handle_generate_described`, `handle_update_describe_view`).
+  * Added automated test `test_module60c_describe_command_and_cog_registration` in `suite_test.py` (91/91 automated tests passing 100% green).
+* 🛠️ **Modular System Cog & Administration Service Architecture (`v2.6.8`)**:
+  * Extracted server lifecycle, GPU memory management, queue telemetry, diagnostics, and personalization subsystems from `bot.py` into `cogs/system_cog.py` and `services/system_service.py`.
+  * Migrated `/cui-start`, `/cui-stop`, `/cui-status`, `/free`, `/purge-vram`, `/queue`, `/diagnostics`, `/models`, `/scan_models`, `/variation_mode`, `/negative`, and command groups `/prompt` and `/style` to `SystemCog`.
+  * Encapsulated server process termination, REST queue and system stats fetchers, embed builders, VRAM memory purging, and configuration persistence into `services/system_service.py`.
+  * Removed nearly 900 lines of monolithic code from `bot.py`, bringing total line count from ~6,133 down to 5,257 lines.
+  * Added automated test `test_system_cog_registration_and_exports` in `suite_test.py` (90/90 tests passing).
+* 🎬 **Modular Video Cog & Service Architecture (`v2.6.7`)**:
+  * Extracted video generation and animation subsystems out of `bot.py` into dedicated modules: `cogs/video_cog.py` (UI & command declarations) and `services/video_service.py` (core execution logic).
+  * Migrated `/video`, `/ltx`, and context menu `"Animate to Video"` to `VideoCog`.
+  * Encapsulated Wan 2.2 I2V, RIFE frame interpolation, LTX-Video, video re-roll, video remix modal, and FPS toggle into `services/video_service.py`.
+  * Removed over 800 lines of monolithic video code from `bot.py` while preserving backward-compatible re-exports.
+  * Added automated test `test_video_cog_registration_and_exports` in `suite_test.py` (89/89 tests passing).
 * 🪄 **Centralized Pipeline Defaults & Semantic Constants (`v2.6.6`)**:
   * Introduced `class PipelineDefaults` in `config.py` consolidating checkpoints (`DEFAULT_SDXL_CHECKPOINT`, `DEFAULT_FLUX_CHECKPOINT`, `DEFAULT_WAN_CHECKPOINT`), upscale denoise constants (`UPSCALE_DENOISE_SDXL = 0.55`, `UPSCALE_DENOISE_FLUX_SUBTLE = 0.26`, `UPSCALE_DENOISE_FLUX_MODERATE = 0.35`), and variation similarity profiles.
   * Added `get_checkpoint_display_name()` in `config.py` with alias lookup support (`wai`, `realvis`, `juggernaut`, etc.), eliminating duplicate 18-line dictionaries in `views.py`.

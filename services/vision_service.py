@@ -25,7 +25,7 @@ from parsers import (
     clean_midjourney_flags,
 )
 from image_utils import detect_closest_aspect_ratio, create_thumbnail_bytes
-from views import build_blend_embed, BlendButtons
+from views import build_blend_embed, BlendButtons, DescribeButtons
 from core_helpers import (
     safe_defer,
     edit_original_fallback,
@@ -438,3 +438,156 @@ async def execute_blend_message(interaction: discord.Interaction, message: disco
     except Exception as e:
         logger.error(f"Error in blend context menu: {e}")
         await edit_original_fallback(interaction, content=f"❌ Failed to process blend for message: {e}")
+
+
+async def execute_describe_core(interaction: discord.Interaction, image: discord.Attachment, model: str = None, client: ComfyClient = None):
+    """Executes multi-architecture image interrogation using JoyCaption, Qwen2.5-VL, or Florence-2."""
+    selected_engine = model or user_vision_preferences.get(interaction.user.id, "joycaption")
+    user_vision_preferences[interaction.user.id] = selected_engine
+
+    friendly_name = {
+        "joycaption": "JoyCaption",
+        "qwen2.5-vl": "Qwen2.5-VL",
+        "florence2": "Florence-2"
+    }.get(selected_engine, "AI Vision")
+
+    await interaction.response.send_message(f"Analyzing image with {friendly_name}...", ephemeral=False)
+    
+    if not image.content_type or not image.content_type.startswith("image/"):
+        await edit_original_fallback(interaction, content="❌ Please upload a valid image file (PNG/JPG).")
+        return
+        
+    try:
+        image_bytes = await image.read()
+        
+        logger.info(f"Running vision interrogate with {selected_engine} for {image.filename}...")
+        vision_res = await run_vision_interrogate(
+            image_bytes=image_bytes,
+            filename=image.filename,
+            engine=selected_engine,
+            target_arch="all",
+            client=client
+        )
+        
+        if not vision_res:
+            await edit_original_fallback(interaction, content="❌ Failed to analyze image with vision model.")
+            return
+
+        sdxl_prompt = vision_res.get("sdxl_prompt") or ""
+        krea2_prompt = vision_res.get("krea2_prompt") or ""
+        flux_prompt = vision_res.get("flux_prompt") or ""
+        engine_display = vision_res.get("engine_used", friendly_name)
+
+        disp_krea2 = (krea2_prompt[:1021] + "...") if len(krea2_prompt) > 1024 else krea2_prompt
+        disp_flux = (flux_prompt[:1021] + "...") if len(flux_prompt) > 1024 else flux_prompt
+        disp_sdxl = (sdxl_prompt[:1021] + "...") if len(sdxl_prompt) > 1024 else sdxl_prompt
+
+        generation_id = str(random.randint(100000, 999999))
+        gen_data = {
+            "caption": sdxl_prompt,
+            "detailed_caption": flux_prompt,
+            "krea2_prompt": krea2_prompt,
+            "sdxl_prompt": sdxl_prompt,
+            "flux_prompt": flux_prompt,
+            "engine": engine_display
+        }
+        db.save_generation(generation_id, gen_data)
+
+        embed = discord.Embed(
+            title="Image Description & Multi-Architecture Analysis",
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=image.url)
+        embed.add_field(name="📸 Krea 2 Photorealism", value=disp_krea2 or "No prompt generated", inline=False)
+        embed.add_field(name="⚡ Flux Detailed Prose", value=disp_flux or "No prompt generated", inline=False)
+        embed.add_field(name="🎨 SDXL Tags", value=disp_sdxl or "No prompt generated", inline=False)
+        embed.set_footer(text=f"Analyzed using {engine_display} • Requested by {interaction.user.name}")
+        
+        view = DescribeButtons(generation_id, ar="16:9")
+        await edit_original_fallback(interaction, content=None, embed=embed, view=view)
+
+    except Exception as e:
+        logger.error(f"Error executing describe command: {e}")
+        await edit_original_fallback(interaction, content=f"❌ An error occurred while describing the image: {e}")
+
+
+async def handle_generate_described(interaction: discord.Interaction, generation_id: str, desc_type: str, ar: str = "16:9", use_sr = True, use_oga: bool = False, model_choice: str = "hyphoria"):
+    """Generates an image grid using stored caption or detailed description from /describe with chosen AR, LoRA, and model settings."""
+    await safe_defer(interaction)
+
+    gen_data = db.get_generation(generation_id)
+    if not gen_data:
+        await interaction.followup.send("Could not find description session data. It may have expired.", ephemeral=True)
+        return
+
+    if desc_type == "krea2":
+        krea2_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption") or gen_data.get("caption")
+        if not krea2_prompt:
+            await interaction.followup.send("No Krea 2 prompt found in session.", ephemeral=True)
+            return
+        char_val = "ogarla.85" if use_oga else None
+        import bot as bot_module
+        bertflow_func = getattr(bot_module, "execute_bertflow", None)
+        if not bertflow_func:
+            from services.krea_service import execute_bertflow as bertflow_func
+        await bertflow_func(interaction, prompt=krea2_prompt, aspect_ratio=ar, character=char_val)
+        return
+
+    base_prompt = gen_data.get("caption") if desc_type == "caption" else gen_data.get("detailed_caption")
+    if not base_prompt:
+        await interaction.followup.send(f"No {desc_type} prompt found in session.", ephemeral=True)
+        return
+
+    # Resolve sr_flag from use_sr parameter
+    sr_flag = None
+    if isinstance(use_sr, str):
+        if use_sr in ["sr60", "sr.60"]:
+            sr_flag = "--sr.60"
+        elif use_sr in ["sr70", "sr.70"]:
+            sr_flag = "--sr.70"
+        elif use_sr in ["sr80", "sr.80"]:
+            sr_flag = "--sr.80"
+        elif use_sr in ["sr90", "sr.90"]:
+            sr_flag = "--sr.90"
+        elif use_sr == "sr" or use_sr.lower() in ["true", "1", "on"]:
+            sr_flag = "--sr.90" if model_choice == "hyphoria" else "--sr.75"
+    elif use_sr is True:
+        sr_flag = "--sr.90" if model_choice == "hyphoria" else "--sr.75"
+
+    # Build prompt string with triggers, base description, LoRA flags, and aspect ratio
+    prompt_parts = []
+    if sr_flag:
+        prompt_parts.append("Semi-realism, masterpiece, best quality, absurdres.")
+    if use_oga:
+        prompt_parts.append("ogarla,")
+
+    prompt_parts.append(base_prompt)
+
+    if sr_flag:
+        prompt_parts.append(sr_flag)
+    if use_oga:
+        prompt_parts.append("--ogarla.70")
+    if ar:
+        prompt_parts.append(f"--ar {ar}")
+
+    full_prompt = " ".join(prompt_parts)
+    selected_model = "hyphoriaIlluNAI_v001.safetensors" if model_choice == "hyphoria" else None
+
+    import bot as bot_module
+    imagine_func = getattr(bot_module, "execute_imagine", None)
+    if not imagine_func and hasattr(interaction, "client"):
+        imagine_func = getattr(interaction.client, "execute_imagine", None)
+    if imagine_func:
+        await imagine_func(interaction, prompt=full_prompt, checkpoint=selected_model)
+    else:
+        await interaction.followup.send("❌ Image generation handler unavailable.", ephemeral=True)
+
+
+async def handle_update_describe_view(interaction: discord.Interaction, generation_id: str, new_ar: str, new_sr = True, new_oga: bool = False, new_model: str = "hyphoria"):
+    """Updates the interactive buttons on the /describe result embed when AR, SR, Ogarla, or Model toggle is clicked."""
+    view = DescribeButtons(generation_id, ar=new_ar, sr=new_sr, oga=new_oga, model_choice=new_model)
+    try:
+        await interaction.response.edit_message(view=view)
+    except (discord.NotFound, discord.HTTPException) as e:
+        logger.debug(f"Ignored expected interaction update error: {e}")
+

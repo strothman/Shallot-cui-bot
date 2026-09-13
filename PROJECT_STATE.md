@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.6.6`  
+> **Current Version:** `v2.6.9`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (88/88 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (91/91 Automated Tests Passing)  
 
 ---
 
@@ -27,12 +27,16 @@ Here is a simple breakdown of the main files in the project and what each one is
 
 | File | What It Does (Plain English) |
 | :--- | :--- |
-| [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, handles slash commands (`/imagine`, `/flux`, `/video`), and coordinates tasks. |
+| [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, coordinates startup lifecycle, and dispatches background tasks. |
+| [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/queue`), benchmarks (`/diagnostics`), and settings (`/negative`, `/style`, `/prompt`). |
+| [`services/system_service.py`](services/system_service.py) | **System Service:** Executes ComfyUI process lifecycle, GPU telemetry, VRAM purging, model auto-scanning, and configuration persistence. |
+| [`cogs/video_cog.py`](cogs/video_cog.py) | **Video Desk (Modular Cog):** Houses `/video`, `/ltx`, and `"Animate to Video"` context menus. |
+| [`services/video_service.py`](services/video_service.py) | **Video Service:** Executes Wan 2.2 I2V, RIFE frame interpolation, LTX-Video, re-roll, and remix operations. |
 | [`services/recovery_service.py`](services/recovery_service.py) | **Crash Recovery & Reconciliation:** Automatically rescues interrupted generations on restart, retrieves completed outputs from ComfyUI history, and delivers them to Discord. |
 | [`services/workflow_adapter.py`](services/workflow_adapter.py) | **Semantic Workflow Adapter:** Insulates the bot from ComfyUI node renumbering by manipulating nodes by class type, title, and inputs rather than hardcoded IDs. |
 | [`services/engine_queue.py`](services/engine_queue.py) | **Engine-Aware Priority Queue:** Prevents VRAM thrashing on 8GB GPUs via model affinity, anti-starvation age escalation, and auto VRAM purging. |
-| [`cogs/vision_cog.py`](cogs/vision_cog.py) | **Vision Desk (Modular Cog):** Houses `/blend-sdxl`, `/blend`, and context menus in a clean modular cog. |
-| [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes Florence-2 interrogation, prompt synthesis, and blend preparation. |
+| [`cogs/vision_cog.py`](cogs/vision_cog.py) | **Vision Desk (Modular Cog):** Houses `/describe`, `/blend-sdxl`, `/blend`, and image context menus in a clean modular cog. |
+| [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes JoyCaption, Qwen2.5-VL, and Florence-2 interrogation, multi-arch prompt synthesis, `/describe` button interactions, and blend preparation. |
 | [`cogs/krea_cog.py`](cogs/krea_cog.py) | **Krea Desk (Modular Cog):** Houses `/bertflow` and `/blend-krea` commands along with character, celebrity, and favorite prompt autocompletes. |
 | [`services/krea_service.py`](services/krea_service.py) | **Krea Service:** Executes Bertflow flow-matching generation, interactive button callbacks, upscale, and blend studio setup. |
 | [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
@@ -42,7 +46,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes asynchronously. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) with WAL mode that journals active jobs, stores favorite prompts, and tracks generation metrics. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 85 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 90 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 

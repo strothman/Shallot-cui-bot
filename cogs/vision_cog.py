@@ -8,7 +8,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.vision_service import execute_blend_core, execute_blend_message
+from services.vision_service import (
+    execute_blend_core, 
+    execute_blend_message,
+    execute_describe_core
+)
 from core_helpers import safe_defer, edit_original_fallback
 
 logger = logging.getLogger("DiscordBot.VisionCog")
@@ -68,7 +72,28 @@ class VisionCog(commands.Cog):
             logger.error(f"Error reading image for blend: {e}")
             await edit_original_fallback(interaction, content=f"❌ Failed to read uploaded image: {e}")
 
+    @app_commands.command(
+        name="describe", 
+        description="Generate multi-architecture prompts for an image using JoyCaption, Qwen2.5-VL, or Florence-2."
+    )
+    @app_commands.describe(
+        image="The image file you want to describe",
+        model="Preferred vision model (JoyCaption for SDXL/Flux, Qwen2.5-VL for Krea 2, or Florence-2)"
+    )
+    @app_commands.choices(
+        model=[
+            app_commands.Choice(name="JoyCaption (Recommended for SDXL & Flux)", value="joycaption"),
+            app_commands.Choice(name="Qwen2.5-VL (Recommended for Krea 2 & Photorealism)", value="qwen2.5-vl"),
+            app_commands.Choice(name="Florence-2 (Fast Legacy Fallback)", value="florence2"),
+        ]
+    )
+    async def describe(self, interaction: discord.Interaction, image: discord.Attachment, model: str = None):
+        """Slash command to interrogate an image and synthesize prompts for SDXL, Flux, and Krea 2."""
+        client = getattr(self.bot, "comfy_client", None)
+        await execute_describe_core(interaction, image, model=model, client=client)
+
 
 async def setup(bot: commands.Bot):
     """Asynchronous setup hook to register VisionCog into the bot."""
     await bot.add_cog(VisionCog(bot))
+

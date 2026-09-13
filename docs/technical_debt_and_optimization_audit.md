@@ -12,7 +12,7 @@ This document preserves the comprehensive architectural audit of Shallot-CUI Bot
 
 | # | Domain | Core Issue | Priority | Status / Version |
 | :-: | :--- | :--- | :-: | :--- |
-| **1** | **Monolithic Structure** | `bot.py` is 6,100+ lines with a 500-line `on_interaction` switch | **High** | Backlog (Phase 3 Cog decomposition) |
+| **1** | **Monolithic Structure** | `bot.py` originally 6,133 lines; down to 5,257 lines with 4 cogs extracted | **High** | 🟡 **In Progress** (`v2.6.8` - Video & System Cogs extracted; ~1,700 lines offloaded) |
 | **2** | **Disk / Scratch Cache** | `QUADRANT_CACHE_DIR` accumulates thousands of PNGs without auto-pruner | **High** | ✅ **Resolved** (`v2.6.5` - 6h pruner + vacuum) |
 | **3** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium** | Backlog (Submodule segregation) |
 | **4** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | ✅ **Resolved** (`v2.6.5` - concurrent `asyncio.gather`) |
@@ -21,10 +21,10 @@ This document preserves the comprehensive architectural audit of Shallot-CUI Bot
 
 ---
 
-## 1. 🐘 The 6,100-Line `bot.py` Monolith & 500-Line `on_interaction` Switch
+## 1. 🐘 The `bot.py` Monolith & `on_interaction` Switch
 
 ### The Problem
-While `cogs/vision_cog.py` and `cogs/krea_cog.py` were established as initial extractions, over **80% of all Discord command and interaction logic** remains concentrated directly inside [`bot.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) (6,133 lines).
+While `cogs/vision_cog.py` and `cogs/krea_cog.py` were established as initial extractions, over **80% of all Discord command and interaction logic** was concentrated directly inside [`bot.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) (originally 6,133 lines).
 
 Furthermore, the [`on_interaction`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py#L2446) listener spans over 500 lines of chained string-prefix matching:
 ```python
@@ -46,9 +46,10 @@ elif custom_id.startswith("vary_strong:"): ...
 
 ### Solution Blueprint
 1. Decompose `bot.py` into dedicated domain cogs following the established pattern in `cogs/`:
-   - `cogs/imagine_cog.py`: `/imagine`, `/flux`, grid U1–U4, V1–V4, and remix callbacks.
-   - `cogs/video_cog.py`: `/video`, `/ltx`, and camera motion handlers.
-   - `cogs/system_cog.py`: `/models`, `/queue`, `/cui-start`, `/stats`, `/favorite_style`.
+   - `cogs/vision_cog.py` & `services/vision_service.py`: ✅ **Completed (`v2.6.9`)** — `/describe`, `/blend-sdxl`, context menus, multi-architecture JoyCaption/Qwen2.5-VL/Florence-2 interrogation, and interactive prompt generation callbacks extracted.
+   - `cogs/video_cog.py` & `services/video_service.py`: ✅ **Completed (`v2.6.7`)** — `/video`, `/ltx`, `"Animate to Video"`, Wan 2.2 I2V, RIFE interpolation, and video button handlers extracted (~800 lines offloaded).
+   - `cogs/system_cog.py` & `services/system_service.py`: ✅ **Completed (`v2.6.8`)** — Server controls (`/cui-start`, `/cui-stop`, `/cui-status`), memory (`/free`, `/purge-vram`), `/queue`, `/diagnostics`, `/models`, `/scan_models`, `/negative`, `/variation_mode`, `/prompt`, and `/style` (~900 lines offloaded).
+   - `cogs/imagine_cog.py` & `services/imagine_service.py`: `/imagine`, `/flux`, grid U1–U4, V1–V4, and remix callbacks.
 2. Replace raw string matching in `on_interaction` with:
    - A centralized, table-driven interaction router in `services/interaction_dispatcher.py`, or
    - Persistent `discord.ui.View` classes registered with `bot.add_view()`.
