@@ -455,6 +455,7 @@ class ComfyClient:
                         results_dict = future.result()
                         
                         # Check if there are any images, gifs, or videos in the outputs
+                        has_outputs = False
                         media_tasks = []
                         for node_id, output in results_dict.items():
                             if output:

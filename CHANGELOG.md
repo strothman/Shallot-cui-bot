@@ -6,6 +6,11 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-13]
 
+### Fixed
+* 🐛 **Resolve Text Workflow Output UnboundLocalError (`comfy_client.py`)**:
+  * Fixed `UnboundLocalError: cannot access local variable 'has_outputs' where it is not associated with a value` in `ComfyClient._execute_direct()`. Text-only workflows (such as JoyCaption, Qwen2.5-VL, and Florence-2 description pipelines) produce non-media dictionary results, where `has_outputs` was uninitialized prior to output evaluation.
+  * Added automated regression test `test_comfy_client_text_outputs_no_unbound_local_error` in `suite_test.py` (92/92 tests passing).
+
 ### Added
 * 👁️ **Modular Vision Cog & Service Architecture (`v2.6.9`)**:
   * Extracted `/describe` slash command and multi-architecture prompt synthesis logic from `bot.py` into `cogs/vision_cog.py` and `services/vision_service.py`.

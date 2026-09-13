@@ -1248,6 +1248,37 @@ class TestCUIBotFunctions(unittest.TestCase):
         if isinstance(graph_dict, dict) and "nodes" in graph_dict:
             extra_pnginfo_graph["workflow"] = graph_dict
         self.assertIn("workflow", extra_pnginfo_graph)
+
+    def test_comfy_client_text_outputs_no_unbound_local_error(self):
+        """Verify _execute_direct handles text-only outputs (JoyCaption, Florence-2) without UnboundLocalError."""
+        from comfy_client import ComfyClient
+        import asyncio
+        from unittest.mock import AsyncMock, patch, MagicMock
+
+        client = ComfyClient("127.0.0.1:8188")
+        mock_results = {
+            "11": {"text": ["A beautiful portrait of an astronaut on Mars"]},
+            "12": {"string": ["cinematic, detailed"]}
+        }
+
+        async def run_test():
+            mock_post = MagicMock()
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_resp.json = AsyncMock(return_value={"prompt_id": "prompt_test_text_123"})
+            mock_post.return_value.__aenter__.return_value = mock_resp
+
+            client.session = MagicMock()
+            client.session.post = mock_post
+
+            with patch.object(client, "get_history_output", new=AsyncMock(return_value=mock_results)):
+                with patch("db.complete_pending_job", return_value=True):
+                    with patch("db.record_pending_job", return_value=True):
+                        return await client._execute_direct({"dummy": "wf"})
+
+        res = asyncio.run(run_test())
+        self.assertEqual(res, mock_results)
+
     def test_module38_animate_to_video_context_and_modal(self):
         """Test registration and setup of the Animate to Video context menu and VideoPromptModal."""
         from bot import bot, animate_to_video_context
