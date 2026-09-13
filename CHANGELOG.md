@@ -7,6 +7,13 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-13]
 
 ### Added
+* 🎯 **Dedicated `--sref random` 1-Click Toggle for `/blend-sdxl` (`views.py` & `bot.py`)**:
+  * **Simplified Style Controls**: Replaced the multi-preset and saved-style cycle button on Row 3 with a dedicated 1-click `--sref random` toggle (`toggle_blend_sref`).
+  * **Clean Visual States**: Displays `[🎲 --sref random: ON]` (blurple `primary` style) when active, and `[🎲 --sref random: OFF]` (grey `secondary` style) when disabled.
+  * **Embed Dashboard Synchronization**: Streamlined the `Aesthetics -> Style:` field in `build_blend_embed` to display `🎲 --sref random` when ON and `OFF` when disabled.
+  * **Backward Compatibility**: Updated interaction handlers in `bot.py` to route both `toggle_blend_sref:` and legacy `cycle_blend_style:` interactions to the toggle handler.
+  * **Full Automated Test Coverage**: Added `test_blend_sdxl_sref_random_toggle_interaction` in `suite_test.py`; all 74 automated tests pass green.
+
 * 🗄️ **Dataset Storage Offload to ComfyUI Output (`C:\ComfyUI\ComfyUI\output\Discord Bot\datasets`)**:
   * **Workspace Size Reduction**: Safely migrated 185.5 MB of character training datasets, image/caption pairs, YAML configurations, and archives (`valerie_krea2/`, `ogarla_krea2/`, `palgirl/`, `favorites/`, `valerie_krea2_dataset.zip`) out of the local Git workspace to `C:\ComfyUI\ComfyUI\output\Discord Bot\datasets\`. Reduced repository folder footprint from **257.5 MB down to 67.1 MB (74% disk reclamation)**.
   * **Centralized Configuration**: Defined `DATASETS_DIR = os.getenv("DATASETS_DIR", r"C:\ComfyUI\ComfyUI\output\Discord Bot\datasets")` in `config.py`.

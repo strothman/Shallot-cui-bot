@@ -2749,36 +2749,15 @@ async def on_interaction(interaction: discord.Interaction):
                 except ValueError:
                     next_ar = "16:9"
                 await handle_update_blend_view(interaction, gen_id, new_ar=next_ar)
-        elif custom_id.startswith("cycle_blend_style:"):
+        elif custom_id.startswith("toggle_blend_sref:") or custom_id.startswith("cycle_blend_style:"):
             parts = custom_id.split(":")
             gen_id = parts[1]
             gen_data = get_generation(gen_id)
             if gen_data:
-                user_favs = db.get_favorite_styles(interaction.user.id) if (interaction and interaction.user) else []
-                style_list = [
-                    "nosref",
-                    "preset_junji_ito",
-                    "preset_martine_johanna",
-                    "preset_dark_fantasy_landscape",
-                    "preset_cyberpunk_cityscape",
-                    "preset_ethereal_portrait",
-                    "sref"
-                ]
-                for fav in user_favs[:4]:
-                    code = str(fav.get("style_code") or fav.get("code") or "")
-                    if code:
-                        style_list.append(f"saved_{code}")
-                cur_style = gen_data.get("sref_rand", "nosref")
-                if cur_style is True:
-                    cur_style = "sref"
-                elif not cur_style:
-                    cur_style = "nosref"
-                try:
-                    idx = style_list.index(cur_style)
-                    next_style = style_list[(idx + 1) % len(style_list)]
-                except ValueError:
-                    next_style = "nosref"
-                await handle_update_blend_view(interaction, gen_id, new_sref=next_style)
+                cur_sref = gen_data.get("sref_rand", "nosref")
+                is_on = cur_sref in ["sref", "sref1", True] or (isinstance(cur_sref, str) and cur_sref.lower() in ["true", "1", "on"])
+                next_sref = "nosref" if is_on else "sref"
+                await handle_update_blend_view(interaction, gen_id, new_sref=next_sref)
         elif custom_id.startswith("switch_blend_tab:"):
             parts = custom_id.split(":")
             if len(parts) >= 3:

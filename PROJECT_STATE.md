@@ -2,9 +2,9 @@
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.4.5`  
+> **Current Version:** `v2.4.6`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (73/73 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (74/74 Automated Tests Passing)  
 
 ---
 
@@ -40,7 +40,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) that remembers your favorite prompts, style codes, and past creations. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 73 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 74 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 
@@ -51,7 +51,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 ### 🎨 Image Generation
 * **`/imagine`**: Creates a 2x2 grid of 4 pictures using SDXL. Supports aspect ratios (`--ar`), style references (`--sref`), and character presets.
 * **`/flux`**: Creates ultra-detailed, photographic pictures using the next-generation **Flux.1** AI model.
-* **`/blend-sdxl`**: Dedicated 100% SDXL Blend Studio. Stripped of bloat: single `image` input, zero-tab unified 1-page dashboard, 1-click toggles (Semi-Realism), 1-click cycles (Aspect Ratio & Style Presets), and instant Florence-2 vision interrogation (~1.5s).
+* **`/blend-sdxl`**: Dedicated 100% SDXL Blend Studio. Stripped of bloat: single `image` input, zero-tab unified 1-page dashboard, 1-click toggles (Semi-Realism & `--sref random`), 1-click aspect ratio cycle, and instant Florence-2 vision interrogation (~1.5s).
 * **`/blend-krea`**: Dedicated Krea 2 Photorealism Studio. Streamlined to single `image` upload; all settings (AR, Direct Composition, Character, Celebrity, Engine, and Wetness) managed via the interactive Phase 2 studio dashboard.
 
 ### 🎭 Character Presets (Consistent Faces)

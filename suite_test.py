@@ -559,7 +559,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(info15.get("batch_count"), 15)
 
         # 2. Test BlendButtons Unified Single-Page Dashboard
-        v = BlendButtons("gen123", ar="16:9", char_choice="sully", sr="sr80", sref_rand="preset_junji_ito")
+        v = BlendButtons("gen123", ar="16:9", char_choice="sully", sr="sr80", sref_rand="sref")
         
         # Test Model select (Row 0)
         select_model = [item for item in v.children if "set_blend_model" in getattr(item, "custom_id", "")][0]
@@ -585,7 +585,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIsNotNone(select_comp)
         self.assertEqual(select_comp.row, 2)
 
-        # Test Toggles & Cycles in Row 3 (SR toggle, AR cycle, Style cycle)
+        # Test Toggles & Cycles in Row 3 (SR toggle, AR cycle, Sref toggle)
         sr_btn = [item for item in v.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
         self.assertIsNotNone(sr_btn)
         self.assertEqual(sr_btn.row, 3)
@@ -596,10 +596,10 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(ar_btn.row, 3)
         self.assertEqual(ar_btn.label, "📐 AR: 16:9")
 
-        style_btn = [item for item in v.children if "cycle_blend_style" in getattr(item, "custom_id", "")][0]
+        style_btn = [item for item in v.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
         self.assertIsNotNone(style_btn)
         self.assertEqual(style_btn.row, 3)
-        self.assertIn("Junji Ito", style_btn.label)
+        self.assertIn("--sref random: ON", style_btn.label)
 
         # Test Action Launchers in Row 4 (Edit prompt, Blend image)
         edit_btn = [item for item in v.children if "edit_blend_prompt" in getattr(item, "custom_id", "")][0]
@@ -1938,18 +1938,18 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("👓 Sully (--sully.85)", field_dict["🎭 Aesthetics"])
         self.assertIn("🖋️ Junji Ito", field_dict["🎭 Aesthetics"])
 
-        # 3. Test BlendButtons unified view and dynamic user favorites
+        # 3. Test BlendButtons unified view and --sref random toggle
         user_favs = [
             {"code": 112233, "name": "Vaporwave Neon", "prompt": "cyberpunk neon colors"}
         ]
-        view = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", sref_rand="saved_112233", user_favorites=user_favs)
+        view = BlendButtons("gen_test_view", ar="3:5", sr="sr70", char_choice="valerie", sref_rand="sref", user_favorites=user_favs)
         self.assertLessEqual(len(view.children), 25)
         rows = set(child.row for child in view.children)
         self.assertLessEqual(len(rows), 5)
-        # Verify style cycle button reflects favorite style
-        style_btn = next((c for c in view.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("cycle_blend_style:")), None)
+        # Verify --sref random toggle button
+        style_btn = next((c for c in view.children if hasattr(c, "custom_id") and c.custom_id and c.custom_id.startswith("toggle_blend_sref:")), None)
         self.assertIsNotNone(style_btn)
-        self.assertIn("Vaporwave Neon", style_btn.label)
+        self.assertIn("--sref random: ON", style_btn.label)
 
         # 4. Test handle_generate_blended character flag assembly and saved style resolution
         bot.db.save_generation("gen_test_char", gen_data)
@@ -3034,10 +3034,11 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(len(row3_items), 3)
         sr_btn = next(c for c in row3_items if c.custom_id.startswith("toggle_blend_sr:"))
         ar_btn = next(c for c in row3_items if c.custom_id.startswith("cycle_blend_ar:"))
-        style_btn = next(c for c in row3_items if c.custom_id.startswith("cycle_blend_style:"))
+        style_btn = next(c for c in row3_items if c.custom_id.startswith("toggle_blend_sref:"))
         self.assertIn("ON", sr_btn.label)
         self.assertEqual(ar_btn.label, "📐 AR: 16:9")
-        self.assertIn("Off", style_btn.label)
+        self.assertIn("OFF", style_btn.label)
+        self.assertIn("--sref random", style_btn.label)
 
         # Row 4: Action Launchers (2 buttons)
         row4_items = [c for c in view.children if c.row == 4]
@@ -3174,6 +3175,57 @@ class TestCUIBotFunctions(unittest.TestCase):
             asyncio.run(handle_bertflow_toggle_char(mock_interaction, gen_id))
             mock_exec.assert_called_once()
             self.assertIsNone(mock_exec.call_args.kwargs["character"])
+
+    def test_blend_sdxl_sref_random_toggle_interaction(self):
+        """Test /blend-sdxl style button is ONLY a 1-click --sref random toggle on/off."""
+        import discord
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        import bot
+        from views import BlendButtons, build_blend_embed
+
+        # 1. Test View Button States
+        # State: OFF
+        view_off = BlendButtons("gen_off", ar="16:9", sref_rand="nosref")
+        btn_off = next(c for c in view_off.children if getattr(c, "custom_id", "").startswith("toggle_blend_sref:"))
+        self.assertEqual(btn_off.label, "🎲 --sref random: OFF")
+        self.assertEqual(btn_off.style, discord.ButtonStyle.secondary)
+
+        # State: ON
+        view_on = BlendButtons("gen_on", ar="16:9", sref_rand="sref")
+        btn_on = next(c for c in view_on.children if getattr(c, "custom_id", "").startswith("toggle_blend_sref:"))
+        self.assertEqual(btn_on.label, "🎲 --sref random: ON")
+        self.assertEqual(btn_on.style, discord.ButtonStyle.primary)
+
+        # 2. Test Embed Field Display
+        embed_off = build_blend_embed({"sref_rand": "nosref", "caption": "test", "detailed_caption": "scene"}, author_str="Test")
+        aesthetics_off = next(f.value for f in embed_off.fields if f.name == "🎭 Aesthetics")
+        self.assertIn("**Style:** `OFF`", aesthetics_off)
+
+        embed_on = build_blend_embed({"sref_rand": "sref", "caption": "test", "detailed_caption": "scene"}, author_str="Test")
+        aesthetics_on = next(f.value for f in embed_on.fields if f.name == "🎭 Aesthetics")
+        self.assertIn("**Style:** `🎲 --sref random`", aesthetics_on)
+
+        # 3. Test on_interaction toggle handling
+        gen_id = "gen_sref_toggle_test"
+        bot.active_generations[gen_id] = {"sref_rand": "nosref", "author_str": "Test"}
+        bot.db.save_generation(gen_id, bot.active_generations[gen_id])
+        mock_interaction = MagicMock()
+        mock_interaction.type = discord.InteractionType.component
+        mock_interaction.data = {"custom_id": f"toggle_blend_sref:{gen_id}"}
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        with patch("bot.handle_update_blend_view", new=AsyncMock()) as mock_update:
+            asyncio.run(bot.on_interaction(mock_interaction))
+            mock_update.assert_called_once_with(mock_interaction, gen_id, new_sref="sref")
+
+        # Toggle back from ON to OFF
+        bot.active_generations[gen_id] = {"sref_rand": "sref", "author_str": "Test"}
+        bot.db.save_generation(gen_id, bot.active_generations[gen_id])
+        with patch("bot.handle_update_blend_view", new=AsyncMock()) as mock_update:
+            asyncio.run(bot.on_interaction(mock_interaction))
+            mock_update.assert_called_once_with(mock_interaction, gen_id, new_sref="nosref")
 
 
 if __name__ == "__main__":

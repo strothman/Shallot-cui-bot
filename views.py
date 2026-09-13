@@ -496,8 +496,8 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
 
     preset_style_names = {
         "nosref": "OFF",
-        "sref": "1 Random Style",
-        "sref1": "1 Random Style",
+        "sref": "🎲 --sref random",
+        "sref1": "🎲 --sref random",
         "sref5": "5 Styles Batch",
         "sref10": "10 Styles Batch",
         "sref15": "15 Styles Batch",
@@ -507,11 +507,13 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
         "preset_cyberpunk_cityscape": "🌆 Cyberpunk",
         "preset_ethereal_portrait": "✨ Ethereal Portrait",
     }
-    if sref_rand in preset_style_names:
+    if sref_rand in ["sref", "sref1", True] or (isinstance(sref_rand, str) and sref_rand.lower() in ["true", "on"]):
+        sref_display = "🎲 --sref random"
+    elif sref_rand in preset_style_names:
         sref_display = preset_style_names[sref_rand]
     elif isinstance(sref_rand, str) and sref_rand.startswith("saved_"):
         sref_display = f"⭐ Saved (--sref {sref_rand[6:]})"
-    elif not sref_rand:
+    elif not sref_rand or str(sref_rand).lower() in ["false", "none", "off", "nosref"]:
         sref_display = "OFF"
     else:
         sref_display = str(sref_rand)
@@ -858,33 +860,10 @@ class BlendButtons(discord.ui.View):
         # Resolve sr state
         is_sr_on = self.sr not in ["nosr", False, None]
 
-        # Resolve style string & friendly label
-        if isinstance(self.sref_rand, str):
-            cur_style = self.sref_rand
-        elif self.sref_rand is True:
-            cur_style = "sref"
-        else:
-            cur_style = "nosref"
-
-        style_name_map = {
-            "nosref": "Off",
-            "sref": "Random",
-            "preset_junji_ito": "Junji Ito",
-            "preset_martine_johanna": "Martine Johanna",
-            "preset_dark_fantasy_landscape": "Dark Fantasy",
-            "preset_cyberpunk_cityscape": "Cyberpunk",
-            "preset_ethereal_portrait": "Ethereal",
-        }
-        if cur_style.startswith("saved_"):
-            code = cur_style[6:]
-            fav_name = f"Style {code}"
-            for fav in self.user_favorites:
-                if str(fav.get("style_code") or fav.get("code") or "") == code:
-                    fav_name = fav.get("style_name") or fav.get("name") or fav_name
-                    break
-            style_label = fav_name[:16]
-        else:
-            style_label = style_name_map.get(cur_style, cur_style[:16])
+        # Resolve --sref random toggle state
+        is_sref_on = self.sref_rand in ["sref", "sref1", True] or (isinstance(self.sref_rand, str) and self.sref_rand.lower() in ["true", "1", "on"])
+        sref_label = "🎲 --sref random: ON" if is_sref_on else "🎲 --sref random: OFF"
+        sref_style = discord.ButtonStyle.primary if is_sref_on else discord.ButtonStyle.secondary
 
         # Row 0: Model Checkpoint Dropdown (SDXL checkpoints only)
         model_options = [
@@ -966,11 +945,11 @@ class BlendButtons(discord.ui.View):
             row=3
         ))
 
-        # Style 1-Click Cycle Button (No batch queue bloat!)
+        # --sref random 1-Click Toggle Button
         self.add_item(discord.ui.Button(
-            label=f"🎨 Style: {style_label}"[:80],
-            style=discord.ButtonStyle.secondary if cur_style == "nosref" else discord.ButtonStyle.primary,
-            custom_id=f"cycle_blend_style:{self.generation_id}",
+            label=sref_label,
+            style=sref_style,
+            custom_id=f"toggle_blend_sref:{self.generation_id}",
             row=3
         ))
 
