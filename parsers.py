@@ -1684,14 +1684,96 @@ def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tu
     return clean_p, 1224, 1224
 
 RE_FLORENCE_BOILERPLATE = re.compile(
-    r"^(the image shows|the image depicts|the photo shows|the photo depicts|this is an image of|this image features|in this image,|in this photo,|a photo of|an image of|a picture of)\s*",
+    r"^(the image shows|the image depicts|the photo shows|the photo depicts|this is an image of|this image features|the image features|in this image,|in this photo,|a photo of|an image of|a picture of|this picture shows|this picture depicts|close-up photo of|close-up shot of)\s*",
     re.IGNORECASE
 )
 
+RE_PROSE_FILLER = re.compile(
+    r"\b(there is|there are|we can see|one can see|can be seen|the image captures|captures a|depicting|showing)\b",
+    re.IGNORECASE
+)
+
+def format_sdxl_prompt(raw_text: str) -> str:
+    """
+    Formats a raw vision description (from JoyCaption, Qwen, or Florence-2)
+    into an optimized, tag-dense prompt for SDXL / Illustrious models.
+    Converts descriptive prose into clean comma-separated tokens and removes filler.
+    """
+    if not raw_text:
+        return ""
+    
+    text = raw_text.strip()
+    
+    # Strip robotic prefixes
+    while True:
+        cleaned = RE_FLORENCE_BOILERPLATE.sub("", text).strip()
+        if cleaned == text:
+            break
+        text = cleaned
+
+    # Replace sentences and semi-colons with commas for SDXL tag density
+    text = re.sub(r"[;\n]+", ", ", text)
+    text = re.sub(r"\.\s+", ", ", text)
+    
+    # Remove common conversational filler words
+    text = RE_PROSE_FILLER.sub("", text)
+    
+    # Clean up multi-commas and whitespace
+    text = re.sub(r",\s*,+", ",", text)
+    tokens = [t.strip() for t in text.split(",") if t.strip()]
+    
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for t in tokens:
+        low = t.lower()
+        if low not in seen and len(low) > 1:
+            seen.add(low)
+            deduped.append(t)
+            
+    final_sdxl = ", ".join(deduped)
+    return final_sdxl.strip(",. ")
+
+def format_flux_prompt(raw_text: str) -> str:
+    """
+    Formats a raw vision description into high-fidelity natural language prose
+    ideal for Flux.1 models. Preserves detailed spatial and physical descriptions
+    while stripping robotic boilerplate and generic quality buzzwords.
+    """
+    if not raw_text:
+        return ""
+    
+    text = raw_text.strip()
+    
+    # Strip robotic prefixes
+    while True:
+        cleaned = RE_FLORENCE_BOILERPLATE.sub("", text).strip()
+        if cleaned == text:
+            break
+        text = cleaned
+        
+    # Strip quality buzzwords that degrade Flux latent guidance
+    buzzwords = [
+        r"\bmasterpiece\b", r"\bbest quality\b", r"\bultra high res\b",
+        r"\b8k resolution\b", r"\bphotorealistic\b", r"\bhyperrealistic\b"
+    ]
+    for bw in buzzwords:
+        text = re.sub(bw, "", text, flags=re.IGNORECASE)
+        
+    # Clean up leading punctuation & capitalisation
+    text = text.lstrip(":,.- ")
+    if text:
+        text = text[0].upper() + text[1:]
+        
+    # Normalize double spaces and multiple commas
+    text = re.sub(r",\s*,+", ",", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 def format_krea2_prompt(raw_text: str) -> str:
     """
-    Formats a raw vision description (e.g. from Florence-2) into an optimized
-    natural prose prompt for Krea 2 Turbo flow-matching and Qwen3-VL text encoder.
+    Formats a raw vision description (e.g. from Qwen2.5-VL, JoyCaption, or Florence-2)
+    into an optimized natural prose prompt for Krea 2 Turbo flow-matching and Qwen3-VL text encoder.
     Strips robotic prefixes and cleans composition phrasing.
     """
     if not raw_text:
@@ -1762,8 +1844,8 @@ def get_bertflow_unet_model(preferred_model: str = None) -> str:
 
 def fuse_krea2_blend_prompt(vision_prompt: str, remix_prompt: str = None) -> str:
     """
-    Fuses Florence-2 vision analysis with user remix instructions into an
-    optimized natural prose prompt for Krea 2 Turbo flow-matching.
+    Fuses vision analysis (Qwen2.5-VL / JoyCaption / Florence-2) with user remix
+    instructions into an optimized natural prose prompt for Krea 2 Turbo flow-matching.
     """
     cleaned_vision = format_krea2_prompt(vision_prompt or "")
     if not remix_prompt:

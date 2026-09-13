@@ -5,7 +5,9 @@ Executes unit/integration tests for prompt parsers, workflow builders,
 dimension math, auto-fix recipes, error log persistence, and CLI diagnostics.
 """
 
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import unittest
 import random
@@ -2880,6 +2882,53 @@ class TestCUIBotFunctions(unittest.TestCase):
 
         ui_issues = audit_ui_choices()
         self.assertEqual(ui_issues, [], f"UI LoRA audit issues: {ui_issues}")
+
+    def test_module70_vision_ai_multi_target_formatters(self):
+        """Test JoyCaption, Qwen2.5-VL, and multi-architecture prompt formatters & workflow integrity."""
+        from parsers import format_sdxl_prompt, format_flux_prompt, format_krea2_prompt
+        import bot
+
+        # 1. Test format_sdxl_prompt
+        raw_sdxl = "The photo depicts a beautiful girl wearing a leather jacket. There is neon lighting in the background, 8k resolution, masterpiece."
+        sdxl = format_sdxl_prompt(raw_sdxl)
+        self.assertNotIn("the photo depicts", sdxl.lower())
+        self.assertNotIn("there is", sdxl.lower())
+        self.assertIn("leather jacket", sdxl.lower())
+        self.assertIn(",", sdxl)
+
+        # 2. Test format_flux_prompt
+        raw_flux = "This is an image of an adventurer in a sunlit forest. Masterpiece, best quality, ultra high res."
+        flux = format_flux_prompt(raw_flux)
+        self.assertNotIn("this is an image of", flux.lower())
+        self.assertNotIn("masterpiece", flux.lower())
+        self.assertNotIn("best quality", flux.lower())
+        self.assertTrue(flux.startswith("An adventurer") or flux.startswith("Adventurer"))
+
+        # 3. Test format_krea2_prompt
+        raw_krea = "The image features a serene mountain lake at dusk with misty reflections."
+        krea = format_krea2_prompt(raw_krea)
+        self.assertNotIn("the image features", krea.lower())
+        self.assertIn("mountain lake", krea.lower())
+
+        # 4. Test workflow JSON integrity
+        joy_path = os.path.join(os.path.dirname(__file__), "workflows", "DESCRIBE_joycaption.json")
+        qwen_path = os.path.join(os.path.dirname(__file__), "workflows", "DESCRIBE_qwen_vl.json")
+        self.assertTrue(os.path.exists(joy_path), "DESCRIBE_joycaption.json must exist")
+        self.assertTrue(os.path.exists(qwen_path), "DESCRIBE_qwen_vl.json must exist")
+
+        with open(joy_path, "r", encoding="utf-8") as f:
+            joy_wf = json.load(f)
+        self.assertIn("1", joy_wf)
+        self.assertIn("2", joy_wf)
+
+        with open(qwen_path, "r", encoding="utf-8") as f:
+            qwen_wf = json.load(f)
+        self.assertIn("1", qwen_wf)
+        self.assertIn("2", qwen_wf)
+
+        # 5. Test bot vision interrogate availability
+        self.assertTrue(hasattr(bot, "run_vision_interrogate"))
+        self.assertTrue(hasattr(bot, "user_vision_preferences"))
 
 
 if __name__ == "__main__":

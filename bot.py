@@ -62,6 +62,8 @@ from parsers import (
     apply_face_detailer_to_workflow,
     resolve_bertflow_dimensions,
     format_krea2_prompt,
+    format_sdxl_prompt,
+    format_flux_prompt,
     fuse_krea2_blend_prompt,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,
@@ -6303,8 +6305,140 @@ async def handle_submit_edit_adopt_prompt(interaction: discord.Interaction, adop
     await interaction.response.edit_message(embed=embed, view=view)
 
 
+user_vision_preferences: dict = {}
+
+async def run_vision_interrogate(
+    image_bytes: bytes,
+    filename: str = None,
+    engine: str = "auto",
+    target_arch: str = "all"
+) -> dict:
+    """
+    Unified vision interrogation engine. Supports JoyCaption, Qwen2.5-VL, and Florence-2
+    with automatic graceful fallback, multi-target prompt formatting (SDXL, Krea 2, Flux),
+    and proactive VRAM cleanup for 8GB GPUs.
+    """
+    if not image_bytes:
+        return None
+
+    safe_filename = filename or f"vision_interrogate_{random.randint(100000, 999999)}.png"
+    upload_result = await comfy_client.upload_image(image_bytes, safe_filename)
+    uploaded_name = upload_result.get("name")
+    if not uploaded_name:
+        logger.error("Failed to upload image to ComfyUI for vision interrogation.")
+        return None
+
+    # Resolve target engine
+    norm_engine = (engine or "auto").lower()
+    if norm_engine == "auto":
+        if target_arch == "krea2":
+            norm_engine = "qwen2.5-vl"
+        elif target_arch in ["sdxl", "flux"]:
+            norm_engine = "joycaption"
+        else:
+            norm_engine = "joycaption"
+
+    engine_order = []
+    if "joy" in norm_engine:
+        engine_order = [("joycaption", "workflows/DESCRIBE_joycaption.json"), ("florence2", "workflows/DESCRIBE_cuibot.json")]
+    elif "qwen" in norm_engine:
+        engine_order = [("qwen2.5-vl", "workflows/DESCRIBE_qwen_vl.json"), ("florence2", "workflows/DESCRIBE_cuibot.json")]
+    else:
+        engine_order = [("florence2", "workflows/DESCRIBE_cuibot.json")]
+
+    results = None
+    engine_used = None
+
+    for eng_name, wf_path in engine_order:
+        try:
+            if not os.path.exists(wf_path):
+                logger.warning(f"Workflow file {wf_path} not found. Skipping {eng_name}.")
+                continue
+
+            with open(wf_path, "r", encoding="utf-8") as f:
+                workflow = json.load(f)
+
+            if "1" in workflow and "inputs" in workflow["1"]:
+                workflow["1"]["inputs"]["image"] = uploaded_name
+
+            logger.info(f"Executing {eng_name} vision workflow ({wf_path}) for {uploaded_name}...")
+            results = await comfy_client.generate(workflow, timeout=14400)
+            if results and isinstance(results, dict):
+                engine_used = eng_name
+                break
+        except Exception as e:
+            logger.warning(f"Engine {eng_name} failed ({e}). Attempting next fallback in pipeline...")
+            results = None
+
+    if not results:
+        # Ultimate fallback directly via Florence-2 in-code 3-node workflow if files were missing or failed
+        try:
+            logger.info("Executing built-in Florence-2 fallback...")
+            fallback_wf = {
+                "1": {"inputs": {"image": uploaded_name}, "class_type": "LoadImage"},
+                "2": {"inputs": {"model": "MiaoshouAI/Florence-2-large-PromptGen-v2.0", "precision": "fp16", "convert_to_safetensors": True}, "class_type": "DownloadAndLoadFlorence2Model"},
+                "3": {"inputs": {"text_input": "", "task": "detailed_caption", "fill_mask": True, "keep_model_loaded": False, "max_new_tokens": 250, "num_beams": 3, "do_sample": False, "output_mask_select": "", "seed": random.randint(100000, 999999), "image": ["1", 0], "florence2_model": ["2", 0]}, "class_type": "Florence2Run"},
+                "4": {"inputs": {"text": ["3", 2]}, "class_type": "ShowText|pysssss"}
+            }
+            results = await comfy_client.generate(fallback_wf, timeout=14400)
+            engine_used = "florence2"
+        except Exception as e:
+            logger.error(f"All vision interrogation workflows and fallbacks failed: {e}")
+            return None
+
+    # Free vision model weights from GPU memory immediately so diffusion has full VRAM
+    try:
+        await comfy_client.free_memory(unload_models=True)
+        logger.info(f"{engine_used} vision model VRAM successfully purged.")
+    except Exception as e:
+        logger.debug(f"Could not purge VRAM after vision model: {e}")
+
+    # Extract text outputs across all possible node structures
+    texts = []
+    if isinstance(results, dict):
+        for nid in ["4", "3", "9", "10", "11", "19", "20", "21"]:
+            if nid in results:
+                ndata = results[nid]
+                if isinstance(ndata, dict):
+                    for k in ["text", "string", "caption", "output"]:
+                        if k in ndata and ndata[k]:
+                            val = ndata[k]
+                            val_str = val[0] if isinstance(val, list) else str(val)
+                            if val_str and val_str.strip():
+                                texts.append(val_str.strip())
+                elif isinstance(ndata, list) and ndata:
+                    val_str = str(ndata[0]).strip()
+                    if val_str:
+                        texts.append(val_str)
+
+    raw_text = texts[0] if texts else "A detailed scene"
+    detailed_text = texts[1] if len(texts) > 1 else raw_text
+
+    # Synthesize tailored prompts for each architecture
+    sdxl_prompt = format_sdxl_prompt(raw_text)
+    krea2_prompt = format_krea2_prompt(detailed_text if "qwen" in str(engine_used) else raw_text)
+    flux_prompt = format_flux_prompt(detailed_text)
+
+    display_engine = {
+        "joycaption": "JoyCaption (SDXL & Flux)",
+        "qwen2.5-vl": "Qwen2.5-VL (Krea 2)",
+        "florence2": "Florence-2 (Legacy)"
+    }.get(engine_used, str(engine_used).title())
+
+    return {
+        "caption": sdxl_prompt,
+        "detailed_caption": flux_prompt,
+        "krea2_prompt": krea2_prompt,
+        "sdxl_prompt": sdxl_prompt,
+        "flux_prompt": flux_prompt,
+        "raw_text": raw_text,
+        "engine_used": display_engine,
+        "uploaded_name": uploaded_name
+    }
+
+
 async def run_florence_interrogate(image_url: str) -> str:
-    """Downloads an image from URL and uses Florence-2 model to generate an SDXL prompt description."""
+    """Downloads an image from URL and uses the vision pipeline to generate an SDXL prompt description."""
     if not image_url:
         return None
     try:
@@ -6314,86 +6448,41 @@ async def run_florence_interrogate(image_url: str) -> str:
                     return None
                 image_bytes = await resp.read()
         
-        filename = f"florence_adopt_{random.randint(100000, 999999)}.png"
-        upload_result = await comfy_client.upload_image(image_bytes, filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            return None
-        
-        # Clean 3-node Florence-2 workflow without fragile custom text nodes
-        workflow = {
-            "1": {
-                "inputs": {"image": uploaded_name},
-                "class_type": "LoadImage",
-                "_meta": {"title": "Load Image"}
-            },
-            "2": {
-                "inputs": {
-                    "model": "MiaoshouAI/Florence-2-large-PromptGen-v2.0",
-                    "precision": "fp16",
-                    "convert_to_safetensors": True
-                },
-                "class_type": "DownloadAndLoadFlorence2Model",
-                "_meta": {"title": "Load Florence2 Model"}
-            },
-            "3": {
-                "inputs": {
-                    "text_input": "",
-                    "task": "detailed_caption",
-                    "fill_mask": True,
-                    "keep_model_loaded": False,
-                    "max_new_tokens": 250,
-                    "num_beams": 3,
-                    "do_sample": False,
-                    "output_mask_select": "",
-                    "seed": random.randint(100000, 999999),
-                    "image": ["1", 0],
-                    "florence2_model": ["2", 0]
-                },
-                "class_type": "Florence2Run",
-                "_meta": {"title": "Florence2Run"}
-            },
-            "4": {
-                "inputs": {
-                    "text": ["3", 2]
-                },
-                "class_type": "ShowText|pysssss",
-                "_meta": {"title": "Show Text"}
-            }
-        }
-        
-        results = await comfy_client.generate(workflow, timeout=14400)
-        
-        caption = ""
-        if isinstance(results, dict):
-            for node_id in ["3", "4", "10", "9"]:
-                if node_id in results:
-                    n_data = results[node_id]
-                    if isinstance(n_data, dict):
-                        for k in ["text", "string", "caption"]:
-                            if k in n_data and n_data[k]:
-                                val = n_data[k]
-                                caption = val[0] if isinstance(val, list) else str(val)
-                                if caption:
-                                    break
-                    elif isinstance(n_data, list) and n_data:
-                        caption = str(n_data[0])
-                if caption:
-                    break
-        
-        return caption.strip() if caption else None
+        res = await run_vision_interrogate(image_bytes=image_bytes, engine="joycaption", target_arch="sdxl")
+        return res.get("sdxl_prompt") if res else None
     except Exception as e:
-        logger.error(f"Error running Florence-2 interrogate for adopted post: {e}")
+        logger.error(f"Error running vision interrogate for adopted post: {e}")
         return None
 
 
-@bot.tree.command(name="describe", description="Generate captions and detailed descriptions for an image using Florence-2.")
-@app_commands.describe(
-    image="The image file you want to describe"
+@bot.tree.command(
+    name="describe", 
+    description="Generate multi-architecture prompts for an image using JoyCaption, Qwen2.5-VL, or Florence-2."
 )
-async def describe(interaction: discord.Interaction, image: discord.Attachment):
-    # Send immediate response so the user knows it's queued and we avoid the generic Discord spinner
-    await interaction.response.send_message("Analyzing image with Florence-2...", ephemeral=False)
+@app_commands.describe(
+    image="The image file you want to describe",
+    model="Preferred vision model (JoyCaption for SDXL/Flux, Qwen2.5-VL for Krea 2, or Florence-2)"
+)
+@app_commands.choices(
+    model=[
+        app_commands.Choice(name="JoyCaption (Recommended for SDXL & Flux)", value="joycaption"),
+        app_commands.Choice(name="Qwen2.5-VL (Recommended for Krea 2 & Photorealism)", value="qwen2.5-vl"),
+        app_commands.Choice(name="Florence-2 (Fast Legacy Fallback)", value="florence2"),
+    ]
+)
+async def describe(interaction: discord.Interaction, image: discord.Attachment, model: str = None):
+    # Resolve per-user sticky preference
+    selected_engine = model or user_vision_preferences.get(interaction.user.id, "joycaption")
+    user_vision_preferences[interaction.user.id] = selected_engine
+
+    friendly_name = {
+        "joycaption": "JoyCaption",
+        "qwen2.5-vl": "Qwen2.5-VL",
+        "florence2": "Florence-2"
+    }.get(selected_engine, "AI Vision")
+
+    # Send immediate response so the user knows it's queued
+    await interaction.response.send_message(f"Analyzing image with {friendly_name}...", ephemeral=False)
     
     # Check if attachment is an image
     if not image.content_type or not image.content_type.startswith("image/"):
@@ -6404,96 +6493,50 @@ async def describe(interaction: discord.Interaction, image: discord.Attachment):
         # Download image from Discord
         image_bytes = await image.read()
         
-        # Upload image to ComfyUI
-        logger.info(f"Uploading image {image.filename} to ComfyUI for description...")
-        upload_result = await comfy_client.upload_image(image_bytes, image.filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            await edit_original_fallback(interaction, content="❌ Failed to upload the image to ComfyUI server.")
+        logger.info(f"Running vision interrogate with {selected_engine} for {image.filename}...")
+        vision_res = await run_vision_interrogate(
+            image_bytes=image_bytes,
+            filename=image.filename,
+            engine=selected_engine,
+            target_arch="all"
+        )
+        
+        if not vision_res:
+            await edit_original_fallback(interaction, content="❌ Failed to analyze image with vision model.")
             return
-            
-        logger.info(f"Image uploaded successfully. ComfyUI filename: {uploaded_name}")
-        
-        # Load description workflow
-        workflow_path = "workflows/DESCRIBE_cuibot.json"
-        try:
-            with open(workflow_path, "r", encoding="utf-8") as f:
-                workflow = json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading description workflow file: {e}")
-            await edit_original_fallback(interaction, content="❌ Failed to load description workflow template.")
-            return
-            
-        # Configure description workflow parameters
-        # Node "1" is LoadImage
-        workflow["1"]["inputs"]["image"] = uploaded_name
-        
-        # Run workflow
-        logger.info(f"Executing description workflow for {uploaded_name}...")
-        results = await comfy_client.generate(workflow, timeout=14400)
-        
-        # Extract text outputs from results
-        # Node "9" has standard caption (title: caption)
-        # Node "10" has detailed caption (title: detailed_caption)
-        # Node "11" has Krea 2 prompt (title: krea2_prompt)
-        caption = "No caption generated"
-        detailed_caption = "No detailed caption generated"
-        krea2_prompt = "No Krea 2 prompt generated"
-        
-        if isinstance(results, dict):
-            # Extract from Node "9"
-            if "9" in results and "text" in results["9"]:
-                text_list = results["9"]["text"]
-                if text_list:
-                    caption = text_list[0]
-            # Extract from Node "10"
-            if "10" in results and "text" in results["10"]:
-                text_list = results["10"]["text"]
-                if text_list:
-                    detailed_caption = text_list[0]
-            # Extract from Node "11"
-            if "11" in results and "text" in results["11"] and results["11"]["text"]:
-                krea2_prompt = results["11"]["text"][0]
-            elif detailed_caption and detailed_caption != "No detailed caption generated":
-                krea2_prompt = detailed_caption
-            elif caption and caption != "No caption generated":
-                krea2_prompt = caption
-        else:
-            await edit_original_fallback(interaction, content="❌ ComfyUI did not return the expected text description outputs.")
-            return
-            
-        raw_caption = caption
-        raw_detailed_caption = detailed_caption
-        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
+
+        sdxl_prompt = vision_res.get("sdxl_prompt") or ""
+        krea2_prompt = vision_res.get("krea2_prompt") or ""
+        flux_prompt = vision_res.get("flux_prompt") or ""
+        engine_display = vision_res.get("engine_used", friendly_name)
 
         # Truncate descriptions to fit within Discord's 1024-character limit for embed fields
-        if len(caption) > 1024:
-            caption = caption[:1021] + "..."
-        if len(detailed_caption) > 1024:
-            detailed_caption = detailed_caption[:1021] + "..."
-        display_krea2_prompt = raw_krea2_prompt
-        if len(display_krea2_prompt) > 1024:
-            display_krea2_prompt = display_krea2_prompt[:1021] + "..."
+        disp_krea2 = (krea2_prompt[:1021] + "...") if len(krea2_prompt) > 1024 else krea2_prompt
+        disp_flux = (flux_prompt[:1021] + "...") if len(flux_prompt) > 1024 else flux_prompt
+        disp_sdxl = (sdxl_prompt[:1021] + "...") if len(sdxl_prompt) > 1024 else sdxl_prompt
 
         # Store in active generations cache for interactive button clicks
         generation_id = str(random.randint(100000, 999999))
         active_generations[generation_id] = {
-            "caption": raw_caption,
-            "detailed_caption": raw_detailed_caption,
-            "krea2_prompt": raw_krea2_prompt
+            "caption": sdxl_prompt,
+            "detailed_caption": flux_prompt,
+            "krea2_prompt": krea2_prompt,
+            "sdxl_prompt": sdxl_prompt,
+            "flux_prompt": flux_prompt,
+            "engine": engine_display
         }
         save_generations()
 
-        # Build embed response
+        # Build embed response with distinct sections for each model
         embed = discord.Embed(
-            title="Image Description Complete",
+            title="Image Description & Multi-Architecture Analysis",
             color=discord.Color.blue()
         )
         embed.set_thumbnail(url=image.url)
-        embed.add_field(name="📝 Caption", value=caption, inline=False)
-        embed.add_field(name="🔍 Detailed Description", value=detailed_caption, inline=False)
-        embed.add_field(name="📸 Krea 2 Prompt", value=display_krea2_prompt, inline=False)
-        embed.set_footer(text=f"Analyzed using Florence-2 model • Requested by {interaction.user.name}")
+        embed.add_field(name="📸 Krea 2 Photorealism", value=disp_krea2 or "No prompt generated", inline=False)
+        embed.add_field(name="⚡ Flux Detailed Prose", value=disp_flux or "No prompt generated", inline=False)
+        embed.add_field(name="🎨 SDXL Tags", value=disp_sdxl or "No prompt generated", inline=False)
+        embed.set_footer(text=f"Analyzed using {engine_display} • Requested by {interaction.user.name}")
         
         view = DescribeButtons(generation_id, ar="16:9")
         await edit_original_fallback(interaction, content=None, embed=embed, view=view)
@@ -6637,67 +6680,24 @@ async def execute_blend_core(
         applied_style_name = scapes_info["style_name"]
 
     try:
-        # Upload image to ComfyUI
         safe_filename = filename or f"blend_{random.randint(100000, 999999)}.png"
-        logger.info(f"Uploading image {safe_filename} to ComfyUI for blend description...")
-        upload_result = await comfy_client.upload_image(image_bytes, safe_filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            await edit_original_fallback(interaction, content="❌ Failed to upload the image to ComfyUI server.")
+        logger.info(f"Analyzing blend image {safe_filename} using JoyCaption vision engine...")
+        vision_res = await run_vision_interrogate(
+            image_bytes=image_bytes,
+            filename=safe_filename,
+            engine="joycaption",
+            target_arch="sdxl"
+        )
+        if not vision_res:
+            await edit_original_fallback(interaction, content="❌ Failed to analyze image with JoyCaption vision engine.")
             return
-            
-        logger.info(f"Image uploaded successfully. ComfyUI filename: {uploaded_name}")
-        
-        # Load description workflow
-        workflow_path = "workflows/DESCRIBE_cuibot.json"
-        try:
-            with open(workflow_path, "r", encoding="utf-8") as f:
-                workflow = json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading description workflow file: {e}")
-            await edit_original_fallback(interaction, content="❌ Failed to load description workflow template.")
-            return
-            
-        # Configure description workflow parameters
-        # Node "1" is LoadImage
-        workflow["1"]["inputs"]["image"] = uploaded_name
-        
-        # Run workflow
-        logger.info(f"Executing description workflow for {uploaded_name}...")
-        results = await comfy_client.generate(workflow, timeout=14400)
-        
-        # Extract text outputs from results
-        caption = "No caption generated"
-        detailed_caption = "No detailed caption generated"
-        krea2_prompt = "No Krea 2 prompt generated"
-        
-        if isinstance(results, dict):
-            if "9" in results and "text" in results["9"]:
-                text_list = results["9"]["text"]
-                if text_list:
-                    caption = text_list[0]
-            if "10" in results and "text" in results["10"]:
-                text_list = results["10"]["text"]
-                if text_list:
-                    detailed_caption = text_list[0]
-            if "11" in results and "text" in results["11"] and results["11"]["text"]:
-                krea2_prompt = results["11"]["text"][0]
-            else:
-                krea2_prompt = detailed_caption
-        else:
-            await edit_original_fallback(interaction, content="❌ ComfyUI did not return the expected text description outputs.")
-            return
-            
-        raw_caption = caption
-        raw_detailed_caption = detailed_caption
-        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
 
-        # Free Florence-2 vision model weights from GPU memory to give SDXL maximum VRAM
-        try:
-            await comfy_client.free_memory(unload_models=True)
-            logger.info("Florence-2 vision model VRAM successfully freed.")
-        except Exception as e:
-            logger.debug(f"Could not free VRAM after Florence-2: {e}")
+        uploaded_name = vision_res["uploaded_name"]
+        raw_caption = vision_res.get("sdxl_prompt") or ""
+        raw_detailed_caption = vision_res.get("flux_prompt") or ""
+        raw_krea2_prompt = vision_res.get("krea2_prompt") or ""
+        caption = raw_caption
+        detailed_caption = raw_detailed_caption
 
         # Auto-detect native aspect ratio from uploaded image dimensions
         detected_ar = "16:9"
@@ -6909,42 +6909,23 @@ async def execute_blend_krea_core(
     character: str = "none",
     celebrity: str = "none"
 ):
-    """Core logic to analyze an image with Florence-2 and initialize the Krea 2 Blend Studio dashboard."""
+    """Core logic to analyze an image with Qwen2.5-VL and initialize the Krea 2 Blend Studio dashboard."""
     try:
         safe_filename = filename or f"blend_krea_{random.randint(100000, 999999)}.png"
-        logger.info(f"Uploading image {safe_filename} to ComfyUI for Krea 2 blend...")
-        upload_result = await comfy_client.upload_image(image_bytes, safe_filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            await edit_original_fallback(interaction, content="❌ Failed to upload the image to ComfyUI server.")
+        logger.info(f"Analyzing Krea 2 blend image {safe_filename} using Qwen2.5-VL vision engine...")
+        vision_res = await run_vision_interrogate(
+            image_bytes=image_bytes,
+            filename=safe_filename,
+            engine="qwen2.5-vl",
+            target_arch="krea2"
+        )
+        if not vision_res:
+            await edit_original_fallback(interaction, content="❌ Failed to analyze image with Qwen2.5-VL vision engine.")
             return
 
-        workflow_path = "workflows/DESCRIBE_cuibot.json"
-        with open(workflow_path, "r", encoding="utf-8") as f:
-            workflow = json.load(f)
-
-        workflow["1"]["inputs"]["image"] = uploaded_name
-
-        logger.info(f"Executing Florence-2 description workflow for Krea 2 blend on {uploaded_name}...")
-        results = await comfy_client.generate(workflow, timeout=14400)
-
-        detailed_caption = "No detailed caption generated"
-        krea2_prompt = "No Krea 2 prompt generated"
-        if isinstance(results, dict):
-            if "10" in results and "text" in results["10"] and results["10"]["text"]:
-                detailed_caption = results["10"]["text"][0]
-            if "11" in results and "text" in results["11"] and results["11"]["text"]:
-                krea2_prompt = results["11"]["text"][0]
-            elif detailed_caption:
-                krea2_prompt = detailed_caption
-
-        raw_krea2_prompt = format_krea2_prompt(krea2_prompt)
-
-        try:
-            await comfy_client.free_memory(unload_models=True)
-            logger.info("Florence-2 vision model VRAM successfully freed.")
-        except Exception as e:
-            logger.debug(f"Could not free VRAM after Florence-2: {e}")
+        uploaded_name = vision_res["uploaded_name"]
+        raw_krea2_prompt = vision_res.get("krea2_prompt") or ""
+        detailed_caption = vision_res.get("detailed_caption") or raw_krea2_prompt
 
         resolved_ar = aspect_ratio
         if not resolved_ar or str(resolved_ar).lower() == "auto":

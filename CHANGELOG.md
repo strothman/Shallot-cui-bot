@@ -4,6 +4,23 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-13]
+
+### Added
+* 👁️ **Next-Gen Vision AI Pipeline (JoyCaption & Qwen2.5-VL)**: Upgraded the bot's image interrogation and captioning capabilities from Florence-2 to state-of-the-art multimodal vision models:
+  * **`/blend`**: Automatically routes through **JoyCaption** for rich tag extraction, lighting analysis, and SDXL style composition.
+  * **`/blend-krea`**: Automatically routes through **Qwen2.5-VL (3B)** for photorealistic prose analysis natively aligned with Krea 2's Qwen text encoder and flow-matching physics.
+  * **`/describe`**: Added a per-run model choice (`model="JoyCaption"`, `model="Qwen2.5-VL"`, or `model="Florence-2"`). Remembers user preference across sequential runs in session memory (`user_vision_preferences`) to prevent unnecessary model reloading.
+* 🎯 **Architecture-Specific Prompt Synthesis (`parsers.py`)**:
+  * **`format_sdxl_prompt`**: Formats raw vision descriptions into clean, deduplicated comma-separated tags and removes conversational filler words.
+  * **`format_krea2_prompt`**: Refines vision descriptions into cinematic photographic natural prose tailored for Krea 2 flow-matching (lighting, camera framing, focal length).
+  * **`format_flux_prompt`**: Synthesizes high-density spatial prose without quality buzzwords (`masterpiece`, `8k`) that degrade Flux latent guidance.
+* 📊 **Multi-Architecture Prompt Embed**: Updated `/describe` embed to simultaneously present three distinct tailored prompts (`📸 Krea 2 Photorealism`, `⚡ Flux Detailed Prose`, `🎨 SDXL Tags`) with interactive 1-click generation buttons for each model family.
+* 🛡️ **Graceful Fallback & 8GB VRAM Guardrails**:
+  * Automatically detects node availability and falls back to Florence-2 without interrupting the user if a specialized VLM node is missing.
+  * Implemented proactive VRAM purging (`comfy_client.free_memory(unload_models=True)`) immediately following vision analysis to ensure maximum free VRAM for 8GB GPUs (RTX 5060 Ti).
+* 🧪 **Automated Efficacy Test Coverage (`suite_test.py:test_module70_vision_ai_multi_target_formatters`)**: Added end-to-end unit tests verifying multi-target prompt synthesis and workflow template integrity.
+
 ## [2026-09-11]
 
 ### Added
