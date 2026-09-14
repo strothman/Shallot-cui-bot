@@ -4,6 +4,18 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-14]
+
+### Maintenance
+* Component polish: Core slash commands, buttons, and Discord event handlers
+* Component polish: Updated `krea_cog.py`
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Prompt modifier parser (aspect ratios, styles, wildcards, and character shortcuts)
+* Component polish: Updated `system_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Automated verification test suite
+
+---
 ## [2026-09-13]
 
 ### Added

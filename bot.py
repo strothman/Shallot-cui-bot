@@ -10,6 +10,7 @@ import copy
 import re
 import subprocess
 import time
+import gc
 from collections import OrderedDict
 from typing import Optional, Dict, Any, List
 import discord
@@ -66,6 +67,7 @@ from parsers import (
     format_sdxl_prompt,
     format_flux_prompt,
     sanitize_describe_text,
+    deduplicate_intro_quality_tags,
     fuse_krea2_blend_prompt,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,
@@ -346,7 +348,7 @@ comfy_client = ComfyClient(server_address=COMFYUI_ADDRESS)
 
 # Setup Bot
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, max_messages=100)
 bot.comfy_client = comfy_client
 
 # Modular Services & Cogs
@@ -2329,13 +2331,25 @@ def format_presence_status_text(running: int, pending: int) -> tuple[str, discor
 _last_presence_sync_time: float = 0.0
 _presence_sync_task: Optional[asyncio.Task] = None
 
+_last_generation_activity: float = time.time()
+_idle_purged: bool = False
+IDLE_PURGE_TIMEOUT: float = float(os.getenv("IDLE_PURGE_TIMEOUT_SECONDS", "1800"))  # 30 minutes
+
+
+def touch_activity():
+    """Updates the last activity timestamp and resets the idle purge state."""
+    global _last_generation_activity, _idle_purged
+    _last_generation_activity = time.time()
+    _idle_purged = False
+
 
 async def sync_presence_now():
     """Immediately synchronizes bot presence with current ComfyUI and EngineAwareQueue state."""
     global _last_presence_sync_time
     _last_presence_sync_time = time.time()
     try:
-        queue = await fetch_comfyui_queue()
+        session = getattr(comfy_client, "session", None)
+        queue = await fetch_comfyui_queue(session=session)
         if queue is None:
             activity = discord.Activity(
                 type=discord.ActivityType.watching,
@@ -2361,6 +2375,7 @@ async def sync_presence_now():
 def on_engine_queue_change():
     """Throttled callback triggered on EngineAwareQueue enqueue/start/cancel/completion."""
     global _last_presence_sync_time, _presence_sync_task
+    touch_activity()
     if not bot.is_ready():
         return
     now = time.time()
@@ -2409,6 +2424,44 @@ async def periodic_scratch_maintenance():
 
 @periodic_scratch_maintenance.before_loop
 async def before_periodic_scratch_maintenance():
+    await bot.wait_until_ready()
+
+@tasks.loop(minutes=5)
+async def idle_memory_watchdog():
+    """Periodically purges ComfyUI model caches from RAM/VRAM and runs garbage collection after extended inactivity."""
+    global _idle_purged
+    try:
+        now = time.time()
+        idle_seconds = now - _last_generation_activity
+        if idle_seconds >= IDLE_PURGE_TIMEOUT and not _idle_purged:
+            # Check if engine queue has any running or pending jobs
+            running = 0
+            pending = 0
+            try:
+                from services.engine_queue import get_engine_queue
+                eq = get_engine_queue()
+                if eq:
+                    q_stat = eq.get_queue_status()
+                    running = 1 if q_stat.get("active_job") else 0
+                    pending = q_stat.get("queue_length", 0)
+            except Exception:
+                pass
+
+            if running == 0 and pending == 0:
+                logger.info(f"🧹 Idle memory watchdog: Bot has been idle for {int(idle_seconds // 60)}m. Purging ComfyUI RAM/VRAM cache...")
+                if comfy_client and hasattr(comfy_client, "free_memory"):
+                    try:
+                        await comfy_client.free_memory(unload_models=True, free_memory=True)
+                    except Exception as free_err:
+                        logger.debug(f"Idle watchdog free_memory warning: {free_err}")
+                await asyncio.to_thread(gc.collect)
+                _idle_purged = True
+                logger.info("✅ Idle memory purge complete: ComfyUI models evicted and Python garbage collected.")
+    except Exception as e:
+        logger.debug(f"Idle memory watchdog error: {e}")
+
+@idle_memory_watchdog.before_loop
+async def before_idle_memory_watchdog():
     await bot.wait_until_ready()
 
 @bot.event
@@ -2508,12 +2561,15 @@ async def on_ready():
             await comfy_client.start()
         except Exception as e:
             logger.warning(f"Failed to restart ComfyUI client on reconnect: {e}")
+    touch_activity()
     logger.info(f"Bot connected as {bot.user}")
     # Start background loops
     if not update_presence.is_running():
         update_presence.start()
     if not periodic_scratch_maintenance.is_running():
         periodic_scratch_maintenance.start()
+    if not idle_memory_watchdog.is_running():
+        idle_memory_watchdog.start()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
@@ -2547,6 +2603,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
+    touch_activity()
     # Process button clicks for views on old messages
     if interaction.type == discord.InteractionType.component:
         custom_id = interaction.data.get("custom_id", "")
@@ -3421,7 +3478,9 @@ async def execute_imagine(interaction: discord.Interaction, prompt: str, negativ
         return
     
     if prepend_quality:
-        cleaned_prompt = f"masterpiece, best quality, absurdres. {cleaned_prompt}"
+        if not re.search(r'\b(?:masterpiece|best quality)\b', cleaned_prompt, flags=re.IGNORECASE):
+            cleaned_prompt = f"masterpiece, best quality, absurdres. {cleaned_prompt}"
+    cleaned_prompt = deduplicate_intro_quality_tags(cleaned_prompt)
     
     # --- Handle style reference (attachment or URL) ---
     sref_image_name = None
@@ -4338,7 +4397,7 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
             sr_tag = f"--sr.{val}" if (val.isdigit() and len(val) == 2) else f"--{use_sr}"
         else:
             sr_tag = "--sr.90" if is_anime else "--sr.75"
-        base_parts.append("Semi-realism, masterpiece, best quality.")
+        base_parts.append("Semi-realism,")
     else:
         sr_tag = None
 
@@ -4362,6 +4421,14 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
             prefix, flag = char_flag_map[char_choice]
             base_parts.append(prefix)
             char_tag = flag
+        else:
+            char_prof = get_character(char_choice)
+            if char_prof:
+                weight_val = int(round(char_prof.default_weight * 100))
+                flag = f"--{char_prof.id}.{weight_val}"
+                prefix = f"{char_prof.id},"
+                base_parts.append(prefix)
+                char_tag = flag
     elif use_oga:
         base_parts.append("ogarla,")
         char_tag = "--ogarla.70"
@@ -4494,7 +4561,9 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
     cleaned_prompt, width, height = parse_aspect_ratio(cleaned_prompt, selected_model)
 
     if prepend_quality:
-        cleaned_prompt = f"masterpiece, best quality, absurdres. {cleaned_prompt}"
+        if not re.search(r'\b(?:masterpiece|best quality)\b', cleaned_prompt, flags=re.IGNORECASE):
+            cleaned_prompt = f"masterpiece, best quality, absurdres. {cleaned_prompt}"
+    cleaned_prompt = deduplicate_intro_quality_tags(cleaned_prompt)
 
     # Load appropriate workflow template depending on composition reference mode
     use_img2img = (comp_strength != "style")

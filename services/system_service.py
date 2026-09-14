@@ -119,29 +119,39 @@ def terminate_existing_comfyui(tracked_process=None) -> bool:
     return killed
 
 
-async def fetch_comfyui_queue(address: str = None) -> Optional[dict]:
+async def fetch_comfyui_queue(address: str = None, session: Optional[aiohttp.ClientSession] = None) -> Optional[dict]:
     """Fetch current queue status from ComfyUI REST API."""
     addr = address or COMFYUI_ADDRESS
     try:
         url = f"http://{addr}/queue"
-        async with aiohttp.ClientSession() as session:
+        if session and not session.closed:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
                 if resp.status == 200:
                     return await resp.json()
+        else:
+            async with aiohttp.ClientSession() as temp_session:
+                async with temp_session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
     except Exception:
         pass
     return None
 
 
-async def fetch_comfyui_system_stats(address: str = None) -> Optional[dict]:
+async def fetch_comfyui_system_stats(address: str = None, session: Optional[aiohttp.ClientSession] = None) -> Optional[dict]:
     """Fetch system stats from ComfyUI REST API."""
     addr = address or COMFYUI_ADDRESS
     try:
         url = f"http://{addr}/system_stats"
-        async with aiohttp.ClientSession() as session:
+        if session and not session.closed:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
                 if resp.status == 200:
                     return await resp.json()
+        else:
+            async with aiohttp.ClientSession() as temp_session:
+                async with temp_session.get(url, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
     except Exception:
         pass
     return None

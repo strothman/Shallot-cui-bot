@@ -1305,6 +1305,7 @@ class TestCUIBotFunctions(unittest.TestCase):
 
             client.session = MagicMock()
             client.session.post = mock_post
+            client.is_online = AsyncMock(return_value=True)
 
             with patch.object(client, "get_history_output", new=AsyncMock(return_value=mock_results)):
                 with patch("db.complete_pending_job", return_value=True):
@@ -3362,6 +3363,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         bert_cmd = commands["bertflow"]
         bert_params = {p.name: p for p in bert_cmd.parameters}
         self.assertIn("prompt", bert_params)
+        self.assertTrue(bert_params["prompt"].required)
         self.assertIn("aspect_ratio", bert_params)
         self.assertIn("character", bert_params)
         self.assertIn("celebrity", bert_params)
@@ -4305,6 +4307,118 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertIn("📋 Pending (2)", field_names)
             self.assertIn("Blend Portrait #1", field_values["📋 Pending (2)"])
             self.assertIn("Blend Portrait #2", field_values["📋 Pending (2)"])
+
+    def test_deduplicate_intro_quality_tags(self):
+        """Test deduplicate_intro_quality_tags removes duplicate intro lines."""
+        from parsers import deduplicate_intro_quality_tags
+
+        # Redundant duplicate from blend-sdxl screenshot
+        prompt1 = "masterpiece, best quality, absurdres. Semi-realism, masterpiece, best quality. A digital painting of a young woman with pale skin"
+        res1 = deduplicate_intro_quality_tags(prompt1)
+        self.assertNotIn("Semi-realism, masterpiece, best quality", res1)
+        self.assertEqual(res1.count("masterpiece, best quality"), 1)
+        self.assertTrue(res1.startswith("masterpiece, best quality, absurdres. Semi-realism,"))
+
+        # Reversed order
+        prompt2 = "Semi-realism, masterpiece, best quality. masterpiece, best quality, absurdres. A warrior in battle"
+        res2 = deduplicate_intro_quality_tags(prompt2)
+        self.assertEqual(res2.count("masterpiece, best quality"), 1)
+
+        # Clean prompt unchanged
+        prompt3 = "masterpiece, best quality, absurdres. A peaceful village"
+        res3 = deduplicate_intro_quality_tags(prompt3)
+        self.assertEqual(res3, prompt3)
+
+    def test_blend_prompt_no_redundant_intro(self):
+        """Test /blend-sdxl generation produces non-redundant prompt without duplicate quality intros."""
+        import bot
+        from unittest.mock import MagicMock, AsyncMock, patch
+        import asyncio
+
+        gen_data = {
+            "caption": "A digital painting of a young woman kneeling on a red carpet",
+            "detailed_caption": "A digital painting of a young woman kneeling on a red carpet with torn outfit",
+            "uploaded_image_name": "blend_test_img.png",
+            "ar": "16:9",
+            "sr": True,
+            "char_choice": "none",
+            "model_choice": "hyphoria",
+            "comp_strength": "style",
+            "sref_rand": "nosref"
+        }
+        bot.db.save_generation("gen_blend_dedup_test", gen_data)
+        bot.active_generations["gen_blend_dedup_test"] = gen_data
+
+        mock_interaction = MagicMock()
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_blend_dedup_test", desc_type="blend",
+                ar="16:9", use_sr=True, char_choice="none", use_sref_rand="nosref"
+            ))
+            mock_exec.assert_called_once()
+            called_prompt = mock_exec.call_args[1]["prompt"]
+            # Verify no redundant 'masterpiece, best quality' in prompt passed to execution
+            self.assertNotIn("Semi-realism, masterpiece, best quality", called_prompt)
+            self.assertIn("Semi-realism,", called_prompt)
+
+    def test_blend_character_lora_trigger_substitution(self):
+        """Test /blend-sdxl with character presets substitutes triggers cleanly without leaving aliases."""
+        from parsers import parse_loras
+
+        # Test Valerie trigger substitution
+        val_prompt = "Semi-realism, valerie, kneeling on a red carpet --sr.90 --valerie.85 --ar 16:9"
+        cleaned_val, loras_val = parse_loras(val_prompt)
+        self.assertIn("jen", cleaned_val)
+        self.assertNotIn("valerie", cleaned_val)
+        self.assertIn(("jen_epoch_5.safetensors", 0.85), loras_val)
+
+        # Test Sully trigger substitution
+        sul_prompt = "Semi-realism, sully, reading a scroll in library --sr.90 --sully.85 --ar 16:9"
+        cleaned_sul, loras_sul = parse_loras(sul_prompt)
+        self.assertIn("susa", cleaned_sul)
+        self.assertIn("black hair, thin rim glasses", cleaned_sul)
+        self.assertNotIn("sully", cleaned_sul)
+        self.assertIn(("susa_epoch_6.safetensors", 0.85), loras_sul)
+
+        # Test Cheri trigger substitution
+        che_prompt = "Semi-realism, cheri, walking in the garden --sr.90 --cheri.85 --ar 16:9"
+        cleaned_che, loras_che = parse_loras(che_prompt)
+        self.assertIn("cheri", cleaned_che)
+        self.assertIn("blonde hair", cleaned_che)
+        self.assertIn(("cheri_epoch_6.safetensors", 0.85), loras_che)
+
+    def test_idle_watchdog_and_reconnect_hygiene(self):
+        """Test idle watchdog tracking and ComfyClient start() reconnect hygiene."""
+        from comfy_client import ComfyClient
+        import bot
+        import services.system_service as system_service
+
+        client = ComfyClient()
+        # Verify initial state
+        self.assertIsNone(client.session)
+        self.assertIsNone(client.ws_task)
+
+        # Verify bot idle activity tracking
+        initial_activity = bot._last_generation_activity
+        bot._idle_purged = True
+        time.sleep(0.01)
+        bot.touch_activity()
+        self.assertGreater(bot._last_generation_activity, initial_activity)
+        self.assertFalse(bot._idle_purged)
+
+        # Verify max_messages cap on bot
+        self.assertEqual(bot.bot._connection.max_messages, 100)
+
+        # Verify fetch_comfyui_queue and fetch_comfyui_system_stats accept session parameter
+        async def _test_fetch():
+            res_q = await system_service.fetch_comfyui_queue(address="127.0.0.1:9999", session=None)
+            self.assertIsNone(res_q)
+            res_s = await system_service.fetch_comfyui_system_stats(address="127.0.0.1:9999", session=None)
+            self.assertIsNone(res_s)
+        asyncio.run(_test_fetch())
 
 
 if __name__ == "__main__":

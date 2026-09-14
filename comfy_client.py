@@ -80,21 +80,56 @@ class ComfyClient:
         return None
 
     async def start(self):
-        """Start the aiohttp session and websocket listener."""
+        """Start the aiohttp session and websocket listener cleanly, avoiding task and session leaks."""
+        if self.ws_task and not self.ws_task.done():
+            self.ws_task.cancel()
+            try:
+                await asyncio.wait_for(self.ws_task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
+            self.ws_task = None
+
+        if self.ws:
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+
+        if self.session and not self.session.closed:
+            try:
+                await self.session.close()
+            except Exception:
+                pass
+            self.session = None
+
         self.session = aiohttp.ClientSession()
         self.running = True
         self.loop = asyncio.get_running_loop()
         self.ws_task = asyncio.create_task(self._ws_listener())
 
     async def stop(self):
-        """Stop session and websocket listener."""
+        """Stop session and websocket listener cleanly."""
         self.running = False
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
         if self.ws_task:
             self.ws_task.cancel()
+            try:
+                await asyncio.wait_for(self.ws_task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
+            self.ws_task = None
         if self.session:
-            await self.session.close()
+            try:
+                await self.session.close()
+            except Exception:
+                pass
+            self.session = None
 
     async def _ws_listener(self):
         """Listen to ComfyUI websocket events and resolve futures."""

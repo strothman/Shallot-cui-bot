@@ -583,7 +583,7 @@ async def handle_generate_described(interaction: discord.Interaction, generation
     # Build prompt string with triggers, base description, LoRA flags, and aspect ratio
     prompt_parts = []
     if sr_flag:
-        prompt_parts.append("Semi-realism, masterpiece, best quality, absurdres.")
+        prompt_parts.append("Semi-realism,")
     if use_oga:
         prompt_parts.append("ogarla,")
 

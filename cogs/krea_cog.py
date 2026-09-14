@@ -57,7 +57,7 @@ class KreaCog(commands.Cog):
     async def bertflow(
         self,
         interaction: discord.Interaction,
-        prompt: str = "",
+        prompt: str,
         aspect_ratio: str = "1:1",
         character: str = None,
         celebrity: str = None,

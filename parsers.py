@@ -228,6 +228,37 @@ def clean_quadrant_prompts(prompts: list[str], raw_prompt: str = None) -> list[s
         cleaned.append(val)
     return cleaned
 
+
+def deduplicate_intro_quality_tags(prompt: str) -> str:
+    """
+    Cleans up redundant quality tags and semi-realism phrases in prompt intros,
+    preventing duplicate strings like 'masterpiece, best quality, absurdres. Semi-realism, masterpiece, best quality.'
+    """
+    if not prompt:
+        return prompt
+
+    p = prompt.strip()
+
+    # Clean up duplicate 'Semi-realism, masterpiece, best quality.' -> 'Semi-realism,'
+    p = re.sub(r'\bSemi-realism,\s*masterpiece,\s*best quality\.?\s*', 'Semi-realism, ', p, flags=re.IGNORECASE)
+
+    # If 'masterpiece, best quality' appears multiple times, keep only the first occurrence
+    matches = list(re.finditer(r'\bmasterpiece,\s*best quality\b', p, flags=re.IGNORECASE))
+    if len(matches) > 1:
+        first_end = matches[0].end()
+        head = p[:first_end]
+        tail = p[first_end:]
+        tail = re.sub(r',?\s*absurdres\.?', '', tail, flags=re.IGNORECASE)
+        tail = re.sub(r',?\s*masterpiece,\s*best quality\.?', '', tail, flags=re.IGNORECASE)
+        p = head + tail
+
+    # Clean up double punctuation / spaces
+    p = re.sub(r'\.\s*\.', '.', p)
+    p = re.sub(r',\s*,+', ',', p)
+    p = re.sub(r'\s+', ' ', p).strip()
+    return p
+
+
 def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
     """
     Parses <lora:name:weight> tags, and also supports shorthand --sr.XX or --srXX
@@ -332,7 +363,9 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             prompt = re.sub(r'[-—–]{1,2}(?:valerie|val)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
 
             # Silently inject trained trigger 'jen'
-            if "jen" not in prompt.lower():
+            if re.search(r'\b(?:valerie|val)\b', prompt, flags=re.IGNORECASE):
+                prompt = re.sub(r'\b(?:valerie|val)\b', 'jen', prompt, flags=re.IGNORECASE)
+            elif "jen" not in prompt.lower():
                 prompt = f"jen, {prompt}".strip()
         except Exception as e:
             logger.error(f"Error parsing --valerie shorthand: {e}")
@@ -374,7 +407,9 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
 
             # Silently inject trained trigger 'susa' and target traits
             susa_traits = "black hair, thin rim glasses"
-            if "susa" not in prompt.lower():
+            if re.search(r'\b(?:sully|sul)\b', prompt, flags=re.IGNORECASE):
+                prompt = re.sub(r'\b(?:sully|sul)\b', f'susa, {susa_traits}', prompt, flags=re.IGNORECASE)
+            elif "susa" not in prompt.lower():
                 prompt = f"susa, {susa_traits}, {prompt}".strip()
             elif "thin rim glasses" not in prompt.lower():
                 prompt = f"{prompt}, {susa_traits}".strip()
@@ -458,7 +493,10 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
 
             # Ensure trigger 'cheri' and required trait 'blonde hair'
             cheri_traits = "blonde hair"
-            if "cheri" not in prompt.lower():
+            if re.search(r'\b(?:cheri|che)\b', prompt, flags=re.IGNORECASE):
+                if "blonde hair" not in prompt.lower():
+                    prompt = re.sub(r'\b(?:cheri|che)\b', f'cheri, {cheri_traits}', prompt, flags=re.IGNORECASE)
+            elif "cheri" not in prompt.lower():
                 prompt = f"cheri, {cheri_traits}, {prompt}".strip()
             elif "blonde hair" not in prompt.lower():
                 prompt = f"{prompt}, {cheri_traits}".strip()
