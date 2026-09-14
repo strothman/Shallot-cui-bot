@@ -6,6 +6,20 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-13]
 
+### Added
+* 🔍 **Modern Multi-Tier AI Super-Resolution Engine (`v2.7.2`)**:
+  * **Modular Cog & Service Architecture**: Extracted upscaling from `bot.py` into [`cogs/upscale_cog.py`](cogs/upscale_cog.py) and [`services/upscale_service.py`](services/upscale_service.py) adhering to Rule 2.
+  * **Rich `/upscale` Slash Command**:
+    * `scale`: `2x (High Res 2K - Default)`, `4x (Ultra HD 4K)`, `1.5x (Subtle Boost)`.
+    * `mode`: `⚡ Fast Clean (Instant Model Super-Resolution)` vs `💎 Generative Clarity (Diffusion AI Micro-Detail Refiner)`.
+    * `style`: `🎨 General / Photorealistic (Remacri)` vs `🌸 Anime / Illustration (AnimeSharp)`.
+    * `prompt`: Optional text prompt conditioning for generative refiner passes.
+    * **Generative Clarity 2-Stage Refiner & Latent Canvas Capping**: Fixed potential VRAM exhaustion and system RAM paging by introducing `calculate_latent_refiner_dimensions()`, keeping the diffusion stage within SDXL's native sweet spot (max dimension 1280px, ~1 Megapixel) before model super-resolution (`4x-UltraSharp.pth` / `4x_foolhardy_Remacri.pth`) and lanczos fit to target dimensions. Generative upscaling now completes in ~16 seconds with <5GB VRAM.
+    * **Model Preset Alignment**: Replaced missing `4x-AnimeSharp.pth` with installed `4x-UltraSharp.pth` for anime/illustration presets.
+    * **2x High-Res Grid Buttons & Isolated Views**: Upgraded default upscale scale from `1.25x` to **`2.0x`** in `handle_upscale` and `UpscaleButtons`. Added `[🔍 High-Res (2x)]` and `[💎 Ultra 4K (4x)]` buttons to `IsolatedImageButtons`.
+    * **Bicubic Latent Upscaling**: Upgraded `workflows/img_highres_detail.json` and `workflows/img_highres_sref_detail.json` from blocky `nearest-exact` to smooth `bicubic`.
+    * Added automated test `test_upscale_service_and_cog_registration` in `suite_test.py` (95/95 automated tests passing 100% green).
+
 ### Fixed
 * 🎨 **Blend Workflow LoRA & Checkpoint Engine Tuning (`v2.7.1`)**:
   * **Calibrated IP-Adapter Weight for "Style Only"**: In `build_blend_workflow()`, `comp_strength == "style"` now applies a calibrated gentle `0.20` weight (instead of hardcoded `0.55`) with `end_at = 0.65` and `ease out` curve. This allows IP-Adapter to steer colors/atmosphere early on while yielding the final 35% of denoising entirely to the model and LoRAs.

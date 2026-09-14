@@ -12,12 +12,16 @@ This document preserves the comprehensive architectural audit of Shallot-CUI Bot
 
 | # | Domain | Core Issue | Priority | Status / Version |
 | :-: | :--- | :--- | :-: | :--- |
-| **1** | **Monolithic Structure** | `bot.py` originally 6,133 lines; down to 5,257 lines with 4 cogs extracted | **High** | 🟡 **In Progress** (`v2.6.8` - Video & System Cogs extracted; ~1,700 lines offloaded) |
+| **1** | **Monolithic Structure** | `bot.py` originally 6,133 lines; down to 5,111 lines with 5 cogs extracted | **High** | 🟡 **In Progress** (`v2.7.2` - Video, System, & Upscale Cogs extracted) |
 | **2** | **Disk / Scratch Cache** | `QUADRANT_CACHE_DIR` accumulates thousands of PNGs without auto-pruner | **High** | ✅ **Resolved** (`v2.6.5` - 6h pruner + vacuum) |
-| **3** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium** | Backlog (Submodule segregation) |
-| **4** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | ✅ **Resolved** (`v2.6.5` - concurrent `asyncio.gather`) |
-| **5** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Medium** | Single-user workstation (Intentionally bypassed) |
-| **6** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | ✅ **Resolved** (`v2.6.6` - `PipelineDefaults` & display resolution) |
+| **3** | **Upscaling Engine** | 1-pass naive fixed-1920px filter & 1.25x grid scale factor | **High** | ✅ **Resolved** (`v2.7.2` - Fast Clean + Generative Clarity 2K/4K) |
+| **4** | **Outpaint & Zoom** | Hardcoded SDXL anime checkpoint, naive 0.95 inpainting, undefined variable bug | **High (Next Week #1)** | 🔴 **Scheduled Backlog** (Multi-arch outpaint + seam blending) |
+| **5** | **Interaction Dispatcher** | 670-line `on_interaction` string prefix `if/elif` chain in `bot.py` | **High (Next Week #2)** | 🔴 **Scheduled Backlog** (Router table / persistent views) |
+| **6** | **Button Session DNA** | In-memory/SQLite temporary IDs expire on bot restart | **Medium (Next Week #3)** | 🔴 **Scheduled Backlog** (Embed metadata persistence) |
+| **7** | **Module Coupling** | `parsers.py` (2,100 lines) mixes text, math, PNG chunks, & workflows | **Medium (Next Week #4)** | 🔴 **Scheduled Backlog** (Submodule segregation) |
+| **8** | **Network Latency** | Sequential `session.get` calls when downloading multi-image batches | **Medium** | ✅ **Resolved** (`v2.6.5` - concurrent `asyncio.gather`) |
+| **9** | **Queue Fair-Share** | No per-user active job cap; single users can spam queue | **Low** | Single-user workstation (Intentionally bypassed) |
+| **10** | **Config Distribution** | Hardcoded denoise floats, CFG values, and checkpoint filenames in code | **Low** | ✅ **Resolved** (`v2.6.6` - `PipelineDefaults` & display resolution) |
 
 ---
 
@@ -175,4 +179,78 @@ Several default settings, denoise floats, and checkpoint filenames are hardcoded
 1. Centralized generation defaults, upscale denoise constants (`UPSCALE_DENOISE_SDXL`, `UPSCALE_DENOISE_FLUX_SUBTLE`, `UPSCALE_DENOISE_FLUX_MODERATE`), and variation mapping profiles into `class PipelineDefaults` in [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py).
 2. Implemented `get_checkpoint_display_name(checkpoint)` in [`config.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/config.py) with alias resolution for shorthand codes (`wai`, `realvis`, `juggernaut`, etc.), eliminating duplicate 18-line dictionaries in [`views.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/views.py).
 3. Replaced raw magic floats throughout [`bot.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py) with semantic `PipelineDefaults` references.
+
+---
+
+## 7. 🖼️ Outpaint Architecture Amnesia & Naive Inpainting (Priority #1 — Next Week)
+
+### The Problem
+In [`handle_outpaint`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py#L1879) and [`workflows/outpaint_lowres.json`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/workflows/outpaint_lowres.json):
+1. **Model Amnesia**: `outpaint_lowres.json` hardcodes `waiIllustriousSDXL_v170.safetensors`. If an image was generated with Flux or a photoreal checkpoint (RealVisXL / Juggernaut), clicking Outpaint/Zoom forces it through the WaiIllustrious anime model, corrupting style, faces, and palette.
+2. **Naive Inpainting (Ghost Limbs & Seams)**: Uses standard `VAEEncodeForInpaint` at a high denoise (`0.95`). Without differential diffusion or feathered seam blending, outpainted borders frequently invent duplicate bodies or visible square edge artifacts.
+3. **Hidden Runtime Bug**: Line 1908 references `prompt` (`parse_loras(original_prompt or prompt)`), but only `raw_prompt` is defined in scope.
+
+### Solution Blueprint
+1. Extract outpaint into `services/outpaint_service.py` and `cogs/outpaint_cog.py`.
+2. Inspect `checkpoint` and `is_flux` from generation metadata to route outpaint through the matching model architecture.
+3. Apply feathered boundary masks with seam blend denoising (`0.75–0.85` instead of flat `0.95`) to produce cohesive, seamless canvas extensions.
+4. Fix variable reference bug on line 1908.
+
+---
+
+## 8. 🖲️ The 670-Line `on_interaction` String Switch Monolith (Priority #2 — Next Week)
+
+### The Problem
+In [`bot.py` (L2486–L3156)](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/bot.py#L2486-L3156), all button clicks, modals, and select menus across Discord are caught in a massive, single-threaded `if/elif/elif` string prefix parsing block over 670 lines long.
+
+### Architectural Risk & Inefficiency
+- Any uncaught exception in a single handler can disrupt the global listener.
+- Difficult to unit test without constructing heavy mock `discord.Interaction` objects.
+- Violates Open/Closed Principle: every new interactive button requires modifying the core `bot.py` listener.
+
+### Solution Blueprint
+1. Build `services/interaction_dispatcher.py` with a decorator-based or dictionary-driven handler registry:
+   ```python
+   INTERACTION_HANDLERS = {
+       "upscale_run": handle_upscale,
+       "vary_subtle": handle_variation_subtle,
+       "vary_strong": handle_variation_strong,
+       "remix": handle_remix,
+       ...
+   }
+   ```
+2. Convert `on_interaction` into a clean 15-line router that extracts the prefix key and dispatches safely with isolated error boundaries.
+
+---
+
+## 9. ⏳ Ephemeral Session Expiration / Restart Amnesia (Priority #3 — Next Week)
+
+### The Problem
+Buttons on grids and isolated images rely on `generation_id` stored in a temporary dictionary or SQLite row (`get_generation(generation_id)`). If the bot restarts or 24 hours pass, clicking `U1–U4`, `V1–V4`, `Remix`, or `Reroll` fails with:
+> *"Could not find generation session data. It may have expired or the bot was restarted."*
+
+### Solution Blueprint
+1. Encode essential generation DNA directly into Discord UI components or persistent embed footers:
+   - Base seed, model alias, aspect ratio, prompt hash.
+2. If `generation_id` is missing from the cache on button click, reconstruct generation parameters on the fly from embed metadata and re-download the quadrant from the message attachment.
+3. Completely eliminates dead buttons after bot restarts.
+
+---
+
+## 10. 📦 `parsers.py` Single-Responsibility Modularization (Priority #4 — Next Week)
+
+### The Problem
+[`parsers.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/parsers.py) spans over 2,100 lines and combines four distinct domains:
+1. Discord prompt & flag parsing (`--ar`, `--sref`, `--cref`, `--smart`, `--magic`, wildcards).
+2. ComfyUI workflow graph mutation (`apply_loras_to_workflow`, `apply_face_detailer_to_workflow`).
+3. Binary PNG metadata reading and A1111 parameter parsing.
+4. Aspect ratio math and bounding box calculations.
+
+### Solution Blueprint
+Decompose `parsers.py` into a focused `parsers/` package:
+- `parsers/flags.py`: Prompt flags, regexes, and wildcards.
+- `parsers/workflow_graph.py`: Node graph transformations and LoRA injection.
+- `parsers/metadata.py`: PNG chunk reading and embedded workflow extraction.
+- `parsers/dimensions.py`: Aspect ratio resolution and Wan dimension math.
+- Re-export all functions from `parsers/__init__.py` for 100% backward compatibility.
 

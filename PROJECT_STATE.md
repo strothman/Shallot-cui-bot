@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.7.1`  
+> **Current Version:** `v2.7.2`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (94/94 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (95/95 Automated Tests Passing)  
 
 ---
 
@@ -28,6 +28,8 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, coordinates startup lifecycle, and dispatches background tasks. |
+| [`cogs/upscale_cog.py`](cogs/upscale_cog.py) | **Upscale Desk (Modular Cog):** Houses modernized `/upscale` with choices for scaling (2x, 4x, 1.5x), engine mode (Fast Clean vs Generative Clarity), style, and prompt guidance. |
+| [`services/upscale_service.py`](services/upscale_service.py) | **Upscale Service:** Executes multi-tier AI super-resolution (fast Remacri model passes with smart lanczos aspect fit, and 2-stage generative clarity refiners with SDXL low-denoise KSampler). |
 | [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/purge-vram`, `/queue`), model discovery (`/models`, `/scan_models`), and settings (`/negative`, `/style`, `/prompt`). |
 | [`services/system_service.py`](services/system_service.py) | **System Service:** Executes ComfyUI process lifecycle, GPU telemetry, VRAM purging, model auto-scanning, and configuration persistence. |
 | [`cogs/video_cog.py`](cogs/video_cog.py) | **Video Desk (Modular Cog):** Houses `/video`, `/ltx`, and `"Animate to Video"` context menus. |
@@ -142,6 +144,11 @@ The tool is built with **automatic state resumption**:
 11. **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**: Implemented intelligent model-affinity job batching across SDXL, Flux.1, Krea 2, Wan 2.2, LTX, and Florence-2. Groups pending jobs targeting the active architecture to eliminate PCIe model weight swapping (saving 20–45s per switch), automatically clears GPU VRAM during transitions, and incorporates anti-starvation age escalation with an upgraded `/queue` dashboard.
 12. **Semantic Workflow Adapter & Node Decoupling (`services/workflow_adapter.py`)**: Replaced brittle hardcoded numeric node IDs (`wf["3"]`, `wf["5"]`, `wf["6"]`, `wf["75"]`, `wf["76"]`, `wf["822"]`) with semantic discovery based on class types, titles, parameter signatures, and graph link tracing. Insulates the bot from GUI renumbering, verified through randomized node-scrambling tests.
 13. **Centralized Pipeline Defaults & Semantic Constants (`config.py` & `v2.6.6`)**: Consolidated generation checkpoints, upscale denoise floats (`UPSCALE_DENOISE_SDXL = 0.55`, `UPSCALE_DENOISE_FLUX_SUBTLE = 0.26`, `UPSCALE_DENOISE_FLUX_MODERATE = 0.35`), and variation similarity profiles into `class PipelineDefaults`. Added `get_checkpoint_display_name()` with shorthand alias resolution, eliminating duplicate dictionaries in `views.py`, and replaced raw magic floats in `bot.py`.
+14. **Modern Multi-Tier AI Super-Resolution Engine (`v2.7.2`)**: Overhauled the amateur fixed-1920px 1-pass filter into a professional upscaling suite:
+    * Created [`services/upscale_service.py`](services/upscale_service.py) supporting **Fast Clean** (Remacri/AnimeSharp model super-resolution with smart lanczos downscaling to target exact multiples) and **Generative Clarity** (2-stage latent refiner with SDXL low-denoise KSampler).
+    * Created [`cogs/upscale_cog.py`](cogs/upscale_cog.py) for the `/upscale` slash command with choices for `scale` (2x, 4x, 1.5x), `mode` (Fast Clean vs Generative Clarity), `style` (General vs Anime), and optional prompt guidance.
+    * Upgraded grid button upscale (`U1–U4`) default factor from `1.25x` to **`2.0x`** (2048px) and added `[🔍 High-Res (2x)]` and `[💎 Ultra 4K (4x)]` buttons to isolated views.
+    * Upgraded latent interpolation in high-res detail workflows from blocky `nearest-exact` to smooth `bicubic`.
 
 ### 🛡️ Core Architecture Rules (Mandatory for Future Development)
 * **Async Event Loop Hygiene (Rule 1 in [`AGENTS.md`](AGENTS.md)):** Never run blocking PIL operations or synchronous disk I/O on the primary asyncio event loop. All image crops, upscales, grid stitches, and file saves must use the non-blocking `*_async` functions in [`image_utils.py`](image_utils.py) or `asyncio.to_thread()`.
@@ -170,16 +177,20 @@ The tool is built with **automatic state resumption**:
     3. **Turnkey Installer Package:** 1-click `setup.bat` (creates isolated `.venv` and installs dependencies), `run_bot.bat` launcher, and a friendly 5-minute setup guide (`README_FRIEND.md`).
   * 📋 **Detailed Feasibility Plan:** See [`docs/client_distribution_packaging_plan.md`](docs/client_distribution_packaging_plan.md) for full gap analysis, architecture adapters, and packaging roadmap.
 
-* **Phase 5: Technical Debt & Performance Optimizations [ACTIVE ROADMAP & AUDIT]**
-  * Preserved full architectural gap analysis covering the 6,100-line `bot.py` monolith, unchecked quadrant scratch cache accumulation, monolithic `parsers.py`, sequential media downloading, and queue concurrency limits.
-  * 📋 **Detailed Audit & Solutions:** See [`docs/technical_debt_and_optimization_audit.md`](docs/technical_debt_and_optimization_audit.md) for full issue breakdowns, risk analyses, and implementation blueprints.
+* **Phase 5: Technical Debt & Performance Optimizations [SCHEDULED FOR NEXT WEEK]**
+  * Preserved full architectural gap analysis and solution blueprints in [`docs/technical_debt_and_optimization_audit.md`](docs/technical_debt_and_optimization_audit.md).
+  * **Prioritized Implementation Backlog (Next Week):**
+    1. **Outpaint Multi-Architecture Awareness & Seam Blending (Priority #1)**: Eliminate the hardcoded WaiIllustrious anime model on non-SDXL images and fix the hidden variable reference bug.
+    2. **Decompose 670-Line `on_interaction` String Dispatcher (Priority #2)**: Replace cascading string prefix matching with a table-driven interaction registry.
+    3. **Persistent Button DNA (Priority #3)**: Embed generation DNA into UI components to permanently eliminate "Session Data Expired" errors on older grids after bot restarts.
+    4. **Modularize `parsers.py` (Priority #4)**: Segregate the 2,100-line junk drawer into focused submodules (`flags.py`, `workflow_graph.py`, `metadata.py`, `dimensions.py`).
 
 ---
 
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **88 / 88 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **95 / 95 tests passing** (`python suite_test.py`).
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

@@ -384,6 +384,14 @@ from services.video_service import (
     execute_ltx_core,
 )
 from cogs.system_cog import SystemCog
+from cogs.upscale_cog import UpscaleCog
+from services.upscale_service import (
+    execute_upscale_core,
+    build_fast_upscale_workflow,
+    build_generative_upscale_workflow,
+    calculate_target_dimensions,
+    calculate_latent_refiner_dimensions,
+)
 from services.system_service import (
     SETTINGS_FILE,
     settings,
@@ -403,17 +411,20 @@ _vision_cog = VisionCog(bot)
 _krea_cog = KreaCog(bot)
 _video_cog = VideoCog(bot)
 _system_cog = SystemCog(bot)
+_upscale_cog = UpscaleCog(bot)
 try:
     loop = asyncio.get_running_loop()
     loop.create_task(bot.add_cog(_vision_cog))
     loop.create_task(bot.add_cog(_krea_cog))
     loop.create_task(bot.add_cog(_video_cog))
     loop.create_task(bot.add_cog(_system_cog))
+    loop.create_task(bot.add_cog(_upscale_cog))
 except RuntimeError:
     asyncio.run(bot.add_cog(_vision_cog))
     asyncio.run(bot.add_cog(_krea_cog))
     asyncio.run(bot.add_cog(_video_cog))
     asyncio.run(bot.add_cog(_system_cog))
+    asyncio.run(bot.add_cog(_upscale_cog))
 
 # Backward-compatibility re-exports for external test suites and legacy imports
 blend_image_context = _vision_cog.blend_image_context
@@ -433,6 +444,8 @@ cui_stop_command = _system_cog.cui_stop
 cui_status_command = _system_cog.cui_status
 free_vram_command = _system_cog.free_vram
 purge_vram_command = _system_cog.purge_vram
+upscale = _upscale_cog.upscale
+upscale_command = _upscale_cog.upscale
 queue_command = _system_cog.queue_status
 models_command = _system_cog.models
 scan_models_command = _system_cog.scan_models
@@ -917,7 +930,7 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
 
 
 
-async def handle_upscale(interaction: discord.Interaction, generation_id: str, index: int, force_new_seed: bool = False, upscale_scale: str = "1.25"):
+async def handle_upscale(interaction: discord.Interaction, generation_id: str, index: int, force_new_seed: bool = False, upscale_scale: str = "2.0"):
     # Defer response as image generation might take time
     await safe_defer(interaction, thinking=True)
 
@@ -956,7 +969,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
     try:
         upscale_factor = float(upscale_scale)
     except (ValueError, TypeError):
-        upscale_factor = 1.25
+        upscale_factor = 2.0
 
     # 1. Retrieve quadrant bytes from cache
     q_bytes = await get_quadrant_bytes_async(generation_id, index)
@@ -1059,7 +1072,7 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
             try:
                 upscale_factor = float(upscale_scale)
             except ValueError:
-                upscale_factor = 1.25
+                upscale_factor = 2.0
 
             if "10" in workflow and workflow["10"].get("class_type") == "LatentUpscaleBy":
                 workflow["10"]["inputs"]["scale_by"] = upscale_factor
@@ -2592,7 +2605,7 @@ async def on_interaction(interaction: discord.Interaction):
                 generation_id = parts[1]
                 try:
                     index = int(parts[2])
-                    scale = parts[3] if len(parts) >= 4 else "1.25"
+                    scale = parts[3] if len(parts) >= 4 else "2.0"
                     await handle_upscale(interaction, generation_id, index, force_new_seed=True, upscale_scale=scale)
                 except ValueError:
                     pass
@@ -4063,72 +4076,7 @@ async def flux_character_autocomplete(interaction: discord.Interaction, current:
 
 
 
-@bot.tree.command(name="upscale", description="Upscale an uploaded image to 1920px (long side).")
-@app_commands.describe(
-    image="The image file you want to upscale"
-)
-async def upscale(interaction: discord.Interaction, image: discord.Attachment):
-    # Defer response since upscaling takes time
-    await safe_defer(interaction, thinking=True)
-    
-    # Check if attachment is an image
-    if not image.content_type or not image.content_type.startswith("image/"):
-        await interaction.followup.send("Please upload a valid image file (PNG/JPG).")
-        return
-        
-    try:
-        # Download image from Discord
-        image_bytes = await image.read()
-        
-        # Upload image to ComfyUI
-        logger.info(f"Uploading image {image.filename} to ComfyUI...")
-        upload_result = await comfy_client.upload_image(image_bytes, image.filename)
-        uploaded_name = upload_result.get("name")
-        if not uploaded_name:
-            await interaction.followup.send("Failed to upload the image to ComfyUI server.")
-            return
-            
-        logger.info(f"Image uploaded successfully. ComfyUI filename: {uploaded_name}")
-        
-        # Load upscaler workflow
-        workflow_path = "workflows/UPSCALER TO 1920 v2_api.json"
-        try:
-            with open(workflow_path, "r", encoding="utf-8") as f:
-                workflow = json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading upscale workflow file: {e}")
-            await interaction.followup.send("Failed to load upscale workflow template.")
-            return
-            
-        # Configure upscale workflow parameters
-        # Node "1" is LoadImage in UPSCALER TO 1920 v2.json
-        workflow["1"]["inputs"]["image"] = uploaded_name
-        
-        # Node "6" is SaveImageExtended
-        # Apply save folder prefix
-        workflow["6"]["inputs"]["filename_prefix"] = f"{get_dated_save_prefix('upscale')}v1920_"
-        
-        # Run workflow
-        logger.info(f"Executing upscaler workflow for {uploaded_name}...")
-        images = await comfy_client.generate(workflow, timeout=14400)
-        
-        if not images:
-            await interaction.followup.send("ComfyUI did not return any upscaled image.")
-            return
-            
-        # Send the upscaled image back to Discord
-        upscaled_file_io = io.BytesIO(images[0])
-        file = discord.File(fp=upscaled_file_io, filename=f"upscaled_{image.filename}")
-        
-        embed = discord.Embed(
-            title="Image Upscale Complete", 
-            description=f"Upscaled to 1920px (long side) using `4x_foolhardy_Remacri.pth` model."
-        )
-        embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id})")
-        
-        await interaction.followup.send(embed=embed, file=file)
-    except Exception as e:
-        logger.error(f"Error executing upscale command: {e}")
+# /upscale - Modularized into cogs/upscale_cog.py & services/upscale_service.py
 
 # /video, /ltx, and 'Animate to Video' context menu - Modularized into cogs/video_cog.py & services/video_service.py
 

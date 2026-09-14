@@ -118,15 +118,15 @@ class IsolatedImageButtons(discord.ui.View):
 
         # Row 0: Upscale & Variation Options (4 buttons max)
         self.add_item(discord.ui.Button(
-            label="⚡ Detailed Upscale (1.25x)",
+            label="🔍 High-Res (2x)",
             style=discord.ButtonStyle.success,
-            custom_id=f"upscale_run:{self.generation_id}:{self.index}:1.25",
+            custom_id=f"upscale_run:{self.generation_id}:{self.index}:2.0",
             row=0
         ))
         self.add_item(discord.ui.Button(
-            label="⚡ Creative Upscale (1.5x)",
+            label="💎 Ultra 4K (4x)",
             style=discord.ButtonStyle.success,
-            custom_id=f"upscale_run:{self.generation_id}:{self.index}:1.5",
+            custom_id=f"upscale_run:{self.generation_id}:{self.index}:4.0",
             row=0
         ))
         self.add_item(discord.ui.Button(
@@ -199,7 +199,7 @@ class IsolatedImageButtons(discord.ui.View):
 
 
 class UpscaleButtons(discord.ui.View):
-    def __init__(self, generation_id: str, index: int, upscale_scale: str = "1.25", has_sref: bool = False):
+    def __init__(self, generation_id: str, index: int, upscale_scale: str = "2.0", has_sref: bool = False):
         super().__init__(timeout=None) # Persistent buttons
         self.generation_id = generation_id
         self.index = index

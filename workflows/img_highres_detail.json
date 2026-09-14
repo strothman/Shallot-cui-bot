@@ -36,7 +36,7 @@
   },
   "10": {
     "inputs": {
-      "upscale_method": "nearest-exact",
+      "upscale_method": "bicubic",
       "scale_by": 2,
       "samples": [
         "31",

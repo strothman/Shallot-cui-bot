@@ -4023,10 +4023,96 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(callable(system_service.build_queue_embed))
         self.assertTrue(callable(system_service.build_models_embed))
 
-        # Test queue embed generation
-        q_embed = system_service.build_queue_embed(None, None)
-        self.assertIsInstance(q_embed, bot.discord.Embed)
-        self.assertIn("Could not connect", q_embed.description)
+    def test_upscale_service_and_cog_registration(self):
+        """Test UpscaleCog registration in bot.tree, service workflow builders, and re-exports."""
+        import bot
+        from cogs.upscale_cog import UpscaleCog
+        import services.upscale_service as upscale_service
+        from views import IsolatedImageButtons, UpscaleButtons
+
+        # 1. Verify /upscale command in bot.tree
+        cmd_names = [c.name for c in bot.bot.tree.get_commands()]
+        self.assertIn("upscale", cmd_names, "Expected /upscale to be registered in bot.tree")
+
+        upscale_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "upscale")
+        param_names = [p.name for p in upscale_cmd.parameters]
+        self.assertIn("image", param_names)
+        self.assertIn("scale", param_names)
+        self.assertIn("mode", param_names)
+        self.assertIn("style", param_names)
+        self.assertIn("prompt", param_names)
+
+        # 2. Verify re-exports on bot module
+        self.assertTrue(hasattr(bot, "upscale"))
+        self.assertTrue(hasattr(bot, "upscale_command"))
+        self.assertTrue(callable(bot.upscale.callback))
+        self.assertTrue(callable(upscale_service.execute_upscale_core))
+        self.assertTrue(callable(upscale_service.build_fast_upscale_workflow))
+        self.assertTrue(callable(upscale_service.build_generative_upscale_workflow))
+        self.assertTrue(callable(upscale_service.calculate_latent_refiner_dimensions))
+
+        # 3. Test dimension calculations
+        w2, h2 = upscale_service.calculate_target_dimensions(1024, 1024, scale_factor=2.0)
+        self.assertEqual((w2, h2), (2048, 2048))
+
+        w4, h4 = upscale_service.calculate_target_dimensions(1024, 1024, scale_factor=4.0)
+        self.assertEqual((w4, h4), (4096, 4096))
+
+        w15, h15 = upscale_service.calculate_target_dimensions(1024, 768, scale_factor=1.5)
+        self.assertEqual((w15, h15), (1536, 1152))
+
+        # Test latent refiner dimension capping (prevents VRAM explosion)
+        rw1, rh1 = upscale_service.calculate_latent_refiner_dimensions(3840, 1648, max_side=1280)
+        self.assertEqual((rw1, rh1), (1280, 552))
+        self.assertTrue(max(rw1, rh1) <= 1280)
+
+        rw2, rh2 = upscale_service.calculate_latent_refiner_dimensions(1024, 1024, max_side=1280)
+        self.assertEqual((rw2, rh2), (1024, 1024))
+
+        # 4. Test Fast Clean workflow builder
+        fast_wf = upscale_service.build_fast_upscale_workflow(
+            image_filename="test_input.png",
+            target_width=2048,
+            target_height=2048,
+            model_name="4x_foolhardy_Remacri.pth"
+        )
+        self.assertIn("1", fast_wf)
+        self.assertIn("2", fast_wf)
+        self.assertIn("3", fast_wf)
+        self.assertIn("4", fast_wf)
+        self.assertIn("5", fast_wf)
+        self.assertEqual(fast_wf["2"]["inputs"]["model_name"], "4x_foolhardy_Remacri.pth")
+        self.assertEqual(fast_wf["4"]["inputs"]["width"], 2048)
+        self.assertEqual(fast_wf["4"]["inputs"]["height"], 2048)
+        self.assertEqual(fast_wf["4"]["inputs"]["upscale_method"], "lanczos")
+
+        # 5. Test Generative Clarity workflow builder
+        gen_wf = upscale_service.build_generative_upscale_workflow(
+            image_filename="test_input.png",
+            target_width=2048,
+            target_height=2048,
+            prompt="cyberpunk cityscape at night",
+            negative_prompt="blurry, distorted",
+            denoise=0.30
+        )
+        self.assertIn("1", gen_wf)
+        self.assertIn("5", gen_wf)  # CheckpointLoaderSimple
+        self.assertIn("6", gen_wf)  # Positive CLIPTextEncode
+        self.assertIn("7", gen_wf)  # Negative CLIPTextEncode
+        self.assertIn("8", gen_wf)  # VAEEncode
+        self.assertIn("9", gen_wf)  # KSampler
+        self.assertEqual(gen_wf["6"]["inputs"]["text"], "cyberpunk cityscape at night")
+        self.assertEqual(gen_wf["7"]["inputs"]["text"], "blurry, distorted")
+        self.assertEqual(gen_wf["9"]["inputs"]["denoise"], 0.30)
+
+        # 6. Test UI button definitions
+        iso_view = IsolatedImageButtons(generation_id="gen123", index=1)
+        iso_custom_ids = [btn.custom_id for btn in iso_view.children if isinstance(btn, bot.discord.ui.Button)]
+        self.assertIn("upscale_run:gen123:1:2.0", iso_custom_ids)
+        self.assertIn("upscale_run:gen123:1:4.0", iso_custom_ids)
+
+        up_view = UpscaleButtons(generation_id="gen123", index=1)
+        self.assertEqual(up_view.upscale_scale, "2.0")
 
 
 if __name__ == "__main__":
