@@ -21,6 +21,7 @@ from parsers import (
     format_sdxl_prompt,
     format_krea2_prompt,
     format_flux_prompt,
+    sanitize_describe_text,
     build_scapes_prompt,
     clean_midjourney_flags,
 )
@@ -137,12 +138,10 @@ async def run_vision_interrogate(
     # Resolve target engine
     norm_engine = (engine or "auto").lower()
     if norm_engine == "auto":
-        if target_arch == "krea2":
+        if target_arch in ["krea2", "flux"]:
             norm_engine = "qwen2.5-vl"
-        elif target_arch in ["sdxl", "flux"]:
-            norm_engine = "joycaption"
         else:
-            norm_engine = "joycaption"
+            norm_engine = "florence2"
 
     engine_order = []
     if "joy" in norm_engine:
@@ -161,7 +160,8 @@ async def run_vision_interrogate(
     def _extract_vision_texts(res_dict):
         extracted = []
         if isinstance(res_dict, dict):
-            for nid in ["4", "3", "9", "10", "11", "19", "20", "21"]:
+            # Prioritize text-replaced downstream nodes (9, 10, 11, 19, 20, 21) before raw runs (4, 3)
+            for nid in ["9", "10", "11", "19", "20", "21", "4", "3"]:
                 if nid in res_dict:
                     ndata = res_dict[nid]
                     if isinstance(ndata, dict):
@@ -170,11 +170,11 @@ async def run_vision_interrogate(
                                 val = ndata[k]
                                 val_str = val[0] if isinstance(val, list) else str(val)
                                 if val_str and val_str.strip():
-                                    extracted.append(val_str.strip())
+                                    extracted.append(sanitize_describe_text(val_str.strip()))
                     elif isinstance(ndata, list) and ndata:
                         val_str = str(ndata[0]).strip()
                         if val_str:
-                            extracted.append(val_str)
+                            extracted.append(sanitize_describe_text(val_str))
         return extracted
 
     for eng_name, wf_path in engine_order:
@@ -233,8 +233,8 @@ async def run_vision_interrogate(
     except Exception as e:
         logger.debug(f"Could not purge VRAM after vision model: {e}")
 
-    raw_text = texts[0] if texts else "A detailed scene"
-    detailed_text = texts[1] if len(texts) > 1 else raw_text
+    raw_text = sanitize_describe_text(texts[0]) if texts else "A detailed scene"
+    detailed_text = sanitize_describe_text(texts[1]) if len(texts) > 1 else raw_text
 
     # Synthesize tailored prompts for each architecture
     sdxl_prompt = format_sdxl_prompt(raw_text)
@@ -275,7 +275,7 @@ async def run_florence_interrogate(image_url: str, client: ComfyClient = None) -
                     return None
                 image_bytes = await resp.read()
 
-        res = await run_vision_interrogate(image_bytes=image_bytes, engine="joycaption", target_arch="sdxl", client=client)
+        res = await run_vision_interrogate(image_bytes=image_bytes, engine="florence2", target_arch="sdxl", client=client)
         return res.get("sdxl_prompt") if res else None
     except Exception as e:
         logger.error(f"Error running vision interrogate for adopted post: {e}")
@@ -318,8 +318,8 @@ async def execute_blend_core(
             return
 
         uploaded_name = vision_res["uploaded_name"]
-        raw_caption = vision_res.get("sdxl_prompt") or ""
-        raw_detailed_caption = vision_res.get("sdxl_detailed_prompt") or vision_res.get("caption") or raw_caption
+        raw_caption = sanitize_describe_text(vision_res.get("sdxl_prompt") or "")
+        raw_detailed_caption = sanitize_describe_text(vision_res.get("sdxl_detailed_prompt") or vision_res.get("caption") or raw_caption)
         caption = raw_caption
         detailed_caption = raw_detailed_caption
 
@@ -495,18 +495,18 @@ async def execute_describe_core(interaction: discord.Interaction, image: discord
         engine_display = vision_res.get("engine_used", "Vision Model")
 
         # Select primary description prompt
-        primary_prompt = sdxl_prompt or flux_prompt or krea2_prompt
+        primary_prompt = sanitize_describe_text(sdxl_prompt or flux_prompt or krea2_prompt)
         disp_prompt = (primary_prompt[:1021] + "...") if len(primary_prompt) > 1024 else primary_prompt
 
         generation_id = str(random.randint(100000, 999999))
         gen_data = {
-            "caption": primary_prompt,
-            "display_prompt": primary_prompt,
-            "prompt": primary_prompt,
-            "detailed_caption": flux_prompt or primary_prompt,
-            "krea2_prompt": krea2_prompt or primary_prompt,
-            "sdxl_prompt": sdxl_prompt or primary_prompt,
-            "flux_prompt": flux_prompt or primary_prompt,
+            "caption": sanitize_describe_text(primary_prompt),
+            "display_prompt": sanitize_describe_text(primary_prompt),
+            "prompt": sanitize_describe_text(primary_prompt),
+            "detailed_caption": sanitize_describe_text(flux_prompt or primary_prompt),
+            "krea2_prompt": sanitize_describe_text(krea2_prompt or primary_prompt),
+            "sdxl_prompt": sanitize_describe_text(sdxl_prompt or primary_prompt),
+            "flux_prompt": sanitize_describe_text(flux_prompt or primary_prompt),
             "engine": engine_display
         }
         db.save_generation(generation_id, gen_data)
@@ -541,6 +541,7 @@ async def handle_generate_described(interaction: discord.Interaction, generation
         if not krea2_prompt:
             await interaction.followup.send("No Krea 2 prompt found in session.", ephemeral=True)
             return
+        krea2_prompt = sanitize_describe_text(krea2_prompt)
         char_val = "ogarla.85" if use_oga else None
         import bot as bot_module
         bertflow_func = getattr(bot_module, "execute_bertflow", None)
@@ -560,6 +561,8 @@ async def handle_generate_described(interaction: discord.Interaction, generation
     if not base_prompt:
         await interaction.followup.send(f"No prompt found in session.", ephemeral=True)
         return
+
+    base_prompt = sanitize_describe_text(base_prompt)
 
     # Resolve sr_flag from use_sr parameter
     sr_flag = None

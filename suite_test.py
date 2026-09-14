@@ -3167,6 +3167,72 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(hasattr(bot, "run_vision_interrogate"))
         self.assertTrue(hasattr(bot, "user_vision_preferences"))
 
+    def test_module70b_describe_overall_to_general_sanitization(self):
+        """Test that the word 'overall' cannot be used in /describe and is replaced with 'general' (preserving case and leaving 'overalls' intact)."""
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        from parsers import sanitize_describe_text, format_sdxl_prompt, format_flux_prompt, format_krea2_prompt
+        from services.vision_service import execute_describe_core
+        import db
+
+        # 1. Direct unit test of sanitize_describe_text
+        self.assertEqual(sanitize_describe_text("The overall mood is serene."), "The general mood is serene.")
+        self.assertEqual(sanitize_describe_text("Overall, the lighting is warm."), "General, the lighting is warm.")
+        self.assertEqual(sanitize_describe_text("OVERALL ATMOSPHERE"), "GENERAL ATMOSPHERE")
+        self.assertEqual(sanitize_describe_text("She is wearing blue denim overalls in a barn."), "She is wearing blue denim overalls in a barn.")
+        self.assertEqual(sanitize_describe_text("an overall aesthetic with overalls."), "a general aesthetic with overalls.")
+        self.assertEqual(sanitize_describe_text(""), "")
+        self.assertEqual(sanitize_describe_text(None), "")
+
+        # 2. Test formatters with 'overall'
+        raw_joy = "The image captures a woman with an overall graceful posture, soft lighting, 8k resolution."
+        sdxl_out = format_sdxl_prompt(raw_joy)
+        self.assertNotIn("overall", sdxl_out.lower())
+        self.assertIn("general", sdxl_out.lower())
+
+        raw_flux = "This is an image of a tranquil landscape with an overall misty ambiance, masterpiece."
+        flux_out = format_flux_prompt(raw_flux)
+        self.assertNotIn("overall", flux_out.lower())
+        self.assertIn("general", flux_out.lower())
+
+        raw_krea = "The photo features an astronaut on Mars with an overall cinematic composition."
+        krea_out = format_krea2_prompt(raw_krea)
+        self.assertNotIn("overall", krea_out.lower())
+        self.assertIn("general", krea_out.lower())
+
+        # 3. Test execute_describe_core end-to-end sanitization
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = 77777
+        mock_interaction.user.name = "DescribeUser"
+        mock_interaction.response.send_message = AsyncMock()
+
+        mock_image = MagicMock()
+        mock_image.content_type = "image/png"
+        mock_image.filename = "test_overall.png"
+        mock_image.url = "https://example.com/test_overall.png"
+        mock_image.read = AsyncMock(return_value=b"fake_image_bytes")
+
+        mock_vision_res = {
+            "caption": "an overall sunny day, 1girl, smiling, overalls",
+            "sdxl_prompt": "an overall sunny day, 1girl, smiling, overalls",
+            "flux_prompt": "An overall sunny day with a girl smiling in overalls",
+            "krea2_prompt": "An overall sunny day with a girl smiling in overalls",
+            "engine_used": "JoyCaption"
+        }
+
+        with patch("services.vision_service.run_vision_interrogate", new=AsyncMock(return_value=mock_vision_res)), \
+             patch("services.vision_service.edit_original_fallback", new=AsyncMock()) as mock_edit:
+            asyncio.run(execute_describe_core(mock_interaction, mock_image, model="joycaption"))
+
+            mock_edit.assert_called_once()
+            call_kwargs = mock_edit.call_args[1]
+            embed = call_kwargs["embed"]
+            desc_val = embed.fields[0].value
+            self.assertNotIn("overall ", desc_val.lower())
+            self.assertIn("general", desc_val.lower())
+            # 'overalls' (the clothing) should be preserved
+            self.assertIn("overalls", desc_val.lower())
+
     def test_module72_blend_studio_debloated_unified_dashboard(self):
         """Test the de-bloated unified 1-page Blend Studio layout, 1-click toggles, cycles, and blend generation."""
         import bot

@@ -1704,6 +1704,38 @@ RE_PROSE_FILLER = re.compile(
     re.IGNORECASE
 )
 
+RE_AN_OVERALL = re.compile(r"\b(an)\s+overall\b", re.IGNORECASE)
+RE_OVERALL = re.compile(r"\boverall\b", re.IGNORECASE)
+
+def sanitize_describe_text(text: str) -> str:
+    """
+    Replaces the word 'overall' with 'general' to prevent diffusion models
+    from misinterpreting the word as clothing (overalls) on the subject.
+    Also handles 'an overall' -> 'a general' for grammatical fluency.
+    Preserves case capitalization (Overall -> General, OVERALL -> GENERAL, overall -> general).
+    """
+    if not text:
+        return ""
+
+    def _replace_an(match: re.Match) -> str:
+        an_word = match.group(1)
+        if an_word.isupper():
+            return "A GENERAL"
+        elif an_word[0].isupper():
+            return "A general"
+        return "a general"
+
+    def _replace_overall(match: re.Match) -> str:
+        w = match.group(0)
+        if w.isupper():
+            return "GENERAL"
+        elif w[0].isupper():
+            return "General"
+        return "general"
+
+    text = RE_AN_OVERALL.sub(_replace_an, text)
+    return RE_OVERALL.sub(_replace_overall, text)
+
 def format_sdxl_prompt(raw_text: str) -> str:
     """
     Formats a raw vision description (from JoyCaption, Qwen, or Florence-2)
@@ -1713,7 +1745,7 @@ def format_sdxl_prompt(raw_text: str) -> str:
     if not raw_text:
         return ""
     
-    text = raw_text.strip()
+    text = sanitize_describe_text(raw_text.strip())
     
     # Strip robotic prefixes
     while True:
@@ -1754,7 +1786,7 @@ def format_flux_prompt(raw_text: str) -> str:
     if not raw_text:
         return ""
     
-    text = raw_text.strip()
+    text = sanitize_describe_text(raw_text.strip())
     
     # Strip robotic prefixes
     while True:
@@ -1790,7 +1822,7 @@ def format_krea2_prompt(raw_text: str) -> str:
     if not raw_text:
         return ""
 
-    text = raw_text.strip()
+    text = sanitize_describe_text(raw_text.strip())
 
     # Repeatedly strip typical vision AI prefixes
     while True:

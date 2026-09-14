@@ -64,6 +64,7 @@ from parsers import (
     format_krea2_prompt,
     format_sdxl_prompt,
     format_flux_prompt,
+    sanitize_describe_text,
     fuse_krea2_blend_prompt,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,

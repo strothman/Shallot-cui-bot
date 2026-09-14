@@ -74,17 +74,16 @@ class VisionCog(commands.Cog):
 
     @app_commands.command(
         name="describe", 
-        description="Generate multi-architecture prompts for an image using Florence-2, JoyCaption, or Qwen2.5-VL."
+        description="Generate multi-architecture prompts for an image using Florence-2 or Qwen2.5-VL."
     )
     @app_commands.describe(
         image="The image file you want to describe",
-        model="Preferred vision model (Florence-2 fast default, JoyCaption, or Qwen2.5-VL)"
+        model="Preferred vision model (Florence-2 fast default or Qwen2.5-VL detailed scene)"
     )
     @app_commands.choices(
         model=[
             app_commands.Choice(name="Florence-2 (Fast • ~2s • Recommended Default)", value="florence2"),
-            app_commands.Choice(name="JoyCaption (Deep Prose for SDXL & Flux • ~15s)", value="joycaption"),
-            app_commands.Choice(name="Qwen2.5-VL (Photorealism for Krea 2 • ~15s)", value="qwen2.5-vl"),
+            app_commands.Choice(name="Qwen2.5-VL (Detailed Scene • ~12s)", value="qwen2.5-vl"),
         ]
     )
     async def describe(self, interaction: discord.Interaction, image: discord.Attachment, model: str = None):
