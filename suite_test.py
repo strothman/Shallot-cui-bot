@@ -2469,19 +2469,27 @@ class TestCUIBotFunctions(unittest.TestCase):
         view = DescribeButtons(generation_id="desc_test_888", ar="16:9")
         btn_ids = [item.custom_id for item in view.children if hasattr(item, "custom_id")]
         
-        # Verify krea2 button exists with correct custom_id structure
+        # Verify SDXL, Krea 2, and Copy Prompt buttons exist with correct custom_id structure
+        sdxl_btns = [b for b in btn_ids if ":sdxl:" in b]
+        self.assertEqual(len(sdxl_btns), 1, "There should be exactly one Generate SDXL button")
+        self.assertTrue(sdxl_btns[0].startswith("gen_desc:desc_test_888:sdxl:16:9:"))
+
         krea2_btns = [b for b in btn_ids if ":krea2:" in b]
         self.assertEqual(len(krea2_btns), 1, "There should be exactly one Krea 2 button")
         self.assertTrue(krea2_btns[0].startswith("gen_desc:desc_test_888:krea2:16:9:"))
 
+        copy_btns = [b for b in btn_ids if b == "copy_prompt:desc_test_888"]
+        self.assertEqual(len(copy_btns), 1, "There should be exactly one Copy Prompt button")
+
     def test_module60b_handle_generate_described(self):
-        """Test handle_generate_described dispatching for caption, detailed, and krea2 with correct params."""
+        """Test handle_generate_described dispatching for sdxl, caption, detailed, and krea2 with correct params."""
         import bot
         import asyncio
         from unittest.mock import MagicMock, AsyncMock, patch
 
         mock_gen_data = {
             "caption": "A blonde woman in green scarf with tea cup",
+            "sdxl_prompt": "A blonde woman in green scarf with tea cup",
             "detailed_caption": "A hyper-realistic digital painting features a nude, slender, blonde woman with small breasts, wearing a green scarf, standing beside a teapot and cup.",
             "krea2_prompt": "A hyper-realistic digital painting of a slender blonde woman beside teapot.",
         }
@@ -2492,10 +2500,10 @@ class TestCUIBotFunctions(unittest.TestCase):
         mock_interaction.response.is_done.return_value = True
         mock_interaction.followup.send = AsyncMock()
 
-        # 1. Test Generate Caption -> execute_imagine with checkpoint="hyphoriaIlluNAI_v001.safetensors"
+        # 1. Test Generate SDXL -> execute_imagine with checkpoint="hyphoriaIlluNAI_v001.safetensors"
         with patch.object(bot, "execute_imagine", new=AsyncMock()) as mock_imagine:
             asyncio.run(bot.handle_generate_described(
-                mock_interaction, "test_desc_123", desc_type="caption",
+                mock_interaction, "test_desc_123", desc_type="sdxl",
                 ar="16:9", use_sr="sr90", use_oga=False, model_choice="hyphoria"
             ))
             mock_imagine.assert_called_once()
@@ -2505,7 +2513,15 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertIn("--ar 16:9", call_kwargs["prompt"])
             self.assertEqual(call_kwargs["checkpoint"], "hyphoriaIlluNAI_v001.safetensors")
 
-        # 2. Test Generate Detailed -> execute_imagine with default checkpoint
+        # 2. Test Generate Caption (backward compatibility) -> execute_imagine
+        with patch.object(bot, "execute_imagine", new=AsyncMock()) as mock_imagine:
+            asyncio.run(bot.handle_generate_described(
+                mock_interaction, "test_desc_123", desc_type="caption",
+                ar="16:9", use_sr="sr90", use_oga=False, model_choice="hyphoria"
+            ))
+            mock_imagine.assert_called_once()
+
+        # 3. Test Generate Detailed -> execute_imagine with default checkpoint
         with patch.object(bot, "execute_imagine", new=AsyncMock()) as mock_imagine:
             asyncio.run(bot.handle_generate_described(
                 mock_interaction, "test_desc_123", desc_type="detailed",
@@ -2519,7 +2535,7 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertIn("--ar 21:9", call_kwargs["prompt"])
             self.assertIsNone(call_kwargs["checkpoint"])
 
-        # 3. Test Generate Krea 2 -> execute_bertflow
+        # 4. Test Generate Krea 2 -> execute_bertflow
         with patch.object(bot, "execute_bertflow", new=AsyncMock()) as mock_bert:
             asyncio.run(bot.handle_generate_described(
                 mock_interaction, "test_desc_123", desc_type="krea2",
@@ -2530,6 +2546,44 @@ class TestCUIBotFunctions(unittest.TestCase):
             self.assertEqual(call_kwargs["prompt"], "A hyper-realistic digital painting of a slender blonde woman beside teapot.")
             self.assertEqual(call_kwargs["aspect_ratio"], "16:9")
             self.assertEqual(call_kwargs["character"], "ogarla.85")
+
+    def test_module60d_describe_embed_single_output(self):
+        """Test execute_describe_core renders a clean single Prompt Description embed field."""
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        from services.vision_service import execute_describe_core
+
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = 12345
+        mock_interaction.user.name = "TestUser"
+        mock_interaction.response.send_message = AsyncMock()
+
+        mock_image = MagicMock()
+        mock_image.content_type = "image/png"
+        mock_image.filename = "test.png"
+        mock_image.url = "https://example.com/test.png"
+        mock_image.read = AsyncMock(return_value=b"fake_image_bytes")
+
+        mock_vision_res = {
+            "caption": "sunflower, 1girl, smile, solo",
+            "sdxl_prompt": "sunflower, 1girl, smile, solo",
+            "flux_prompt": "Sunflower, 1girl, smile, solo",
+            "krea2_prompt": "Sunflower, 1girl, smile, solo",
+            "engine_used": "Florence-2"
+        }
+
+        with patch("services.vision_service.run_vision_interrogate", new=AsyncMock(return_value=mock_vision_res)), \
+             patch("services.vision_service.edit_original_fallback", new=AsyncMock()) as mock_edit:
+            asyncio.run(execute_describe_core(mock_interaction, mock_image, model="florence2"))
+
+            mock_edit.assert_called_once()
+            call_kwargs = mock_edit.call_args[1]
+            embed = call_kwargs["embed"]
+            self.assertEqual(embed.title, "Image Description")
+            self.assertEqual(len(embed.fields), 1, "Embed should contain exactly 1 field (single output)")
+            self.assertEqual(embed.fields[0].name, "📝 Prompt Description")
+            self.assertEqual(embed.fields[0].value, "sunflower, 1girl, smile, solo")
+            self.assertIn("Florence-2", embed.footer.text)
 
     def test_module60c_describe_command_and_cog_registration(self):
         """Test /describe command registration on bot tree and VisionCog export."""

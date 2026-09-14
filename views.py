@@ -425,23 +425,23 @@ class DescribeButtons(discord.ui.View):
             row=2
         ))
 
-        # Row 3: Generation Targets (Caption, Detailed, Krea 2)
+        # Row 3: Generation Targets & Copy Actions (SDXL, Krea 2, Copy Prompt)
         self.add_item(discord.ui.Button(
-            label="🎨 Generate Caption",
+            label="🎨 Generate SDXL",
             style=discord.ButtonStyle.primary,
-            custom_id=f"gen_desc:{self.generation_id}:caption:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
-            row=3
-        ))
-        self.add_item(discord.ui.Button(
-            label="🎨 Generate Detailed",
-            style=discord.ButtonStyle.success,
-            custom_id=f"gen_desc:{self.generation_id}:detailed:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
+            custom_id=f"gen_desc:{self.generation_id}:sdxl:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
             row=3
         ))
         self.add_item(discord.ui.Button(
             label="⚡ Generate Krea 2",
             style=discord.ButtonStyle.danger,
             custom_id=f"gen_desc:{self.generation_id}:krea2:{self.ar}:{sr_tag}:{oga_tag}:{self.model_choice}",
+            row=3
+        ))
+        self.add_item(discord.ui.Button(
+            label="📋 Copy Prompt",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"copy_prompt:{self.generation_id}",
             row=3
         ))
 

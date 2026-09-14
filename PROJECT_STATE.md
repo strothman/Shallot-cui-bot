@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.6.9`  
+> **Current Version:** `v2.7.0`  
 > **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (92/92 Automated Tests Passing)  
+> **Status:** 🟢 Stable & Healthy (93/93 Automated Tests Passing)  
 
 ---
 
@@ -36,7 +36,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`services/workflow_adapter.py`](services/workflow_adapter.py) | **Semantic Workflow Adapter:** Insulates the bot from ComfyUI node renumbering by manipulating nodes by class type, title, and inputs rather than hardcoded IDs. |
 | [`services/engine_queue.py`](services/engine_queue.py) | **Engine-Aware Priority Queue:** Prevents VRAM thrashing on 8GB GPUs via model affinity, anti-starvation age escalation, and auto VRAM purging. |
 | [`cogs/vision_cog.py`](cogs/vision_cog.py) | **Vision Desk (Modular Cog):** Houses `/describe`, `/blend-sdxl`, `/blend`, and image context menus in a clean modular cog. |
-| [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes JoyCaption, Qwen2.5-VL, and Florence-2 interrogation, multi-arch prompt synthesis, `/describe` button interactions, and blend preparation. |
+| [`services/vision_service.py`](services/vision_service.py) | **Vision Service:** Executes JoyCaption, Qwen2.5-VL, and Florence-2 interrogation, multi-arch prompt synthesis, streamlined `/describe` embed, and blend preparation. |
 | [`cogs/krea_cog.py`](cogs/krea_cog.py) | **Krea Desk (Modular Cog):** Houses `/bertflow` and `/blend-krea` commands along with character, celebrity, and favorite prompt autocompletes. |
 | [`services/krea_service.py`](services/krea_service.py) | **Krea Service:** Executes Bertflow flow-matching generation, interactive button callbacks, upscale, and blend studio setup. |
 | [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
@@ -46,7 +46,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes asynchronously. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) with WAL mode that journals active jobs, stores favorite prompts, and tracks generation metrics. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 90 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 93 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
 
@@ -73,7 +73,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 * **`/ltx`**: Creates a fast 35-second animation using **LTX-Video**.
 
 ### 🔍 Vision & Image Tools
-* **`/describe`**: Upload any picture and Florence-2 AI will generate captions, detailed descriptions, and a tailored Krea 2 prompt with a 1-click **Generate Krea 2** button.
+* **`/describe`**: Upload any picture to generate a clean, single prompt description with 1-click **Generate SDXL**, **Generate Krea 2**, and **Copy Prompt** buttons.
 * **`/blend`**: Image Blend Studio to mix pictures with new styles, models, and text prompts.
 * **`/blend-krea`**: Dedicated Krea 2 Photorealism Blend Studio with Florence-2 vision fusion, optional Direct Composition locking (VAE latent), and 1-click Bertflow generation.
 * **`/study`**: Upload an AI image found online to extract the secret prompt used to make it.

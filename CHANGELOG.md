@@ -7,6 +7,15 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-13]
 
 ### Changed
+* 🎯 **Streamlined Single-Output `/describe` Studio (`v2.7.0`)**:
+  * Eliminated redundant embed fields (`📸 Krea 2 Photorealism`, `⚡ Flux Detailed Prose`, and `🎨 SDXL Tags`) displaying identical text when analyzing with tag/caption models.
+  * Embed now displays a single, clean `📝 Prompt Description` field with the primary interrogated prompt.
+  * Redesigned action buttons in `DescribeButtons` (Row 3):
+    * `🎨 Generate SDXL`: Generates an SDXL/Illustrious grid with the described prompt and selected AR/LoRA/Model settings.
+    * `⚡ Generate Krea 2`: Dispatches photorealistic Bertflow generation with flow-matching.
+    * `📋 Copy Prompt`: Delivers the complete prompt in a codeblock via ephemeral response (or attached text file if >2,000 characters).
+  * Enforced robust text output validation in `run_vision_interrogate()` before committing `engine_used`, ensuring fallback attribution in the footer accurately reflects which model succeeded.
+  * Added automated tests `test_module60d_describe_embed_single_output` and expanded `test_module60` / `test_module60b` (93/93 automated tests passing 100% green).
 * ⚡ **Default `/describe` to Florence-2 with Dynamic Latency Status**:
   * Set Florence-2 as the default model for `/describe` (fast sub-2s execution, minimal VRAM consumption, and 100% immune to CUDA out-of-memory errors on 8GB GPUs).
   * Maintained JoyCaption and Qwen2.5-VL in command choices for deep vision analysis.

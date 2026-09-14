@@ -156,6 +156,26 @@ async def run_vision_interrogate(
 
     results = None
     engine_used = None
+    texts = []
+
+    def _extract_vision_texts(res_dict):
+        extracted = []
+        if isinstance(res_dict, dict):
+            for nid in ["4", "3", "9", "10", "11", "19", "20", "21"]:
+                if nid in res_dict:
+                    ndata = res_dict[nid]
+                    if isinstance(ndata, dict):
+                        for k in ["text", "string", "caption", "output"]:
+                            if k in ndata and ndata[k]:
+                                val = ndata[k]
+                                val_str = val[0] if isinstance(val, list) else str(val)
+                                if val_str and val_str.strip():
+                                    extracted.append(val_str.strip())
+                    elif isinstance(ndata, list) and ndata:
+                        val_str = str(ndata[0]).strip()
+                        if val_str:
+                            extracted.append(val_str)
+        return extracted
 
     for eng_name, wf_path in engine_order:
         try:
@@ -170,15 +190,20 @@ async def run_vision_interrogate(
                 workflow["1"]["inputs"]["image"] = uploaded_name
 
             logger.info(f"Executing {eng_name} vision workflow ({wf_path}) for {uploaded_name}...")
-            results = await comfy.generate(workflow, timeout=14400)
-            if results and isinstance(results, dict):
+            res_candidate = await comfy.generate(workflow, timeout=14400)
+            candidate_texts = _extract_vision_texts(res_candidate)
+            if candidate_texts:
                 engine_used = eng_name
+                texts = candidate_texts
+                results = res_candidate
                 break
+            else:
+                logger.warning(f"Engine {eng_name} produced no text outputs. Attempting next fallback in pipeline...")
         except Exception as e:
             logger.warning(f"Engine {eng_name} failed ({e}). Attempting next fallback in pipeline...")
             results = None
 
-    if not results:
+    if not texts:
         # Ultimate fallback directly via Florence-2 in-code 3-node workflow if files were missing or failed
         try:
             logger.info("Executing built-in Florence-2 fallback...")
@@ -189,10 +214,17 @@ async def run_vision_interrogate(
                 "4": {"inputs": {"text": ["3", 2]}, "class_type": "ShowText|pysssss"}
             }
             results = await comfy.generate(fallback_wf, timeout=14400)
-            engine_used = "florence2"
+            candidate_texts = _extract_vision_texts(results)
+            if candidate_texts:
+                engine_used = "florence2"
+                texts = candidate_texts
         except Exception as e:
             logger.error(f"All vision interrogation workflows and fallbacks failed: {e}")
             return None
+
+    if not texts:
+        logger.error("All vision workflows completed without producing any text.")
+        return None
 
     # Free vision model weights from GPU memory immediately so diffusion has full VRAM
     try:
@@ -200,24 +232,6 @@ async def run_vision_interrogate(
         logger.info(f"{engine_used} vision model VRAM successfully purged.")
     except Exception as e:
         logger.debug(f"Could not purge VRAM after vision model: {e}")
-
-    # Extract text outputs across all possible node structures
-    texts = []
-    if isinstance(results, dict):
-        for nid in ["4", "3", "9", "10", "11", "19", "20", "21"]:
-            if nid in results:
-                ndata = results[nid]
-                if isinstance(ndata, dict):
-                    for k in ["text", "string", "caption", "output"]:
-                        if k in ndata and ndata[k]:
-                            val = ndata[k]
-                            val_str = val[0] if isinstance(val, list) else str(val)
-                            if val_str and val_str.strip():
-                                texts.append(val_str.strip())
-                elif isinstance(ndata, list) and ndata:
-                    val_str = str(ndata[0]).strip()
-                    if val_str:
-                        texts.append(val_str)
 
     raw_text = texts[0] if texts else "A detailed scene"
     detailed_text = texts[1] if len(texts) > 1 else raw_text
@@ -229,13 +243,14 @@ async def run_vision_interrogate(
     flux_prompt = format_flux_prompt(detailed_text)
 
     display_engine = {
-        "joycaption": "JoyCaption (SDXL & Flux)",
-        "qwen2.5-vl": "Qwen2.5-VL (Krea 2)",
-        "florence2": "Florence-2 (SDXL)" if target_arch == "sdxl" else "Florence-2 (Legacy)"
+        "joycaption": "JoyCaption",
+        "qwen2.5-vl": "Qwen2.5-VL",
+        "florence2": "Florence-2"
     }.get(engine_used, str(engine_used).title())
 
     res = {
         "caption": sdxl_prompt,
+        "display_prompt": sdxl_prompt,
         "detailed_caption": flux_prompt,
         "sdxl_prompt": sdxl_prompt,
         "sdxl_detailed_prompt": sdxl_detailed_prompt,
@@ -477,31 +492,31 @@ async def execute_describe_core(interaction: discord.Interaction, image: discord
         sdxl_prompt = vision_res.get("sdxl_prompt") or ""
         krea2_prompt = vision_res.get("krea2_prompt") or ""
         flux_prompt = vision_res.get("flux_prompt") or ""
-        engine_display = vision_res.get("engine_used", friendly_name)
+        engine_display = vision_res.get("engine_used", "Vision Model")
 
-        disp_krea2 = (krea2_prompt[:1021] + "...") if len(krea2_prompt) > 1024 else krea2_prompt
-        disp_flux = (flux_prompt[:1021] + "...") if len(flux_prompt) > 1024 else flux_prompt
-        disp_sdxl = (sdxl_prompt[:1021] + "...") if len(sdxl_prompt) > 1024 else sdxl_prompt
+        # Select primary description prompt
+        primary_prompt = sdxl_prompt or flux_prompt or krea2_prompt
+        disp_prompt = (primary_prompt[:1021] + "...") if len(primary_prompt) > 1024 else primary_prompt
 
         generation_id = str(random.randint(100000, 999999))
         gen_data = {
-            "caption": sdxl_prompt,
-            "detailed_caption": flux_prompt,
-            "krea2_prompt": krea2_prompt,
-            "sdxl_prompt": sdxl_prompt,
-            "flux_prompt": flux_prompt,
+            "caption": primary_prompt,
+            "display_prompt": primary_prompt,
+            "prompt": primary_prompt,
+            "detailed_caption": flux_prompt or primary_prompt,
+            "krea2_prompt": krea2_prompt or primary_prompt,
+            "sdxl_prompt": sdxl_prompt or primary_prompt,
+            "flux_prompt": flux_prompt or primary_prompt,
             "engine": engine_display
         }
         db.save_generation(generation_id, gen_data)
 
         embed = discord.Embed(
-            title="Image Description & Multi-Architecture Analysis",
+            title="Image Description",
             color=discord.Color.blue()
         )
         embed.set_thumbnail(url=image.url)
-        embed.add_field(name="📸 Krea 2 Photorealism", value=disp_krea2 or "No prompt generated", inline=False)
-        embed.add_field(name="⚡ Flux Detailed Prose", value=disp_flux or "No prompt generated", inline=False)
-        embed.add_field(name="🎨 SDXL Tags", value=disp_sdxl or "No prompt generated", inline=False)
+        embed.add_field(name="📝 Prompt Description", value=disp_prompt or "No prompt generated", inline=False)
         embed.set_footer(text=f"Analyzed using {engine_display} • Requested by {interaction.user.name}")
         
         view = DescribeButtons(generation_id, ar="16:9")
@@ -534,9 +549,16 @@ async def handle_generate_described(interaction: discord.Interaction, generation
         await bertflow_func(interaction, prompt=krea2_prompt, aspect_ratio=ar, character=char_val)
         return
 
-    base_prompt = gen_data.get("caption") if desc_type == "caption" else gen_data.get("detailed_caption")
+    # Handle SDXL (and legacy 'caption' / 'detailed')
+    if desc_type in ["sdxl", "caption"]:
+        base_prompt = gen_data.get("sdxl_prompt") or gen_data.get("caption") or gen_data.get("detailed_caption")
+    elif desc_type == "detailed":
+        base_prompt = gen_data.get("detailed_caption") or gen_data.get("flux_prompt") or gen_data.get("caption")
+    else:
+        base_prompt = gen_data.get("caption") or gen_data.get("detailed_caption") or gen_data.get("display_prompt")
+
     if not base_prompt:
-        await interaction.followup.send(f"No {desc_type} prompt found in session.", ephemeral=True)
+        await interaction.followup.send(f"No prompt found in session.", ephemeral=True)
         return
 
     # Resolve sr_flag from use_sr parameter
