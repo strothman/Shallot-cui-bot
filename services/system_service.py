@@ -216,11 +216,13 @@ def build_queue_embed(queue: Optional[dict], stats: Optional[dict]) -> discord.E
                     inline=False
                 )
 
+    eq_status = {}
     # Engine-Aware Priority Queue Status
     try:
         from services.engine_queue import get_engine_queue
-        eq_status = get_engine_queue().get_status()
-        if eq_status.get("is_running"):
+        eq = get_engine_queue()
+        if eq and eq.get_status().get("is_running"):
+            eq_status = eq.get_status()
             engine_text = f"**Current Engine:** `{eq_status['current_engine_name']}`"
             if eq_status.get("active_job"):
                 aj = eq_status["active_job"]
@@ -247,20 +249,46 @@ def build_queue_embed(queue: Optional[dict], stats: Optional[dict]) -> discord.E
             value="\n".join(active_lines[:5]),
             inline=False
         )
+    elif eq_status.get("active_job"):
+        aj = eq_status["active_job"]
+        embed.add_field(
+            name="🔥 Active (1)",
+            value=f"⚡ `[{aj['engine'].upper()}] {aj['job_id'][:8]}` — {aj['description']} ({aj['running_seconds']}s)",
+            inline=False
+        )
     else:
         embed.add_field(name="Active", value="None", inline=True)
 
-    # Pending jobs
-    if pending:
+    # Pending jobs (combined ComfyUI native + EngineAwareQueue pending)
+    eq_pending_jobs = eq_status.get("pending_jobs", [])
+    total_pending = len(pending) + len(eq_pending_jobs)
+    if total_pending > 0:
         pending_lines = []
-        for idx, job in enumerate(pending[:5]):
+        item_idx = 1
+        # ComfyUI native pending jobs
+        for job in pending:
             prompt_id = job[1][:8] if len(job) > 1 else "?"
             prompt_json = job[2] if len(job) > 2 else {}
             prompt_text = extract_short_prompt(prompt_json)
-            pending_lines.append(f"#{idx+1} `{prompt_id}…` — {prompt_text}")
-        footer_extra = f"\n… and {len(pending) - 5} more" if len(pending) > 5 else ""
+            pending_lines.append(f"#{item_idx} `[COMFY] {prompt_id}…` — {prompt_text}")
+            item_idx += 1
+            if len(pending_lines) >= 5:
+                break
+        # EngineAwareQueue pending jobs
+        if len(pending_lines) < 5:
+            for j in eq_pending_jobs:
+                job_id = j.get("job_id", "")[:8]
+                engine = j.get("engine", "JOB").upper()
+                desc = j.get("description", "Generation")
+                wait_sec = j.get("waiting_seconds", 0)
+                pending_lines.append(f"#{item_idx} `[{engine}] {job_id}` — {desc} ({wait_sec}s)")
+                item_idx += 1
+                if len(pending_lines) >= 5:
+                    break
+
+        footer_extra = f"\n… and {total_pending - 5} more" if total_pending > 5 else ""
         embed.add_field(
-            name=f"📋 Pending ({len(pending)})",
+            name=f"📋 Pending ({total_pending})",
             value="\n".join(pending_lines) + footer_extra,
             inline=False
         )

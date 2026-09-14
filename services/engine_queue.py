@@ -168,6 +168,31 @@ class EngineAwareQueue:
             "switches_prevented": 0,
             "engine_switches": 0,
         }
+        self._change_listeners: List[Callable] = []
+
+    def add_change_listener(self, callback: Callable):
+        """Registers a callback invoked when queue state changes (enqueue, start, cancel, complete)."""
+        if callback not in self._change_listeners:
+            self._change_listeners.append(callback)
+
+    def remove_change_listener(self, callback: Callable):
+        """Unregisters a change listener callback."""
+        if callback in self._change_listeners:
+            self._change_listeners.remove(callback)
+
+    def _notify_change(self):
+        """Invokes registered callbacks safely without blocking the event loop."""
+        for cb in list(self._change_listeners):
+            try:
+                res = cb()
+                if asyncio.iscoroutine(res):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(res)
+                    except RuntimeError:
+                        pass
+            except Exception as e:
+                logger.debug(f"Queue change callback error: {e}")
 
     @property
     def current_engine(self) -> Optional[str]:
@@ -263,6 +288,7 @@ class EngineAwareQueue:
             f"Enqueued job {job_id} [{detected_engine.upper()}] (priority={priority.name}, queue_depth={len(self._queue)})"
         )
         self._new_job_event.set()
+        self._notify_change()
         return future
 
     def cancel(self, job_id: str) -> bool:
@@ -275,6 +301,7 @@ class EngineAwareQueue:
                 self._queue.remove(job)
                 self.stats["total_cancelled"] += 1
                 logger.info(f"Cancelled pending job {job_id}.")
+                self._notify_change()
                 return True
 
         if self._active_job and self._active_job.job_id == job_id:
@@ -283,6 +310,7 @@ class EngineAwareQueue:
                 self._active_job.future.cancel()
             self.stats["total_cancelled"] += 1
             logger.info(f"Cancelled active job {job_id}.")
+            self._notify_change()
             return True
 
         return False
@@ -347,6 +375,7 @@ class EngineAwareQueue:
                 continue
 
             self._active_job = job
+            self._notify_change()
 
             try:
                 # 1. Check for Engine Switch and execute VRAM purge if changing models
@@ -399,6 +428,7 @@ class EngineAwareQueue:
                     job.future.set_exception(e)
             finally:
                 self._active_job = None
+                self._notify_change()
 
     def get_status(self) -> Dict[str, Any]:
         """Returns structured metrics for Discord status and /queue command."""
@@ -418,6 +448,19 @@ class EngineAwareQueue:
                 "running_seconds": round(time.time() - self._active_job.enqueued_at, 1),
             }
 
+        pending_jobs = [
+            {
+                "job_id": j.job_id,
+                "engine": j.engine,
+                "engine_name": ENGINE_DISPLAY_NAMES.get(j.engine, j.engine.upper()),
+                "description": j.description,
+                "user_id": j.user_id,
+                "priority": j.priority.name,
+                "waiting_seconds": round(time.time() - j.enqueued_at, 1),
+            }
+            for j in self._queue
+        ]
+
         return {
             "is_running": self._running,
             "current_engine": self._current_engine,
@@ -425,6 +468,7 @@ class EngineAwareQueue:
             "active_job": active_info,
             "pending_count": len(self._queue),
             "pending_by_engine": pending_by_engine,
+            "pending_jobs": pending_jobs,
             "stats": dict(self.stats)
         }
 

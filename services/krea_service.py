@@ -169,7 +169,17 @@ async def execute_bertflow(
 
     try:
         t_start = time.time()
-        outputs = await active_client.generate(workflow, generation_id=generation_id, progress_callback=on_bertflow_progress)
+        krea_desc = f"Krea 2 Blend ({cleaned_prompt[:25]}…)" if init_image_name else f"Bertflow ({cleaned_prompt[:25]}…)"
+        outputs = await active_client.generate(
+            workflow,
+            generation_id=generation_id,
+            progress_callback=on_bertflow_progress,
+            user_id=interaction.user.id if getattr(interaction, "user", None) else None,
+            channel_id=getattr(interaction, "channel_id", None),
+            message_id=getattr(status_msg[0], "id", None) if status_msg[0] else None,
+            command_type="blend-krea" if init_image_name else "bertflow",
+            description=krea_desc
+        )
         elapsed_time = time.time() - t_start
         t_breakdown = active_client.get_execution_timing()
 
@@ -271,6 +281,8 @@ async def execute_bertflow(
             )
         else:
             await send_error_fallback(interaction, f"An error occurred during Bertflow generation: {e}")
+    finally:
+        await update_bot_presence(None)
 
 
 async def handle_bertflow_reroll(interaction: discord.Interaction, generation_id: str, client: ComfyClient = None):

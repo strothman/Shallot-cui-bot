@@ -349,8 +349,16 @@ async def update_bot_presence(status_text: str = None):
             activity = discord.Activity(type=discord.ActivityType.custom, name="Custom Status", state=status_text)
             await bot.change_presence(activity=activity)
         else:
-            activity = discord.Activity(type=discord.ActivityType.custom, name="Custom Status", state="Processing 0 jobs")
-            await bot.change_presence(activity=activity)
+            try:
+                import sys
+                bot_module = sys.modules.get("bot")
+                if bot_module and hasattr(bot_module, "sync_presence_now"):
+                    await bot_module.sync_presence_now()
+                    return
+            except Exception:
+                pass
+            activity = discord.Activity(type=discord.ActivityType.watching, name="Ready ✓ | /imagine")
+            await bot.change_presence(status=discord.Status.online, activity=activity)
     except Exception as e:
         logger.debug(f"Failed to update bot presence: {e}")
 

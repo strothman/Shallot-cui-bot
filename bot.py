@@ -11,6 +11,7 @@ import re
 import subprocess
 import time
 from collections import OrderedDict
+from typing import Optional, Dict, Any, List
 import discord
 import aiohttp
 from PIL import Image
@@ -615,8 +616,7 @@ async def update_bot_presence(status_text: str = None):
             activity = discord.Activity(type=discord.ActivityType.custom, name="Custom Status", state=status_text)
             await bot.change_presence(activity=activity)
         else:
-            activity = discord.Activity(type=discord.ActivityType.custom, name="Custom Status", state="Processing 0 jobs")
-            await bot.change_presence(activity=activity)
+            await sync_presence_now()
     except Exception as e:
         logger.debug(f"Failed to update bot presence: {e}")
 
@@ -2286,9 +2286,54 @@ async def handle_copy_prompt(interaction: discord.Interaction, generation_id: st
 
 # fetch_comfyui_queue, fetch_comfyui_system_stats imported from services.system_service
 
-@tasks.loop(seconds=10)
-async def update_presence():
-    """Update bot presence/status and console title with ComfyUI queue info."""
+def get_effective_queue_counts(comfy_queue: Optional[dict] = None) -> tuple[int, int]:
+    """
+    Calculates combined active (running) and pending jobs across ComfyUI and EngineAwareQueue.
+    ComfyUI processes 1 job at a time while EngineAwareQueue buffers pending jobs
+    to prevent VRAM thrashing on 8GB GPUs.
+    """
+    running = 0
+    pending = 0
+    if comfy_queue:
+        running = len(comfy_queue.get("queue_running", []))
+        pending = len(comfy_queue.get("queue_pending", []))
+
+    try:
+        from services.engine_queue import get_engine_queue
+        eq = get_engine_queue()
+        if eq and eq.get_status().get("is_running", False):
+            eq_status = eq.get_status()
+            if eq_status.get("active_job"):
+                running = max(running, 1)
+            pending += eq_status.get("pending_count", 0)
+    except Exception as e:
+        logger.debug(f"Could not read EngineAwareQueue status: {e}")
+
+    return running, pending
+
+
+def format_presence_status_text(running: int, pending: int) -> tuple[str, discord.ActivityType]:
+    """Generates the presence string and Discord activity type from queue counts."""
+    if running > 0:
+        status_text = f"Processing {running} job{'s' if running != 1 else ''}"
+        if pending > 0:
+            status_text += f" | {pending} queued"
+        return status_text, discord.ActivityType.playing
+    elif pending > 0:
+        status_text = f"{pending} queued job{'s' if pending != 1 else ''}"
+        return status_text, discord.ActivityType.watching
+    else:
+        return "Ready ✓ | /imagine", discord.ActivityType.watching
+
+
+_last_presence_sync_time: float = 0.0
+_presence_sync_task: Optional[asyncio.Task] = None
+
+
+async def sync_presence_now():
+    """Immediately synchronizes bot presence with current ComfyUI and EngineAwareQueue state."""
+    global _last_presence_sync_time
+    _last_presence_sync_time = time.time()
     try:
         queue = await fetch_comfyui_queue()
         if queue is None:
@@ -2300,36 +2345,51 @@ async def update_presence():
             update_console_title("ComfyUI (offline)")
             return
 
-        running = len(queue.get("queue_running", []))
-        pending = len(queue.get("queue_pending", []))
+        running, pending = get_effective_queue_counts(queue)
+        status_text, activity_type = format_presence_status_text(running, pending)
 
-        if running > 0:
-            status_text = f"Processing {running} job{'s' if running != 1 else ''}"
-            if pending > 0:
-                status_text += f" | {pending} queued"
-            activity = discord.Activity(
-                type=discord.ActivityType.playing,
-                name=status_text
-            )
-            await bot.change_presence(status=discord.Status.online, activity=activity)
-            update_console_title(status_text)
-        elif pending > 0:
-            status_text = f"{pending} pending job{'s' if pending != 1 else ''}"
-            activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name=status_text
-            )
-            await bot.change_presence(status=discord.Status.online, activity=activity)
-            update_console_title(status_text)
-        else:
-            activity = discord.Activity(
-                type=discord.ActivityType.watching,
-                name="Ready ✓ | /imagine"
-            )
-            await bot.change_presence(status=discord.Status.online, activity=activity)
-            update_console_title("Ready ✓")
+        activity = discord.Activity(
+            type=activity_type,
+            name=status_text
+        )
+        await bot.change_presence(status=discord.Status.online, activity=activity)
+        update_console_title(status_text)
     except Exception as e:
         logger.debug(f"Presence update failed: {e}")
+
+
+def on_engine_queue_change():
+    """Throttled callback triggered on EngineAwareQueue enqueue/start/cancel/completion."""
+    global _last_presence_sync_time, _presence_sync_task
+    if not bot.is_ready():
+        return
+    now = time.time()
+    # Respect Discord rate limits (minimum 3.5s interval between gateway presence updates)
+    if now - _last_presence_sync_time >= 3.5:
+        if _presence_sync_task and not _presence_sync_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            _presence_sync_task = loop.create_task(sync_presence_now())
+        except RuntimeError:
+            pass
+    else:
+        if _presence_sync_task is None or _presence_sync_task.done():
+            delay = max(0.5, 3.5 - (now - _last_presence_sync_time))
+            async def _delayed_sync():
+                await asyncio.sleep(delay)
+                await sync_presence_now()
+            try:
+                loop = asyncio.get_running_loop()
+                _presence_sync_task = loop.create_task(_delayed_sync())
+            except RuntimeError:
+                pass
+
+
+@tasks.loop(seconds=10)
+async def update_presence():
+    """Periodic fallback loop to update bot presence and console title with queue info."""
+    await sync_presence_now()
 
 @update_presence.before_loop
 async def before_update_presence():
@@ -2371,6 +2431,7 @@ async def on_ready():
         try:
             from services.engine_queue import set_engine_queue_client
             _eq = set_engine_queue_client(comfy_client)
+            _eq.add_change_listener(on_engine_queue_change)
             _eq.start()
             logger.info("🟢 EngineAwareQueue worker started with model-affinity scheduling.")
         except Exception as eq_err:

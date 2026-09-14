@@ -4180,6 +4180,132 @@ class TestCUIBotFunctions(unittest.TestCase):
         up_view = UpscaleButtons(generation_id="gen123", index=1)
         self.assertEqual(up_view.upscale_scale, "2.0")
 
+    def test_queue_presence_and_multi_job_tracking(self):
+        """
+        Verifies that when multiple jobs are queued in EngineAwareQueue:
+        1. get_effective_queue_counts combines ComfyUI and EngineAwareQueue jobs.
+        2. format_presence_status_text correctly reflects queued jobs (e.g. 'Processing 1 job | 3 queued').
+        3. EngineAwareQueue change listeners fire on enqueue and cancel.
+        4. build_queue_embed includes pending jobs from EngineAwareQueue.
+        """
+        import bot
+        from bot import get_effective_queue_counts, format_presence_status_text
+        from services.engine_queue import EngineAwareQueue, JobPriority
+        import services.system_service as system_service
+
+        # 1. Test format_presence_status_text
+        txt, act = format_presence_status_text(1, 0)
+        self.assertEqual(txt, "Processing 1 job")
+        self.assertEqual(act, bot.discord.ActivityType.playing)
+
+        txt, act = format_presence_status_text(1, 3)
+        self.assertEqual(txt, "Processing 1 job | 3 queued")
+        self.assertEqual(act, bot.discord.ActivityType.playing)
+
+        txt, act = format_presence_status_text(2, 4)
+        self.assertEqual(txt, "Processing 2 jobs | 4 queued")
+        self.assertEqual(act, bot.discord.ActivityType.playing)
+
+        txt, act = format_presence_status_text(0, 2)
+        self.assertEqual(txt, "2 queued jobs")
+        self.assertEqual(act, bot.discord.ActivityType.watching)
+
+        txt, act = format_presence_status_text(0, 0)
+        self.assertEqual(txt, "Ready ✓ | /imagine")
+        self.assertEqual(act, bot.discord.ActivityType.watching)
+
+        # 2. Test get_effective_queue_counts with ComfyUI + EngineAwareQueue
+        comfy_queue = {
+            "queue_running": [["prompt_1", "client_1", {}]],
+            "queue_pending": []
+        }
+        with patch("services.engine_queue.get_engine_queue") as mock_eq:
+            mock_queue_inst = MagicMock()
+            mock_queue_inst.get_status.return_value = {
+                "is_running": True,
+                "active_job": None,
+                "pending_count": 3
+            }
+            mock_eq.return_value = mock_queue_inst
+            running, pending = get_effective_queue_counts(comfy_queue)
+            self.assertEqual(running, 1)
+            self.assertEqual(pending, 3)
+            status_str, _ = format_presence_status_text(running, pending)
+            self.assertEqual(status_str, "Processing 1 job | 3 queued")
+
+        # 3. Test EngineAwareQueue change listener registration and callback
+        queue = EngineAwareQueue()
+        fired = [0]
+        def on_change():
+            fired[0] += 1
+        queue.add_change_listener(on_change)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(queue.enqueue(
+                workflow={},
+                engine="krea2",
+                priority=JobPriority.NORMAL,
+                description="Krea 2 Blend Test"
+            ))
+            self.assertGreaterEqual(fired[0], 1)
+
+            queue.cancel(queue._queue[0].job_id)
+            self.assertGreaterEqual(fired[0], 2)
+        finally:
+            loop.close()
+
+        # 4. Test build_queue_embed includes EngineAwareQueue pending jobs
+        with patch("services.engine_queue.get_engine_queue") as mock_eq:
+            mock_queue_inst = MagicMock()
+            mock_queue_inst.get_status.return_value = {
+                "is_running": True,
+                "current_engine": "krea2",
+                "current_engine_name": "Krea 2",
+                "active_job": {
+                    "job_id": "job_active_1",
+                    "engine": "krea2",
+                    "engine_name": "Krea 2",
+                    "description": "Active Krea Generation",
+                    "user_id": 12345,
+                    "priority": "NORMAL",
+                    "running_seconds": 4.5
+                },
+                "pending_count": 2,
+                "pending_by_engine": {"krea2": 2},
+                "pending_jobs": [
+                    {
+                        "job_id": "job_pend_1",
+                        "engine": "krea2",
+                        "engine_name": "Krea 2",
+                        "description": "Blend Portrait #1",
+                        "user_id": 12345,
+                        "priority": "NORMAL",
+                        "waiting_seconds": 10.2
+                    },
+                    {
+                        "job_id": "job_pend_2",
+                        "engine": "krea2",
+                        "engine_name": "Krea 2",
+                        "description": "Blend Portrait #2",
+                        "user_id": 12345,
+                        "priority": "NORMAL",
+                        "waiting_seconds": 5.1
+                    }
+                ],
+                "stats": {"switches_prevented": 1}
+            }
+            mock_eq.return_value = mock_queue_inst
+
+            embed = system_service.build_queue_embed(queue={"queue_running": [], "queue_pending": []}, stats={})
+            field_names = [f.name for f in embed.fields]
+            field_values = {f.name: f.value for f in embed.fields}
+
+            self.assertIn("📋 Pending (2)", field_names)
+            self.assertIn("Blend Portrait #1", field_values["📋 Pending (2)"])
+            self.assertIn("Blend Portrait #2", field_values["📋 Pending (2)"])
+
 
 if __name__ == "__main__":
     unittest.main()
