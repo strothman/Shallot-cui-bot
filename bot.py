@@ -4449,7 +4449,8 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
 
 
 async def execute_blend_generation(interaction: discord.Interaction, uploaded_image_name: str, prompt: str, negative_prompt: str = None, model: str = None, comp_strength: str = "style"):
-    neg_prompt = negative_prompt or DEFAULT_NEGATIVE_PROMPT
+    user_id = interaction.user.id if (interaction and interaction.user) else 0
+    neg_prompt = negative_prompt or db.get_negative_prompt(user_id)
     selected_model = model or COMFYUI_CHECKPOINT
     generation_id = str(random.randint(100000, 999999))
 
@@ -4533,7 +4534,18 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
 
     # Build dynamic IPAdapter workflow (chains models through LoRAs -> IPAdapter)
     try:
-        workflow = build_blend_workflow([final_image_name], cleaned_prompt, neg_prompt, selected_model, width, height, seed, cfg, workflow_template=workflow)
+        workflow = build_blend_workflow(
+            [final_image_name], 
+            cleaned_prompt, 
+            neg_prompt, 
+            selected_model, 
+            width, 
+            height, 
+            seed, 
+            cfg, 
+            workflow_template=workflow,
+            comp_strength=comp_strength
+        )
         sref_suffix = f"_sref{sref_info['code']}" if sref_info and "code" in sref_info else ""
         workflow["9"]["class_type"] = "PreviewImage"
         workflow["9"]["inputs"].pop("filename_prefix", None)
@@ -4842,7 +4854,7 @@ async def handle_submit_edit_adopt_prompt(interaction: discord.Interaction, adop
 
 
 
-def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, selected_model: str, width: int, height: int, seed: int, cfg: float, workflow_template: dict = None):
+def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, selected_model: str, width: int, height: int, seed: int, cfg: float, workflow_template: dict = None, comp_strength: str = None):
     """Dynamically constructs a ComfyUI workflow that chains IP-Adapter for 1 to 5 images with smart composition scaling."""
     if workflow_template is not None:
         workflow = copy.deepcopy(workflow_template)
@@ -4858,8 +4870,24 @@ def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, se
         workflow["5"]["inputs"]["batch_size"] = 1
     workflow["3"]["inputs"]["seed"] = seed
     
-    # Calibrate CFG (default to 3.5 if uncalibrated or high to avoid frying multi-conditioning)
-    effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 6.0) else 3.5
+    # Check for per-checkpoint custom configurations (samplers, CFG, steps, negative addons)
+    ckpt_cfg = CHECKPOINT_CONFIGS.get(selected_model, {})
+    if ckpt_cfg:
+        if "sampler_name" in ckpt_cfg:
+            workflow["3"]["inputs"]["sampler_name"] = ckpt_cfg["sampler_name"]
+        if "scheduler" in ckpt_cfg:
+            workflow["3"]["inputs"]["scheduler"] = ckpt_cfg["scheduler"]
+        if "steps" in ckpt_cfg:
+            workflow["3"]["inputs"]["steps"] = ckpt_cfg["steps"]
+        if "cfg" in ckpt_cfg and (cfg is None or cfg == 4.0 or cfg == 3.5):
+            effective_cfg = ckpt_cfg["cfg"]
+        else:
+            effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 8.0) else 4.0
+        if ckpt_cfg.get("negative_addon"):
+            neg_prompt = f"{neg_prompt}, {ckpt_cfg['negative_addon']}" if neg_prompt else ckpt_cfg["negative_addon"]
+    else:
+        effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 8.0) else 3.5
+
     workflow["3"]["inputs"]["cfg"] = effective_cfg
     workflow["6"]["inputs"]["text"] = prompt
     workflow["9"]["class_type"] = "PreviewImage"
@@ -4884,10 +4912,28 @@ def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, se
     }
 
     # Dynamically scale weight and end_at based on mode and number of images
-    # If img2img is already providing composition latents, lower IP weight & stop at 0.75
-    # so the final denoising steps cleanly polish skin, eyes, and details
     num_images = len(image_filenames)
-    if is_img2img:
+    norm_comp = str(comp_strength).lower() if comp_strength is not None else None
+
+    if norm_comp == "style":
+        # Style Only: gentle IPAdapter weight so prompt, character traits, and LoRAs dominate.
+        # End at 0.65 with 'ease out' so the final 35% of denoising freely polishes faces, eyes, and LoRA details.
+        ip_weight = 0.20 if num_images == 1 else round(min(0.15, 0.25 / num_images), 2)
+        end_at = 0.65
+        weight_type = "ease out"
+    elif norm_comp == "low":
+        ip_weight = 0.35 if num_images == 1 else round(min(0.25, 0.40 / num_images), 2)
+        end_at = 0.75
+        weight_type = "ease in-out"
+    elif norm_comp == "med":
+        ip_weight = 0.50 if num_images == 1 else round(min(0.35, 0.55 / num_images), 2)
+        end_at = 0.80
+        weight_type = "ease in-out"
+    elif norm_comp == "high":
+        ip_weight = 0.65 if num_images == 1 else round(min(0.45, 0.70 / num_images), 2)
+        end_at = 0.85
+        weight_type = "linear"
+    elif is_img2img:
         ip_weight = 0.35 if num_images == 1 else round(min(0.25, 0.40 / num_images), 2)
         end_at = 0.75
         weight_type = "ease in-out"
@@ -4898,7 +4944,7 @@ def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, se
 
     # Enforce quality negative prompt, but prevent contradictory negative terms
     # (e.g. don't ban "sketch / line art" if the user or SREF style explicitly asked for sketch/pencil/drawing)
-    neg_base = neg_prompt or DEFAULT_NEGATIVE_PROMPT
+    neg_base = neg_prompt or db.get_negative_prompt(0)
     p_lower = prompt.lower()
     
     extra_neg_parts = ["overexposed", "pale", "washed out", "faded colors", "bloom", "white out"]
@@ -4907,6 +4953,18 @@ def build_blend_workflow(image_filenames: list, prompt: str, neg_prompt: str, se
         extra_neg_parts.append("line art only, sketch")
         
     enhanced_neg = neg_base + ", " + ", ".join(extra_neg_parts)
+
+    # Sanitize negative prompt against active positive triggers:
+    # 1. If user wants Semi-Realism / Realism, do not ban photorealistic or realistic
+    if any(k in p_lower for k in ["semi-realism", "photorealistic", "realism", "--sr"]):
+        enhanced_neg = re.sub(r'\b(?:photorealistic|realistic|photorealism)\b,?', '', enhanced_neg, flags=re.IGNORECASE)
+
+    # 2. If model is an anime/illustrious checkpoint, do not ban anime in negative
+    if any(k in str(selected_model).lower() for k in ["illustrious", "wai", "hyphoria", "nai", "furry", "anime"]):
+        enhanced_neg = re.sub(r'\banime(?:\s+style|\s+girl)?\b,?', '', enhanced_neg, flags=re.IGNORECASE)
+
+    # Clean up whitespace & orphan commas
+    enhanced_neg = re.sub(r',\s*,+', ', ', enhanced_neg).strip(' ,')
     workflow["7"]["inputs"]["text"] = enhanced_neg
 
     prev_model_node = ["20", 0]

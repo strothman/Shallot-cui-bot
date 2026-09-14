@@ -6,6 +6,14 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ## [2026-09-13]
 
+### Fixed
+* 🎨 **Blend Workflow LoRA & Checkpoint Engine Tuning (`v2.7.1`)**:
+  * **Calibrated IP-Adapter Weight for "Style Only"**: In `build_blend_workflow()`, `comp_strength == "style"` now applies a calibrated gentle `0.20` weight (instead of hardcoded `0.55`) with `end_at = 0.65` and `ease out` curve. This allows IP-Adapter to steer colors/atmosphere early on while yielding the final 35% of denoising entirely to the model and LoRAs.
+  * **Enforced Checkpoint Configs in Blend Generations**: `build_blend_workflow()` now reads `CHECKPOINT_CONFIGS`, ensuring Wai Illustrious uses its mandatory `dpmpp_2m_sde` sampler, 30 steps, and calibrated CFG 5.0 instead of default flat `dpmpp_2m` at 28 steps.
+  * **Negative Prompt Sanitization**: Prevented suppression of Semi-Realism and Illustrious checkpoints by automatically pruning contradictory negative terms (`photorealistic` when Semi-Realism is requested, `anime` when an anime/illustrious model is used). Switched default negative prompt retrieval from legacy `.env` to `db.get_negative_prompt(user_id)`.
+  * **Lookahead Protection in Shorthand Parser**: Added negative lookahead `(?![a-zA-Z])` to `--sr` and `--oga` regexes in `parse_loras()` so `--sr` never matches or corrupts `--sref` style flags.
+  * Added automated test `test_module5b_blend_style_calibration_and_checkpoint_configs` in `suite_test.py` (94/94 automated tests passing 100% green).
+
 ### Changed
 * 🎯 **Streamlined Single-Output `/describe` Studio (`v2.7.0`)**:
   * Eliminated redundant embed fields (`📸 Krea 2 Photorealism`, `⚡ Flux Detailed Prose`, and `🎨 SDXL Tags`) displaying identical text when analyzing with tag/caption models.

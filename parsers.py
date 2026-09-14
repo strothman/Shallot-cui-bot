@@ -238,7 +238,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
     effective_arch = Architecture.FLUX if is_flux else (target_arch or Architecture.SDXL)
     
     # 1. Parse --sr or --semi-realism shorthand (e.g., --sr.85, --sr85, --sr 0.85, --semi-realism .75, --semi-realism)
-    sr_match = re.search(r'[-—–]{1,2}(?:semi-realism|sr)(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
+    sr_match = re.search(r'[-—–]{1,2}(?:semi-realism|sr)(?![a-zA-Z])(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
     sr_parsed = False
     if sr_match and (sr_match.group(1) or sr_match.group(0).startswith('-') or sr_match.group(0).startswith('—') or sr_match.group(0).startswith('–')):
         try:
@@ -259,12 +259,12 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
                 sr_parsed = True
                 if "semi-realism" not in prompt.lower():
                     prompt = f"semi-realism, {prompt}".strip()
-            prompt = re.sub(r'[-—–]{1,2}(?:semi-realism|sr)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
+            prompt = re.sub(r'[-—–]{1,2}(?:semi-realism|sr)(?![a-zA-Z])(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
         except Exception as e:
             logger.error(f"Error parsing --sr/--semi-realism shorthand: {e}")
 
     # 2. Parse --oga/--ogarla shorthand (e.g., --oga.70, --ogarla.90, --ogarla)
-    oga_match = re.search(r'[-—–]{1,2}(?:ogarla|oga)(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
+    oga_match = re.search(r'[-—–]{1,2}(?:ogarla|oga)(?![a-zA-Z])(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
     oga_parsed = False
     if oga_match and (oga_match.group(1) or oga_match.group(0).startswith('-') or oga_match.group(0).startswith('—') or oga_match.group(0).startswith('–')):
         try:
@@ -283,7 +283,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             lora_name = resolve_lora_for_architecture("ogarla_epoch_5.safetensors", effective_arch)
             loras.append((lora_name, weight))
             oga_parsed = True
-            prompt = re.sub(r'[-—–]{1,2}(?:ogarla|oga)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
+            prompt = re.sub(r'[-—–]{1,2}(?:ogarla|oga)(?![a-zA-Z])(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
 
             # Harmonize trigger keywords to match model training dataset
             if is_flux:

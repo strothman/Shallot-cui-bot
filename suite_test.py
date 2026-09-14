@@ -245,6 +245,41 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(wf_comp["blend_ip_0"]["inputs"]["end_at"], 0.75)
         self.assertEqual(wf_comp["blend_ip_0"]["inputs"]["weight_type"], "ease in-out")
 
+    def test_module5b_blend_style_calibration_and_checkpoint_configs(self):
+        """Test Style Only IP-Adapter gentle weighting, checkpoint config enforcement, and negative prompt sanitization."""
+        from parsers import parse_loras
+
+        # 1. Test that --sr does NOT corrupt --sref
+        test_prompt = "Semi-realism, girl kneeling on red carpet --sr.75 --ogarla.70 --ar 16:9 --sref 570053"
+        cleaned_p, loras = parse_loras(test_prompt)
+        self.assertIn("--sref 570053", cleaned_p, "--sref flag should remain completely intact")
+        self.assertNotIn(" ef 570053", cleaned_p, "--sref should not be mutilated into isolated ef")
+        self.assertEqual(len(loras), 2)
+
+        # 2. Test Style Only IP-Adapter weighting & ease-out
+        wf_style = build_blend_workflow(
+            ["test_blend.png"],
+            "Semi-realism, masterpiece, best quality. ogarla, girl on red carpet --sr.75",
+            "low quality, blurry, photorealistic, anime",
+            "waiIllustriousSDXL_v170.safetensors",
+            1536, 640, 12345, 4.0,
+            comp_strength="style"
+        )
+        self.assertEqual(wf_style["blend_ip_0"]["inputs"]["weight"], 0.20, "Style Only should use gentle 0.20 weight")
+        self.assertEqual(wf_style["blend_ip_0"]["inputs"]["end_at"], 0.65, "Style Only should end at 0.65 to let LoRAs detail the face")
+        self.assertEqual(wf_style["blend_ip_0"]["inputs"]["weight_type"], "ease out", "Style Only should use ease out curve")
+
+        # 3. Test that Wai Illustrious Checkpoint Configs are applied
+        self.assertEqual(wf_style["3"]["inputs"]["sampler_name"], "dpmpp_2m_sde", "Illustrious should use dpmpp_2m_sde sampler")
+        self.assertEqual(wf_style["3"]["inputs"]["scheduler"], "karras")
+        self.assertEqual(wf_style["3"]["inputs"]["steps"], 30, "Illustrious should use 30 steps")
+        self.assertEqual(wf_style["3"]["inputs"]["cfg"], 5.0, "Illustrious should use calibrated CFG 5.0")
+
+        # 4. Test negative prompt sanitization
+        neg_text = wf_style["7"]["inputs"]["text"]
+        self.assertNotIn("photorealistic", neg_text, "Semi-Realism should sanitize 'photorealistic' out of negative prompt")
+        self.assertNotIn("anime", neg_text, "Illustrious model should sanitize 'anime' out of negative prompt")
+
     def test_module6_error_handler_and_autofix(self):
         """Test structured error logging and recipe matching."""
         # Test logging an error
