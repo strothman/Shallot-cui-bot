@@ -10,9 +10,9 @@ DB_FILE = "cache.db"
 
 _save_counter = 0
 
-def get_db_connection():
-    """Returns a SQLite connection configured with WAL mode, normal synchrony, and optimized cache."""
-    conn = sqlite3.connect(DB_FILE)
+def get_db_connection(timeout: float = 30.0):
+    """Returns a SQLite connection configured with WAL mode, normal synchrony, timeout retry, and optimized cache."""
+    conn = sqlite3.connect(DB_FILE, timeout=timeout)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
@@ -106,60 +106,53 @@ def init_db():
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS pending_jobs (
                     prompt_id TEXT PRIMARY KEY,
-                    generation_id TEXT,
                     channel_id INTEGER,
                     message_id INTEGER,
                     user_id INTEGER,
                     command_type TEXT,
-                    status TEXT DEFAULT 'running',
+                    generation_id TEXT,
                     metadata TEXT DEFAULT '{}',
-                    created_at REAL DEFAULT (julianday('now'))
+                    status TEXT DEFAULT 'running',
+                    created_at REAL DEFAULT (julianday('now')),
+                    updated_at REAL DEFAULT (julianday('now'))
                 )
             """)
-            try:
-                conn.execute("ALTER TABLE generation_metrics ADD COLUMN init_seconds REAL DEFAULT 0.0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE generation_metrics ADD COLUMN sampling_seconds REAL DEFAULT 0.0")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE generation_metrics ADD COLUMN post_seconds REAL DEFAULT 0.0")
-            except Exception:
-                pass
-
-            # Performance indexes
-            try:
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_generations_timestamp ON generations(timestamp DESC)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_generations_user_id ON generations(json_extract(data, '$.user_id'))")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_favorite_styles_user ON favorite_styles(user_id, timestamp DESC)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_favorite_prompts_user ON favorite_prompts(user_id, timestamp DESC)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_command_status ON generation_metrics(command, status, timestamp DESC)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_user_id ON generation_metrics(user_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_model_registry_arch ON model_registry(base_architecture, model_type)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_jobs_status ON pending_jobs(status, created_at)")
-            except Exception as e:
-                logger.debug(f"Index creation note: {e}")
-
             conn.commit()
-        seed_default_model_registry()
-        logger.info("SQLite database initialized and model registry seeded successfully.")
+            
+            # Create indexes for fast lookup and sorting
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_generations_timestamp ON generations(timestamp DESC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fav_styles_user ON favorite_styles(user_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fav_prompts_user ON favorite_prompts(user_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_command ON generation_metrics(command);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_created_at ON generation_metrics(created_at DESC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_models_arch ON model_registry(base_architecture, model_type);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_jobs_status ON pending_jobs(status);")
+            conn.commit()
+            logger.info("SQLite database initialized successfully with WAL mode and indexes.")
     except Exception as e:
-        logger.error(f"Error initializing SQLite database: {e}")
+        logger.error(f"Failed to initialize SQLite database: {e}")
+
+    # Seed default models on startup
+    try:
+        seed_default_model_registry()
+    except Exception as seed_err:
+        logger.debug(f"Default model registry seeding skipped or already populated: {seed_err}")
 
 def get_generation(generation_id: str) -> dict:
-    """Fetch generation data dictionary by ID from SQLite."""
+    """Fetch generation data by ID from SQLite database."""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT data FROM generations WHERE id = ?", (generation_id,))
             row = cursor.fetchone()
-            if row:
+            if row and row[0]:
                 return json.loads(row[0])
     except Exception as e:
         logger.error(f"Error fetching generation {generation_id} from SQLite: {e}")
     return None
+
+_is_pruning = False
+_prune_lock = threading.Lock()
 
 def save_generation(generation_id: str, data: dict):
     """Insert or replace generation data and periodically prune older entries."""
@@ -172,17 +165,23 @@ def save_generation(generation_id: str, data: dict):
             )
             conn.commit()
         
-        # Prune older entries periodically in a background thread to prevent blocking event loop
+        # Prune older entries periodically in a guarded background thread to prevent blocking event loop
         _save_counter += 1
         if _save_counter % 25 == 0:
-            threading.Thread(target=prune_cache, daemon=True).start()
+            if not _is_pruning:
+                threading.Thread(target=prune_cache, daemon=True).start()
     except Exception as e:
         logger.error(f"Error saving generation {generation_id} to SQLite: {e}")
 
 def prune_cache(limit=2000):
-    """Keep the last N generations and remove files for deleted entries."""
+    """Keep the last N generations and remove files for deleted entries safely with concurrency guard."""
+    global _is_pruning
+    with _prune_lock:
+        if _is_pruning:
+            return
+        _is_pruning = True
     try:
-        with get_db_connection() as conn:
+        with get_db_connection(timeout=30.0) as conn:
             cursor = conn.cursor()
             # Find IDs that are older and exceed the limit
             cursor.execute(
@@ -212,7 +211,10 @@ def prune_cache(limit=2000):
                                     pass
                 logger.info(f"Pruned {len(ids_to_delete)} generations from database and cleared associated files.")
     except Exception as e:
-        logger.error(f"Error pruning SQLite cache: {e}")
+        logger.error(f"Error during SQLite prune_cache: {e}")
+    finally:
+        with _prune_lock:
+            _is_pruning = False
 
 def vacuum_database() -> bool:
     """Executes SQLite VACUUM to reclaim unused disk space and optimize pages."""

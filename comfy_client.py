@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 import json
 import logging
@@ -180,7 +181,7 @@ class ComfyClient:
             if val is not None and max_val is not None:
                 db.set_live_status(step=val, max_steps=max_val, node_id=node_id, prompt_id=prompt_id)
             if prompt_id in self.timings:
-                now = asyncio.get_event_loop().time()
+                now = time.monotonic()
                 if self.timings[prompt_id]["first_step"] is None:
                     self.timings[prompt_id]["first_step"] = now
                 self.timings[prompt_id]["last_step"] = now
@@ -197,7 +198,7 @@ class ComfyClient:
         elif msg_type == "executing" and msg_data.get("node") is None:
             # Execution finished (this event sends node=None when finished)
             db.clear_live_status()
-            now = asyncio.get_event_loop().time()
+            now = time.monotonic()
             if prompt_id in self.timings:
                 t = self.timings.pop(prompt_id)
                 t_sub = t.get("submitted", now)
@@ -418,7 +419,7 @@ class ComfyClient:
                         oldest_t = next(iter(self.timings))
                         self.timings.pop(oldest_t, None)
                     self.timings[prompt_id] = {
-                        "submitted": asyncio.get_event_loop().time(),
+                        "submitted": time.monotonic(),
                         "first_step": None,
                         "last_step": None,
                         "finished": None
@@ -463,9 +464,9 @@ class ComfyClient:
 
                 try:
                     try:
-                        start_time = asyncio.get_event_loop().time()
+                        start_time = time.monotonic()
                         while not future.done():
-                            elapsed = asyncio.get_event_loop().time() - start_time
+                            elapsed = time.monotonic() - start_time
                             if elapsed >= timeout:
                                 final_history = await self.get_history_output(prompt_id)
                                 if final_history is not None and not future.done():

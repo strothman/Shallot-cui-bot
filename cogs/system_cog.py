@@ -500,8 +500,8 @@ class SystemCog(commands.Cog):
             return
 
         # Poll server online status for up to 45 seconds
-        start_time = asyncio.get_event_loop().time()
-        while asyncio.get_event_loop().time() - start_time < 45:
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < 45:
             await asyncio.sleep(3)
             if client and await client.is_online():
                 embed = discord.Embed(
@@ -539,8 +539,8 @@ class SystemCog(commands.Cog):
         self.comfy_process = None
         self.bot.comfy_process = None
 
-        start_time = asyncio.get_event_loop().time()
-        while asyncio.get_event_loop().time() - start_time < 10:
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < 10:
             await asyncio.sleep(1)
             if client and not await client.is_online():
                 embed = discord.Embed(

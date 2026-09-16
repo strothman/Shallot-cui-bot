@@ -18,6 +18,8 @@ from enum import Enum
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Callable, Any
 from datetime import datetime, timezone
+import asyncio
+import threading
 
 logger = logging.getLogger("ErrorHandler")
 
@@ -218,16 +220,26 @@ class ErrorHandler:
         else:
             self._entries = []
 
+    _save_lock = threading.Lock()
+
     def _save(self):
-        """Persist error log to disk with rolling limit."""
-        # Trim to max_entries (keep most recent)
-        if len(self._entries) > self.max_entries:
-            self._entries = self._entries[-self.max_entries:]
-        try:
-            with open(self.log_file, "w", encoding="utf-8") as f:
-                json.dump(self._entries, f, indent=2, default=str)
-        except Exception as e:
-            logger.error(f"Failed to save error log: {e}")
+        """Persist error log to disk atomically with concurrency safety and rolling limit."""
+        with self._save_lock:
+            if len(self._entries) > self.max_entries:
+                self._entries = self._entries[-self.max_entries:]
+
+            temp_path = f"{self.log_file}.tmp"
+            try:
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(self._entries, f, indent=2, default=str)
+                os.replace(temp_path, self.log_file)
+            except Exception as e:
+                logger.error(f"Failed to save error log: {e}")
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
 
     # -- Core Logging --
 

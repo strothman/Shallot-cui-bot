@@ -14,7 +14,8 @@ import json
 import logging
 import asyncio
 import subprocess
-from typing import Optional, Tuple, Dict, Any
+import gc
+from typing import Optional, Tuple, Dict, Any, List
 
 import aiohttp
 import discord
@@ -345,9 +346,90 @@ def build_models_embed(architecture: str = "all", model_type: str = "all") -> Op
     return embed
 
 
-async def purge_vram_core(client=None) -> bool:
-    """Sends command to ComfyUI client to unload models and free PyTorch CUDA cache."""
+def trim_process_working_set(pid: Optional[int] = None) -> bool:
+    """
+    Trims the working set of the specified process (or current process if pid is None)
+    by paging out unreferenced physical RAM pages to standby pool using the Windows API EmptyWorkingSet.
+    Safely no-ops on non-Windows platforms.
+    """
+    if os.name != 'nt':
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+        psapi.EmptyWorkingSet.argtypes = [ctypes.c_void_p]
+        psapi.EmptyWorkingSet.restype = ctypes.c_int
+
+        if pid is None or pid == os.getpid():
+            h_process = kernel32.GetCurrentProcess()
+            return bool(psapi.EmptyWorkingSet(h_process))
+
+        # PROCESS_QUERY_INFORMATION (0x0400) | PROCESS_SET_QUOTA (0x0100)
+        flags = 0x0400 | 0x0100
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
+
+        h_process = kernel32.OpenProcess(flags, False, int(pid))
+        if not h_process:
+            return False
+        try:
+            return bool(psapi.EmptyWorkingSet(h_process))
+        finally:
+            kernel32.CloseHandle(h_process)
+    except Exception as e:
+        logger.debug(f"Failed to trim working set for PID {pid}: {e}")
+        return False
+
+
+def get_comfyui_pids() -> List[int]:
+    """Finds all PIDs of processes listening on the ComfyUI port (e.g. 8188)."""
+    pids = []
+    if os.name == 'nt':
+        try:
+            port = COMFYUI_ADDRESS.split(":")[-1] if ":" in COMFYUI_ADDRESS else "8188"
+            out = subprocess.run(
+                f'netstat -aon | findstr :{port}',
+                shell=True, capture_output=True, text=True
+            )
+            lines = out.stdout.strip().splitlines()
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 5 and "LISTENING" in line:
+                    pid = int(parts[-1])
+                    if pid > 0 and pid not in pids:
+                        pids.append(pid)
+        except Exception as e:
+            logger.debug(f"Error finding ComfyUI PIDs: {e}")
+    return pids
+
+
+async def purge_vram_core(client=None, trim_working_set: bool = True) -> bool:
+    """Sends command to ComfyUI client to unload models, free PyTorch CUDA cache, and trim system RAM working set."""
     if client is None:
         from comfy_client import comfy_client as default_client
         client = default_client
-    return await client.free_memory(unload_models=True, free_memory=True)
+    
+    success = False
+    try:
+        success = await client.free_memory(unload_models=True, free_memory=True)
+    except Exception as e:
+        logger.warning(f"Error calling comfy_client.free_memory: {e}")
+
+    await asyncio.to_thread(gc.collect)
+
+    if trim_working_set and os.name == 'nt':
+        try:
+            # 1. Trim bot's own working set
+            await asyncio.to_thread(trim_process_working_set, os.getpid())
+
+            # 2. Trim ComfyUI processes listening on port 8188
+            comfy_pids = await asyncio.to_thread(get_comfyui_pids)
+            for c_pid in comfy_pids:
+                await asyncio.to_thread(trim_process_working_set, c_pid)
+        except Exception as trim_err:
+            logger.debug(f"Working set trim warning: {trim_err}")
+
+    return success

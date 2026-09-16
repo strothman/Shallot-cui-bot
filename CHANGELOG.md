@@ -18,9 +18,24 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
   * Pruned unused `/flux` slash command and archived Flux workflows (`com_flux_gguf.json`, `flux_lowres.json`).
   * Removed redundant `/purge-vram` command (consolidated into `/free`) and duplicate `"Adopt Midjourney Post"` context menu.
 
+* 🧩 **Modular Cog & Service Architecture (`bot.py` De-bloat)**:
+  * Extracted `/imagine`, `/study`, and `"Adopt Post / Image"` to [`cogs/imagine_cog.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/cogs/imagine_cog.py).
+  * Extracted multi-quadrant generation pipeline, ComfyUI synthesis, grid completion, button handlers (`U1–U4`, `V1–V4`, isolate, reroll, cancel, remix, outpaint), and blend generation pipeline into [`services/generation_service.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/services/generation_service.py).
+  * Reduced `bot.py` by 58% (from 4,726 lines down to 1,955 lines) while maintaining 100% backward-compatibility for external imports and test mocks.
+
+### Performance & Reliability
+* 🧠 **Inactive RAM Working Set Optimization**:
+  * Implemented Windows `EmptyWorkingSet` memory trimming for both bot and ComfyUI host processes via [`trim_process_working_set`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/services/system_service.py).
+  * Added 30-minute idle watchdog to release up to ~1.85 GB of unreferenced physical RAM back to Windows standby pool without process termination.
+* 🛡️ **Event Loop Hygiene & SQLite Hardening**:
+  * Migrated deprecated event loop timers to `time.monotonic()` in `comfy_client.py` and generation callbacks.
+  * Added 30.0s SQLite connection timeout in `db.py` and mutex-guarded orphan quadrant pruning to prevent database locks.
+  * Converted error logging in `error_handler.py` to write atomic `.tmp` files to prevent corrupted log entries during concurrent worker crashes.
+
 ### Maintenance
-* 🧪 **Automated Test Suite**:
-  * Updated `suite_test.py` across all command registration, modal, UI view, and character audit tests. All 101 automated tests passing 100% green.
+* 🧪 **Modular Test Suite**:
+  * Decomposed 4,389-line monolithic `suite_test.py` into dedicated test modules inside [`tests/`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/tests/) (`test_parsers.py`, `test_characters_and_workflows.py`, `test_queue_and_engine.py`, `test_system_and_maintenance.py`, `test_ui_and_views.py`).
+  * Replaced `suite_test.py` with an ultra-fast 31-line test discovery runner (101/101 tests and 4 architectural audits passing in ~8.8s).
 * 📚 **Documentation**:
   * Updated `README.md` and `PROJECT_STATE.md` to reflect pure image studio workflows, new blend dropdowns, and updated test suite count (101 passed).
 
