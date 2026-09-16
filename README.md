@@ -4,11 +4,11 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-92%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-101%20passed-success.svg)](suite_test.py)
 
-Welcome! **Shallot-CUI Bot** is your personal AI art and video creation studio built directly into Discord, powered by **ComfyUI**.
+Welcome! **Shallot-CUI Bot** is your personal AI art and image creation studio built directly into Discord, powered by **ComfyUI**.
 
-Whether you want to create beautiful pictures, generate smooth videos, or copy styles from your favorite images, this guide explains how everything works in simple, easy-to-understand terms.
+Whether you want to create beautiful pictures, explore photorealism with Krea 2 Turbo, blend styles, or interrogate images, this guide explains how everything works in simple, easy-to-understand terms.
 
 ---
 
@@ -48,15 +48,6 @@ Type `/imagine` followed by what you want to see. The bot will create a 2x2 grid
   * `--sr.85` $\rightarrow$ Semi-Realism mode for rich 3D shading and lighting.
   * `--raw` $\rightarrow$ Clean, natural photo look without artistic filters.
 
----
-
-### ✨ `/flux` — Ultra-Realistic Pictures (Flux.1)
-Generate photorealistic pictures with incredible hands, natural skin, and clear, readable text on signs or clothes!
-* **Model Choices:**
-  * `flux1-dev` *(Default)*: Highest quality, realism, and accurate text.
-  * `flux1-schnell`: Ultra-fast turbo version (creates pictures in just ~8 seconds!).
-* **Characters:** Select `🌿 Ogarla Flux` directly from the `character` dropdown or use `--ogarla`.
-* **Example:** `/flux prompt: futuristic cyber warrior standing on a rooftop at sunset --ar 16:9`
 
 ---
 
@@ -72,40 +63,27 @@ Generate ultra-photorealistic portraits and character scenes using Bert's 11-nod
 
 ---
 
-## 🎬 2. Videos & Animation
-
-Turn any still image into a smooth, animated video:
-
-* **`/video` (Wan 2.2)**: High-quality AI video generator with smooth 60fps movement.
-  * **Example:** `/video image: [upload picture] prompt: gentle wind blowing hair, blinking eyes, smiling duration: 5`
-* **`/ltx` (LTX-Video)**: Super-fast video generator that renders animations in ~35 seconds.
-  * **Example:** `/ltx image: [upload picture] prompt: camera slowly zooms in duration: 4`
-
----
-
-## 🔍 3. Image Tools & Vision Studio
+## 🔍 2. Image Tools & Vision Studio
 
 * **`/describe` (AI Vision & Krea 2 Descriptor)**: Upload any image and Florence-2 will analyze it, write standard captions, detailed descriptions, and an optimized **Krea 2 natural language prompt**, plus 1-click buttons to remake it with Hyphoria NAI or immediately send to **`/bertflow` (Krea 2 Turbo)**!
 * **`/study` (Read Hidden Prompts)**: Upload any AI picture you found on the web. The bot inspects the hidden file data and extracts the exact prompt used to make it!
 * **`/blend-sdxl` / `/blend` (SDXL Blend Studio)**: Upload an image to mix it with new styles, SDXL checkpoints, and text ideas using instant Florence-2 vision analysis.
 * **`/blend-krea` (Krea 2 Photorealism Blend)**: Upload an image to remix it with Florence-2 vision analysis and Bert's photorealistic Krea 2 Turbo flow-matching pipeline! Features an optional **Direct Composition** toggle (`Off`, `Medium 70%`, `Strong 50%`) to lock subject silhouettes and poses via VAE latent encoding.
 * **`/upscale` (1920px AI Upscaler)**: Upload any picture to make it sharp and high-resolution.
-* **`/free` / `/purge-vram` (Purge VRAM & Memory)**: Unloads active models from ComfyUI and purges PyTorch GPU memory caches immediately to release 8GB VRAM for gaming or fresh generation tasks.
+* **`/free` (Purge VRAM & Memory)**: Unloads active models from ComfyUI and purges PyTorch GPU memory caches immediately to release 8GB VRAM for gaming or fresh generation tasks.
 
 ---
 
-## 🖱️ 4. Right-Click Quick Apps
+## 🖱️ 3. Right-Click Quick Apps
 
 You can skip typing slash commands entirely! In Discord, **right-click any picture** (or hold down on mobile) and hover over **Apps**:
 
-* **`🎬 Animate to Video`**: Opens a quick popup window to turn that picture into a video!
 * **`🎨 Blend Image (SDXL)`**: Opens the SDXL Blend Studio to remix the picture with other styles.
-* **`📥 Adopt Post / Image`**: Extracts the prompt and settings from an image post so you can tweak it.
-* **`⛵ Adopt Midjourney Post`**: Turns Midjourney posts into Shallot-CUI bot commands.
+* **`📥 Adopt Post / Image`**: Extracts prompt and settings from an image post (ComfyUI, Midjourney, or user upload) so you can tweak it.
 
 ---
 
-## 🎛️ 5. Interactive Buttons Under Every 4-Image Grid
+## 🎛️ 4. Interactive Buttons Under Every 4-Image Grid
 
 Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 
@@ -150,7 +128,6 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 * **`/queue`**: View active rendering jobs with visual progress bars.
 * **`/models`**: View all registered Checkpoints and LoRAs grouped by architecture (SDXL, Flux, Wan, LTX).
 * **`/scan_models`**: One-click scanner that scans your ComfyUI models folder and adds newly downloaded checkpoints and LoRAs to the bot.
-* **`/variation_mode`**: Toggle variation strength between **High** and **Very High**.
 * **❌ Delete Any Message**: React with the **❌** (red X) emoji on any bot message to instantly delete it.
 
 ---
@@ -181,7 +158,7 @@ Shallot-CUI Bot is engineered for ultra-responsive Discord interactions and 24/7
 | What I want to do | Command Example |
 | :--- | :--- |
 | Generate 4 ideas for a wallpaper | `/imagine prompt: cyberpunk city in the rain --smart --ar 16:9` |
-| Make an ultra-realistic picture | `/flux prompt: portrait of an astronaut on Mars --smart --ar 16:9` |
+| Make an ultra-realistic picture | `/bertflow prompt: portrait of an astronaut on Mars --ar 16:9` |
 | Make an image with Cheri (Blonde hair - Epoch 6) | `/imagine prompt: enjoying the afternoon in Paris --cheri` |
 | Pick Cheri Epoch 4 | `/imagine prompt: enjoying the afternoon in Paris --cheri4` |
 | Make an image with Mageill (Default Epoch 5) | `/imagine prompt: casting a spell in a forest --mageill` |
@@ -190,8 +167,6 @@ Shallot-CUI Bot is engineered for ultra-responsive Discord interactions and 24/7
 | Make an image with Valerie | `/imagine prompt: walking in the park --valerie` |
 | Stop a running render | Click the `🛑 Cancel` button on the status message |
 | Tweak words from a picture grid | Click the `✏️ Remix` button below the pictures |
-| Make a video from an image | `/video image: [upload] prompt: camera slowly zooms in duration: 5` |
-| Fast 35-second animation | `/ltx image: [upload] prompt: camera slowly zooms in duration: 4` |
 | Find out what prompt made a photo | `/study image: [upload]` |
 | Try 4 outfits in 1 prompt | `/imagine prompt: a character wearing a {hoodie\|suit\|armor\|kimono}` |
 | Copy style from another image | `/imagine prompt: knight on a hill style_reference: [upload]` |

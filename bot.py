@@ -59,8 +59,6 @@ from parsers import (
     clean_midjourney_flags,
     LOCKED_STYLE_PRESETS,
     build_scapes_prompt,
-    calculate_wan_dimensions,
-    parse_video_motion_flags,
     apply_face_detailer_to_workflow,
     resolve_bertflow_dimensions,
     format_krea2_prompt,
@@ -125,9 +123,6 @@ from views import (
     PromptPaginationView,
     AdoptButtons,
     EditAdoptPromptModal,
-    VideoPromptModal,
-    build_video_complete_embed,
-    VideoActionView,
     CancelGenerationView,
     RemixModal,
     BertflowButtons,
@@ -184,18 +179,6 @@ SDXL_ENHANCEMENT_CHOICES = [
     app_commands.Choice(name="🚫 Pure Checkpoint (Disable FreeU Enhancer)", value="no_freeu"),
 ]
 
-FLUX_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
-    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
-]
-
-FLUX_CHECKPOINT_CHOICES = [
-    app_commands.Choice(name="Flux.1 Dev GGUF Q4 (General Masterpiece - Recommended)", value="flux1-dev-Q4_K_S.gguf"),
-    app_commands.Choice(name="Flux.1 Schnell GGUF Q4 (4-Step Turbo / Instant)", value="flux1-schnell-Q4_K_S.gguf"),
-    app_commands.Choice(name="FluxedUp NSFW GGUF Q4 (Community Fine-Tune)", value="fluxedUpFluxNSFW_71Q4GGUF.gguf"),
-]
-
 CHARACTER_CHOICES_SDXL = [
     app_commands.Choice(name="🎀 Cheri (Epoch 6 - Default)", value="cheri.85"),
     app_commands.Choice(name="🎀 Cheri (Epoch 4)", value="cheri4.85"),
@@ -213,10 +196,6 @@ CHARACTER_CHOICES_SDXL = [
     app_commands.Choice(name="👓 Sully (.70 - Light)", value="sully.70"),
 ]
 
-CHARACTER_CHOICES_FLUX = [
-    app_commands.Choice(name="🌿 Ogarla Flux (.85 - Default)", value="ogarla.85"),
-    app_commands.Choice(name="🌿 Ogarla Flux (.70 - Light)", value="ogarla.70"),
-]
 
 CHARACTER_CHOICES_KREA2 = [
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.85 - Default)", value="ogarla.85"),
@@ -378,15 +357,6 @@ from services.krea_service import (
     execute_blend_krea_core,
 )
 from cogs.krea_cog import KreaCog
-from cogs.video_cog import VideoCog
-from services.video_service import (
-    execute_video_core,
-    handle_video_reroll,
-    handle_video_remix,
-    handle_video_toggle_fps,
-    execute_animate_message,
-    execute_ltx_core,
-)
 from cogs.system_cog import SystemCog
 from cogs.upscale_cog import UpscaleCog
 from services.upscale_service import (
@@ -413,20 +383,17 @@ from services.system_service import (
 
 _vision_cog = VisionCog(bot)
 _krea_cog = KreaCog(bot)
-_video_cog = VideoCog(bot)
 _system_cog = SystemCog(bot)
 _upscale_cog = UpscaleCog(bot)
 try:
     loop = asyncio.get_running_loop()
     loop.create_task(bot.add_cog(_vision_cog))
     loop.create_task(bot.add_cog(_krea_cog))
-    loop.create_task(bot.add_cog(_video_cog))
     loop.create_task(bot.add_cog(_system_cog))
     loop.create_task(bot.add_cog(_upscale_cog))
 except RuntimeError:
     asyncio.run(bot.add_cog(_vision_cog))
     asyncio.run(bot.add_cog(_krea_cog))
-    asyncio.run(bot.add_cog(_video_cog))
     asyncio.run(bot.add_cog(_system_cog))
     asyncio.run(bot.add_cog(_upscale_cog))
 
@@ -438,22 +405,16 @@ describe = _vision_cog.describe
 bertflow = _krea_cog.bertflow
 bertflow_command = _krea_cog.bertflow
 blend_krea = _krea_cog.blend_krea
-video = _video_cog.video
-video_command = _video_cog.video
-ltx = _video_cog.ltx
-ltx_command = _video_cog.ltx
-animate_to_video_context = _video_cog.animate_to_video_context
 cui_start_command = _system_cog.cui_start
 cui_stop_command = _system_cog.cui_stop
 cui_status_command = _system_cog.cui_status
 free_vram_command = _system_cog.free_vram
-purge_vram_command = _system_cog.purge_vram
+purge_vram_command = _system_cog.free_vram  # Alias pointing to free_vram
 upscale = _upscale_cog.upscale
 upscale_command = _upscale_cog.upscale
 queue_command = _system_cog.queue_status
 models_command = _system_cog.models
 scan_models_command = _system_cog.scan_models
-variation_mode_command = _system_cog.variation_mode
 negative_command = _system_cog.negative
 prompt_group = _system_cog.prompt_group
 style_group = _system_cog.style_group
@@ -2933,6 +2894,19 @@ async def on_interaction(interaction: discord.Interaction):
                 except ValueError:
                     next_ar = "16:9"
                 await handle_update_blend_view(interaction, gen_id, new_ar=next_ar)
+        elif custom_id.startswith("cycle_blend_comp:"):
+            parts = custom_id.split(":")
+            gen_id = parts[1]
+            gen_data = get_generation(gen_id)
+            if gen_data:
+                comp_list = ["style", "low", "med", "high"]
+                cur_comp = gen_data.get("comp_strength", "style")
+                try:
+                    idx = comp_list.index(cur_comp)
+                    next_comp = comp_list[(idx + 1) % len(comp_list)]
+                except ValueError:
+                    next_comp = "low"
+                await handle_update_blend_view(interaction, gen_id, new_comp=next_comp)
         elif custom_id.startswith("toggle_blend_sref:") or custom_id.startswith("cycle_blend_style:"):
             parts = custom_id.split(":")
             gen_id = parts[1]
@@ -4102,89 +4076,6 @@ async def imagine_favorite_prompt_autocomplete(interaction: discord.Interaction,
     return choices[:25]
 
 
-@bot.tree.command(name="flux", description="✨ Generate high quality AI images with Flux.1 (GGUF Flow-Matching)!")
-@app_commands.describe(
-    prompt="The prompt to generate Flux images from (supports wildcards {a|b|c}, --smart, --magic, etc.)",
-    model_type="Community Flow-Matching UNET (GGUF Quantized for 8GB VRAM)",
-    guidance="Flux Guidance scale (1.0 - 10.0, default 3.5)",
-    character="Select Character LoRA preset (Ogarla Flux)",
-    aspect_ratio="Aspect ratio for generated images (--ar)",
-    favorite_prompt="Apply one of your saved favorite prompts",
-    magic_prompt="Enable Magic Prompt enhancer (--magic / --mp)",
-    smart="Enable Smart Art Director (Subject-harmonized 12B Magic Prompt)",
-    seed="Optional fixed seed for reproducibility"
-)
-@app_commands.choices(
-    model_type=FLUX_CHECKPOINT_CHOICES,
-    aspect_ratio=[
-        app_commands.Choice(name="21:9 (Ultrawide)", value="21:9"),
-        app_commands.Choice(name="16:9 (Widescreen)", value="16:9"),
-        app_commands.Choice(name="16:9.3 (Taskbar Fit - 1920x1032)", value="1920:1032"),
-        app_commands.Choice(name="10:7 (iPad)", value="10:7"),
-        app_commands.Choice(name="3:5 (Portrait)", value="3:5"),
-        app_commands.Choice(name="9:16 (Tall Portrait)", value="9:16"),
-    ]
-)
-async def flux_command(
-    interaction: discord.Interaction, 
-    prompt: str, 
-    model_type: str = "flux1-dev-Q4_K_S.gguf",
-    guidance: float = 3.5,
-    character: str = None,
-    aspect_ratio: str = None,
-    favorite_prompt: str = None,
-    magic_prompt: bool = False,
-    smart: bool = False,
-    seed: int = None
-):
-    if favorite_prompt:
-        clean_fav = favorite_prompt.replace("📌", "").strip()
-        fav_text = None
-        user_prompts = db.get_favorite_prompts(interaction.user.id)
-        for item in user_prompts:
-            p_id = str(item['id'])
-            p_name = item['prompt_name'].strip()
-            p_full = item['prompt_text'].strip()
-            
-            if (p_id == favorite_prompt or p_id == clean_fav or 
-                p_name == favorite_prompt or p_name == clean_fav or
-                p_name.lower() == clean_fav.lower() or
-                p_full == clean_fav or p_full.lower() == clean_fav.lower() or
-                (len(clean_fav) >= 10 and p_name.lower().startswith(clean_fav.lower()[:30])) or
-                (len(clean_fav) >= 10 and p_full.lower().startswith(clean_fav.lower()[:30]))):
-                fav_text = item['prompt_text']
-                break
-
-        if not fav_text:
-            fav_text = clean_fav
-
-        prompt = f"{prompt} {fav_text}".strip() if prompt else fav_text
-
-    if seed is not None:
-        prompt = f"{prompt} --seed {seed}"
-
-    await safe_defer(interaction, thinking=True)
-    await execute_imagine(
-        interaction,
-        prompt=prompt,
-        negative_prompt=None,
-        checkpoint=model_type,
-        style_reference=None,
-        magic_prompt=magic_prompt,
-        favorite_style=None,
-        semi_realism=None,
-        aspect_ratio=aspect_ratio,
-        ogarla=ogarla,
-        is_flux=True,
-        is_com=True,
-        guidance=guidance,
-        smart=smart
-    )
-
-@flux_command.autocomplete('character')
-async def flux_character_autocomplete(interaction: discord.Interaction, current: str):
-    return get_character_autocomplete_choices(current, Architecture.FLUX)
-
 
 # =========================================================================
 # /bertflow (Bert's Krea 2 Photorealism Workflow) - Modularized into cogs/krea_cog.py & services/krea_service.py
@@ -4882,12 +4773,6 @@ async def execute_adopt_post(interaction: discord.Interaction, message: discord.
 @bot.tree.context_menu(name="Adopt Post / Image")
 async def adopt_post_context(interaction: discord.Interaction, message: discord.Message):
     """Context menu command to adopt any Discord image or post (ComfyUI, User Upload, Midjourney)."""
-    await execute_adopt_post(interaction, message)
-
-
-@bot.tree.context_menu(name="Adopt Midjourney Post")
-async def adopt_midjourney_post(interaction: discord.Interaction, message: discord.Message):
-    """Context menu command to adopt and take control of old Midjourney posts."""
     await execute_adopt_post(interaction, message)
 
 

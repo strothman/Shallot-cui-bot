@@ -30,10 +30,8 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, coordinates startup lifecycle, and dispatches background tasks. |
 | [`cogs/upscale_cog.py`](cogs/upscale_cog.py) | **Upscale Desk (Modular Cog):** Houses modernized `/upscale` with choices for scaling (2x, 4x, 1.5x), engine mode (Fast Clean vs Generative Clarity), style, and prompt guidance. |
 | [`services/upscale_service.py`](services/upscale_service.py) | **Upscale Service:** Executes multi-tier AI super-resolution (fast Remacri model passes with smart lanczos aspect fit, and 2-stage generative clarity refiners with SDXL low-denoise KSampler). |
-| [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/purge-vram`, `/queue`), model discovery (`/models`, `/scan_models`), and settings (`/negative`, `/style`, `/prompt`). |
+| [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/queue`), model discovery (`/models`, `/scan_models`), and settings (`/negative`, `/style`, `/prompt`). |
 | [`services/system_service.py`](services/system_service.py) | **System Service:** Executes ComfyUI process lifecycle, GPU telemetry, VRAM purging, model auto-scanning, and configuration persistence. |
-| [`cogs/video_cog.py`](cogs/video_cog.py) | **Video Desk (Modular Cog):** Houses `/video`, `/ltx`, and `"Animate to Video"` context menus. |
-| [`services/video_service.py`](services/video_service.py) | **Video Service:** Executes Wan 2.2 I2V, RIFE frame interpolation, LTX-Video, re-roll, and remix operations. |
 | [`services/recovery_service.py`](services/recovery_service.py) | **Crash Recovery & Reconciliation:** Automatically rescues interrupted generations on restart, retrieves completed outputs from ComfyUI history, and delivers them to Discord. |
 | [`services/workflow_adapter.py`](services/workflow_adapter.py) | **Semantic Workflow Adapter:** Insulates the bot from ComfyUI node renumbering by manipulating nodes by class type, title, and inputs rather than hardcoded IDs. |
 | [`services/engine_queue.py`](services/engine_queue.py) | **Engine-Aware Priority Queue:** Prevents VRAM thrashing on 8GB GPUs via model affinity, anti-starvation age escalation, and auto VRAM purging. |
@@ -48,9 +46,9 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes asynchronously. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) with WAL mode that journals active jobs, stores favorite prompts, and tracks generation metrics. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 93 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 101 different parts of the bot to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
-| [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Flux.1, Wan 2.2 video, and high-resolution upscaling. |
+| [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Krea 2 (Bertflow), and high-resolution upscaling. |
 
 ---
 
@@ -58,7 +56,7 @@ Here is a simple breakdown of the main files in the project and what each one is
 
 ### 🎨 Image Generation
 * **`/imagine`**: Creates a 2x2 grid of 4 pictures using SDXL. Supports aspect ratios (`--ar`), style references (`--sref`), and character presets.
-* **`/flux`**: Creates ultra-detailed, photographic pictures using the next-generation **Flux.1** AI model.
+* **`/bertflow`**: Next-generation Krea 2 Turbo photorealism workflow.
 * **`/blend-sdxl`**: Dedicated 100% SDXL Blend Studio. Stripped of bloat: single `image` input, zero-tab unified 1-page dashboard, 1-click toggles (Semi-Realism & `--sref random`), 1-click aspect ratio cycle, and instant Florence-2 vision interrogation (~1.5s).
 * **`/blend-krea`**: Dedicated Krea 2 Photorealism Studio. Streamlined to single `image` upload; all settings (AR, Direct Composition, Character, Celebrity, Engine, and Wetness) managed via the interactive Phase 2 studio dashboard.
 
@@ -69,10 +67,6 @@ Here is a simple breakdown of the main files in the project and what each one is
 * **Sully (`--sully.85`)**: Automatically adds Sully's signature black hair and thin-rim glasses.
 * **Ogarla (`--ogarla.85`)**: Fantasy character preset.
 * 🛡️ **Privacy Shield:** Characters based on real persons automatically disguise private trigger names so real identities are never exposed in Discord.
-
-### 🎬 Video & Animation
-* **`/video`**: Turns any still picture into an animated video using **Wan 2.2** (14B GGUF + RIFE frame interpolation). Fast, lightweight, and rock-solid on 8GB VRAM GPUs.
-* **`/ltx`**: Creates a fast 35-second animation using **LTX-Video**.
 
 ### 🔍 Vision & Image Tools
 * **`/describe`**: Upload any picture to generate a clean, single prompt description with 1-click **Generate SDXL**, **Generate Krea 2**, and **Copy Prompt** buttons.
@@ -139,9 +133,9 @@ The tool is built with **automatic state resumption**:
 6. **`/blend-krea` Direct Composition Dropdown**: Converted the cycling button into a dedicated 1-click select menu (`Off`, `Subtle`, `Medium`, `Strong`) with intuitive pose-retention labels.
 7. **Streamlined `/blend-krea` Embed**: Removed duplicate walls of text; the fused prompt is only displayed when user remix additions are present, keeping initial sessions clean and readable.
 8. **Bertflow Duplicate Re-Roll Fix**: Eliminated double-triggering on `BertflowButtons` by channeling actions exclusively through `bot.py`'s persistent interaction handler.
-9. **Automatic Memory Cleaning (VRAM Auto-Purge)**: The bot automatically frees graphics card memory when switching between SDXL, Flux, and video models so your computer never crashes from low memory.
+9. **Automatic Memory Cleaning (VRAM Auto-Purge)**: The bot automatically frees graphics card memory when switching between SDXL, Krea 2, and vision models so your computer never crashes from low memory.
 10. **Non-Blocking Async Image I/O & Gateway Protection**: Offloaded all CPU-heavy PIL transformations (Lanczos isolation, outpaint padding calculation, grid cropping, vibrancy boosting, 1.5x upscaling, and disk reads/writes) to worker threads via `asyncio.to_thread()`. Added concurrent `asyncio.gather()` processing for quadrant image enhancements. Discord gateway heartbeats and button response times are completely protected from event loop stalls.
-11. **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**: Implemented intelligent model-affinity job batching across SDXL, Flux.1, Krea 2, Wan 2.2, LTX, and Florence-2. Groups pending jobs targeting the active architecture to eliminate PCIe model weight swapping (saving 20–45s per switch), automatically clears GPU VRAM during transitions, and incorporates anti-starvation age escalation with an upgraded `/queue` dashboard.
+11. **Engine-Aware Priority Queue & VRAM Thrashing Prevention (`services/engine_queue.py`)**: Implemented intelligent model-affinity job batching across SDXL, Krea 2, and Florence-2. Groups pending jobs targeting the active architecture to eliminate PCIe model weight swapping (saving 20–45s per switch), automatically clears GPU VRAM during transitions, and incorporates anti-starvation age escalation with an upgraded `/queue` dashboard.
 12. **Semantic Workflow Adapter & Node Decoupling (`services/workflow_adapter.py`)**: Replaced brittle hardcoded numeric node IDs (`wf["3"]`, `wf["5"]`, `wf["6"]`, `wf["75"]`, `wf["76"]`, `wf["822"]`) with semantic discovery based on class types, titles, parameter signatures, and graph link tracing. Insulates the bot from GUI renumbering, verified through randomized node-scrambling tests.
 13. **Centralized Pipeline Defaults & Semantic Constants (`config.py` & `v2.6.6`)**: Consolidated generation checkpoints, upscale denoise floats (`UPSCALE_DENOISE_SDXL = 0.55`, `UPSCALE_DENOISE_FLUX_SUBTLE = 0.26`, `UPSCALE_DENOISE_FLUX_MODERATE = 0.35`), and variation similarity profiles into `class PipelineDefaults`. Added `get_checkpoint_display_name()` with shorthand alias resolution, eliminating duplicate dictionaries in `views.py`, and replaced raw magic floats in `bot.py`.
 14. **Modern Multi-Tier AI Super-Resolution Engine (`v2.7.2`)**: Overhauled the amateur fixed-1920px 1-pass filter into a professional upscaling suite:
@@ -166,7 +160,7 @@ The tool is built with **automatic state resumption**:
   * Replaced static `app_commands.choices` arrays with dynamic `app_commands.autocomplete` querying `characters.py` and `scan_krea2_loras()`. Newly added LoRAs dropped into models folders immediately appear in Discord autocomplete without code edits or command re-syncing.
 * **Phase 3: Modular Cog Architecture [PILOT COMPLETED — EXPAND WHEN READY]**
   * ✅ **Pilot Phase Verified:** Successfully extracted `/blend-sdxl`, `/blend` alias, and `Blend Image (SDXL)` context menu into [`cogs/vision_cog.py`](cogs/vision_cog.py) and pure execution logic into [`services/vision_service.py`](services/vision_service.py), eliminating 468 lines from `bot.py` with 100% backward compatibility and 71/71 tests passing.
-  * 📋 **Remaining Roadmap:** Decompose remaining modules (`cogs/krea_cog.py`, `cogs/video_cog.py`, `cogs/imagine_cog.py`, `cogs/admin_cog.py`) whenever ready. See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for execution blueprint.
+  * 📋 **Remaining Roadmap:** Decompose remaining modules (`cogs/krea_cog.py`, `cogs/imagine_cog.py`, `cogs/admin_cog.py`) whenever ready. See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for execution blueprint.
 * **Phase 4: Client Distribution & Custom Hardware Packaging [FUTURE ROADMAP — TARGET: NEXT MONTH / NOT NOW]**
   * Package Shallot-CUI Bot for standalone deployment on an external user's PC with their own ComfyUI server, custom checkpoints, and custom LoRAs.
   * 🟢 **Feasibility Rating:** Highly Feasible (8.5/10). Because the bot communicates via standard ComfyUI REST/WebSocket APIs (`127.0.0.1:8188`), it is already decoupled from local hardware.

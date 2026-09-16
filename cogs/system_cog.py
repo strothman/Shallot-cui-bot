@@ -2,9 +2,9 @@
 System & Administration Cog for Shallot-CUI Bot.
 Houses slash commands for:
 - ComfyUI server lifecycle: /cui-start, /cui-stop, /cui-status
-- GPU memory & queue management: /free, /purge-vram, /queue
+- GPU memory & queue management: /free, /queue
 - Model registry and discovery: /models, /scan_models
-- Personalization settings: /negative, /variation_mode, /prompt, /style
+- Personalization settings: /negative, /prompt, /style
 """
 
 import os
@@ -326,10 +326,6 @@ class SystemCog(commands.Cog):
             logger.error(f"Error purging VRAM via /free: {e}")
             await interaction.followup.send(f"Failed to purge VRAM: {e}", ephemeral=True)
 
-    @app_commands.command(name="purge-vram", description="🧹 Alias for /free - Purge ComfyUI models & GPU memory.")
-    async def purge_vram(self, interaction: discord.Interaction):
-        await self.free_vram(interaction)
-
     @app_commands.command(name="queue", description="Show the current ComfyUI processing queue and system status.")
     async def queue_status(self, interaction: discord.Interaction):
         """Display ComfyUI queue status, VRAM usage, and job details."""
@@ -401,22 +397,6 @@ class SystemCog(commands.Cog):
     # =========================================================================
     # User Preferences & Settings
     # =========================================================================
-
-    @app_commands.command(name="variation_mode", description="Toggle variation strength between 'High' (0.85 denoise) and 'Very High' (0.95 denoise).")
-    async def variation_mode(self, interaction: discord.Interaction):
-        """Toggle default variation mode (High vs Very High) persistently."""
-        current = settings.get("variation_mode", "high")
-        new_mode = "very_high" if current == "high" else "high"
-        settings["variation_mode"] = new_mode
-        save_settings()
-        
-        mode_label = "🔥 Very High (Denoise: 0.95)" if new_mode == "very_high" else "⚡ High (Denoise: 0.85)"
-        embed = discord.Embed(
-            title="Variation Mode Updated",
-            description=f"Variation buttons will now use **{mode_label}**.",
-            color=discord.Color.green()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="negative", description="🚫 View and manage your active negative prompt for /imagine.")
     @app_commands.describe(prompt="Optional new negative prompt text to set immediately")

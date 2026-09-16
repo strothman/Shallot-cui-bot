@@ -74,11 +74,6 @@ SDXL_ENHANCEMENT_CHOICES = [
     app_commands.Choice(name="🚫 Pure Checkpoint (Disable FreeU Enhancer)", value="no_freeu"),
 ]
 
-FLUX_ENHANCEMENT_CHOICES = [
-    app_commands.Choice(name="🌟 Studio Duo (Smart Art Director + Magic Prompt)", value="smart+magic"),
-    app_commands.Choice(name="✨ Magic Prompt (Studio Lighting & Cinematic Expansion)", value="magic"),
-    app_commands.Choice(name="🧠 Smart Art Director (Subject-Harmonized Prompt & Style)", value="smart"),
-]
 
 ICO_ENHANCEMENT_CHOICES = [
     app_commands.Choice(name="🔳 Square Corners (Disable Curved Edges)", value="square"),

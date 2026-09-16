@@ -619,36 +619,50 @@ class TestCUIBotFunctions(unittest.TestCase):
         selected_char_opt = [opt for opt in select_char.options if opt.default][0]
         self.assertEqual(selected_char_opt.value, "sully")
 
-        # Test Reference & Composition select (Row 2)
-        select_comp = [item for item in v.children if "set_blend_comp" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(select_comp)
-        self.assertEqual(select_comp.row, 2)
+        # Test Aspect Ratio select (Row 2)
+        select_ar = [item for item in v.children if "set_blend_ar" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_ar)
+        self.assertEqual(select_ar.row, 2)
+        ar_vals = [opt.value for opt in select_ar.options]
+        self.assertIn("1:1", ar_vals)
+        self.assertIn("16:9", ar_vals)
+        self.assertIn("9:16", ar_vals)
+        self.assertIn("4:3", ar_vals)
+        self.assertIn("3:4", ar_vals)
+        self.assertIn("21:9", ar_vals)
 
-        # Test Toggles & Cycles in Row 3 (SR toggle, AR cycle, Sref toggle)
-        sr_btn = [item for item in v.children if "toggle_blend_sr" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(sr_btn)
-        self.assertEqual(sr_btn.row, 3)
-        self.assertIn("ON", sr_btn.label)
+        # Test Semi-Realism select (Row 3)
+        select_sr = [item for item in v.children if "set_blend_sr" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(select_sr)
+        self.assertEqual(select_sr.row, 3)
+        sr_vals = [opt.value for opt in select_sr.options]
+        self.assertIn("nosr", sr_vals)
+        self.assertIn("sr60", sr_vals)
+        self.assertIn("sr70", sr_vals)
+        self.assertIn("sr75", sr_vals)
+        self.assertIn("sr80", sr_vals)
+        self.assertIn("sr90", sr_vals)
+        selected_sr_opt = [opt for opt in select_sr.options if opt.default][0]
+        self.assertEqual(selected_sr_opt.value, "sr80")
 
-        ar_btn = [item for item in v.children if "cycle_blend_ar" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(ar_btn)
-        self.assertEqual(ar_btn.row, 3)
-        self.assertEqual(ar_btn.label, "📐 AR: 16:9")
-
-        style_btn = [item for item in v.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(style_btn)
-        self.assertEqual(style_btn.row, 3)
-        self.assertIn("--sref random: ON", style_btn.label)
-
-        # Test Action Launchers in Row 4 (Edit prompt, Blend image)
-        edit_btn = [item for item in v.children if "edit_blend_prompt" in getattr(item, "custom_id", "")][0]
-        self.assertIsNotNone(edit_btn)
-        self.assertEqual(edit_btn.row, 4)
-
+        # Test Action & Toggle Buttons in Row 4 (Blend image, Edit prompt, Comp cycle, Sref toggle)
         blend_btn = [item for item in v.children if "blend_desc" in getattr(item, "custom_id", "")][0]
         self.assertIsNotNone(blend_btn)
         self.assertEqual(blend_btn.row, 4)
         self.assertEqual(blend_btn.custom_id, "blend_desc:gen123:blend")
+
+        edit_btn = [item for item in v.children if "edit_blend_prompt" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(edit_btn)
+        self.assertEqual(edit_btn.row, 4)
+
+        comp_btn = [item for item in v.children if "cycle_blend_comp" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(comp_btn)
+        self.assertEqual(comp_btn.row, 4)
+
+        style_btn = [item for item in v.children if "toggle_blend_sref" in getattr(item, "custom_id", "")][0]
+        self.assertIsNotNone(style_btn)
+        self.assertEqual(style_btn.row, 4)
+        self.assertIn("--sref random: ON", style_btn.label)
 
     def test_module13_followup_fallback_no_view_type_error(self):
         """Test send_followup_fallback omits view parameter when view=None so discord.py does not raise TypeError."""
@@ -722,7 +736,7 @@ class TestCUIBotFunctions(unittest.TestCase):
 
     def test_module15_wan_workflow_json(self):
         """Test loading and validating Wan 2.2 workflow JSON template."""
-        workflow_path = "workflows/wan22_i2v.json"
+        workflow_path = "workflows/archive/wan22_i2v.json"
         self.assertTrue(os.path.exists(workflow_path))
         with open(workflow_path, "r", encoding="utf-8") as f:
             wf = json.load(f)
@@ -845,7 +859,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(loras[0][1], 0.8)
 
         # 2. Verify Flux workflow pre-wired Node 76
-        with open("workflows/flux_lowres.json", "r", encoding="utf-8") as f:
+        with open("workflows/archive/flux_lowres.json", "r", encoding="utf-8") as f:
             wf = json.load(f)
 
         modified_wf = apply_loras_to_workflow(wf, loras)
@@ -901,7 +915,7 @@ class TestCUIBotFunctions(unittest.TestCase):
 
     def test_module24_com_flux_gguf_workflow(self):
         """Test community Flux.1 GGUF workflow structure, nodes, guidance, and dual CLIP loaders."""
-        wf_path = "workflows/com_flux_gguf.json"
+        wf_path = "workflows/archive/com_flux_gguf.json"
         self.assertTrue(os.path.exists(wf_path))
         with open(wf_path, "r", encoding="utf-8") as f:
             wf = json.load(f)
@@ -1005,9 +1019,8 @@ class TestCUIBotFunctions(unittest.TestCase):
 
     def test_module28_consolidated_enhancements(self):
         """Test that consolidated enhancement choices correctly decode and configure workflow flags."""
-        from bot import SDXL_ENHANCEMENT_CHOICES, FLUX_ENHANCEMENT_CHOICES
+        from bot import SDXL_ENHANCEMENT_CHOICES
         self.assertTrue(len(SDXL_ENHANCEMENT_CHOICES) > 0)
-        self.assertTrue(len(FLUX_ENHANCEMENT_CHOICES) > 0)
 
         # Verify values
         sdxl_vals = [c.value for c in SDXL_ENHANCEMENT_CHOICES]
@@ -1021,13 +1034,8 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertIn("powerhouse", sdxl_vals)
 
         # Discord requires choice names <= 100 chars
-        for c in SDXL_ENHANCEMENT_CHOICES + FLUX_ENHANCEMENT_CHOICES:
+        for c in SDXL_ENHANCEMENT_CHOICES:
             self.assertLessEqual(len(c.name), 100, f"Choice name exceeds 100 chars: {c.name}")
-
-        flux_vals = [c.value for c in FLUX_ENHANCEMENT_CHOICES]
-        self.assertIn("smart", flux_vals)
-        self.assertIn("magic", flux_vals)
-        self.assertIn("smart+magic", flux_vals)
 
         # Test prompt flag parsers for powerhouse and freeu
         from parsers import parse_powerhouse_prompt, parse_freeu_prompt
@@ -1114,13 +1122,13 @@ class TestCUIBotFunctions(unittest.TestCase):
         from bot import bot
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("imagine", commands)
-        self.assertIn("flux", commands)
-        self.assertIn("video", commands)
-        self.assertIn("ltx", commands)
         self.assertIn("prompt", commands)
         self.assertIn("negative", commands)
 
         # Verify pruned commands are not present
+        self.assertNotIn("video", commands)
+        self.assertNotIn("ltx", commands)
+        self.assertNotIn("flux", commands)
         self.assertNotIn("imagine_det", commands)
         self.assertNotIn("junji", commands)
         self.assertNotIn("ico", commands)
@@ -1200,7 +1208,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         ctx_names = [cmd.name for cmd in bot.tree.get_commands()]
         self.assertTrue("Blend Image (SDXL)" in ctx_names or "Blend Image" in ctx_names)
         self.assertIn("Adopt Post / Image", ctx_names)
-        self.assertIn("Adopt Midjourney Post", ctx_names)
+        self.assertNotIn("Adopt Midjourney Post", ctx_names)
 
     def test_module35_copy_prompt_large_text(self):
         """Test handle_copy_prompt safely handles both short and long (>2000 chars) prompt strings."""
@@ -1315,43 +1323,13 @@ class TestCUIBotFunctions(unittest.TestCase):
         res = asyncio.run(run_test())
         self.assertEqual(res, mock_results)
 
-    def test_module38_animate_to_video_context_and_modal(self):
-        """Test registration and setup of the Animate to Video context menu and VideoPromptModal."""
-        from bot import bot, animate_to_video_context
-        from views import VideoPromptModal
-        import asyncio
+    def test_module38_animate_to_video_retired(self):
+        """Test that Animate to Video context menu has been retired and is absent from bot.tree."""
+        from bot import bot
 
         # 1. Verify command tree registration
         ctx_names = [cmd.name for cmd in bot.tree.get_commands()]
-        self.assertIn("Animate to Video", ctx_names)
-
-        # 2. Test VideoPromptModal initialization and defaults
-        modal = VideoPromptModal(default_prompt="a majestic dragon flying over mountains")
-        self.assertEqual(modal.prompt_input.default, "a majestic dragon flying over mountains")
-        self.assertEqual(modal.duration_input.default, "10")
-        self.assertEqual(modal.smoothness_input.default, "smooth")
-
-        # 3. Test on_submit callback invocation
-        received_args = {}
-        async def dummy_callback(interaction, prompt, duration_str, smoothness_str, seed_str):
-            received_args["prompt"] = prompt
-            received_args["duration_str"] = duration_str
-            received_args["smoothness_str"] = smoothness_str
-            received_args["seed_str"] = seed_str
-
-        modal_with_cb = VideoPromptModal(on_submit_callback=dummy_callback)
-        modal_with_cb.prompt_input._value = "walking down a neon street"
-        modal_with_cb.duration_input._value = "10"
-        modal_with_cb.smoothness_input._value = "fast"
-        modal_with_cb.seed_input._value = "123456"
-
-        dummy_interaction = unittest.mock.MagicMock()
-        asyncio.run(modal_with_cb.on_submit(dummy_interaction))
-
-        self.assertEqual(received_args["prompt"], "walking down a neon street")
-        self.assertEqual(received_args["duration_str"], "10")
-        self.assertEqual(received_args["smoothness_str"], "fast")
-        self.assertEqual(received_args["seed_str"], "123456")
+        self.assertNotIn("Animate to Video", ctx_names)
 
     def test_module39_all_modals_error_boundaries_and_callbacks(self):
         """Test that all UI modals in views.py execute callbacks safely and handle exceptions within error boundaries."""
@@ -1364,7 +1342,6 @@ class TestCUIBotFunctions(unittest.TestCase):
             EditStyleModal,
             EditPromptModal,
             EditAdoptPromptModal,
-            VideoPromptModal,
         )
 
         mock_interaction = MagicMock()
@@ -1419,7 +1396,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         async def failing_cb(*args, **kwargs):
             raise ValueError("Simulated unexpected modal failure")
 
-        m_fail = VideoPromptModal(on_submit_callback=failing_cb)
+        m_fail = EditAdoptPromptModal("adopt_fail", "test failure", on_submit_callback=failing_cb)
         m_fail.prompt_input._value = "test failure"
         # Must execute without raising unhandled exception
         asyncio.run(m_fail.on_submit(mock_interaction))
@@ -2316,79 +2293,20 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(badges5, [])
         self.assertEqual(aug5, "")
 
-    def test_module43_video_dashboard_and_action_view(self):
-        """Test build_video_complete_embed 3-column dashboard, VideoActionView, and VideoPromptModal defaults."""
-        from views import build_video_complete_embed, VideoActionView, VideoPromptModal
+    def test_module43_video_views_retired(self):
+        """Test that video dashboard, VideoActionView, and VideoPromptModal are cleanly retired from views."""
+        import views
 
-        # 1. Test build_video_complete_embed fields and layout
-        embed = build_video_complete_embed(
-            prompt="futuristic hovercraft speeding over water",
-            duration_sec=5.0,
-            total_output_frames=162,
-            out_fps=32,
-            orig_w=1920,
-            orig_h=1080,
-            width=832,
-            height=480,
-            video_seed=99887766,
-            elapsed_time=45.2,
-            init_sec=2.1,
-            sample_sec=38.0,
-            post_sec=5.1,
-            motion_badges=["🎥 Zoom In", "✨ Cinematic"],
-            smoothness="smooth",
-            user_name="Alice",
-            user_id=123456789
-        )
+        # 1. Verify video view artifacts are absent
+        self.assertFalse(hasattr(views, "build_video_complete_embed"))
+        self.assertFalse(hasattr(views, "VideoActionView"))
+        self.assertFalse(hasattr(views, "VideoPromptModal"))
 
-        self.assertIn("Wan 2.2 Studio Video Generation Complete", embed.title)
-        self.assertEqual(embed.color.value, 0x5865F2)
-        self.assertIn("Alice", embed.footer.text)
-        self.assertIn("45.2s", embed.footer.text)
-
-        fields = {f.name: f.value for f in embed.fields}
-        self.assertIn("🎬 Motion & Camera", fields)
-        self.assertIn("⏱️ Video Specs", fields)
-        self.assertIn("⚡ Engine & Render", fields)
-
-        self.assertIn("futuristic hovercraft", fields["🎬 Motion & Camera"])
-        self.assertIn("🎥 Zoom In • ✨ Cinematic", fields["🎬 Motion & Camera"])
-        self.assertIn("1920x1080` → `832x480", fields["🎬 Motion & Camera"])
-
-        self.assertIn("5.0s", fields["⏱️ Video Specs"])
-        self.assertIn("32 FPS", fields["⏱️ Video Specs"])
-        self.assertIn("162 frames", fields["⏱️ Video Specs"])
-
-        self.assertIn("Wan 2.2 14B GGUF", fields["⚡ Engine & Render"])
-        self.assertIn("99887766", fields["⚡ Engine & Render"])
-
-        # 2. Test VideoActionView buttons
-        view = VideoActionView("vid_test_123", smoothness="smooth")
-        self.assertEqual(len(view.children), 3)
-        btn_ids = [c.custom_id for c in view.children]
-        self.assertIn("video_reroll:vid_test_123", btn_ids)
-        self.assertIn("video_remix:vid_test_123", btn_ids)
-        self.assertIn("video_toggle_fps:vid_test_123", btn_ids)
-
-        labels = [c.label for c in view.children]
-        self.assertIn("🔄 Re-roll", labels)
-        self.assertIn("✏️ Remix Motion", labels)
-        self.assertIn("⚡ Switch to Fast (16 FPS)", labels)
-
-        # Fast mode toggle label
-        view_fast = VideoActionView("vid_test_456", smoothness="fast")
-        labels_fast = [c.label for c in view_fast.children]
-        self.assertIn("🎬 Switch to Smooth (32 FPS)", labels_fast)
-
-        # 3. Test VideoPromptModal with pre-filled defaults
-        modal = VideoPromptModal(
-            default_prompt="golden retriever running in park",
-            default_duration="10",
-            default_smoothness="fast"
-        )
-        self.assertEqual(modal.prompt_input.default, "golden retriever running in park")
-        self.assertEqual(modal.duration_input.default, "10")
-        self.assertEqual(modal.smoothness_input.default, "fast")
+        # 2. Test AdoptButtons structure (flux button absent)
+        adopt_view = views.AdoptButtons("adopt_test_123")
+        custom_ids = [c.custom_id for c in adopt_view.children]
+        self.assertIn("adopt_imagine:adopt_test_123", custom_ids)
+        self.assertNotIn("adopt_flux:adopt_test_123", custom_ids)
 
     def test_module42_bertflow_workflow_and_command(self):
         """Test Bertflow workflow generation, aspect ratio resolver, UNET detection, and button controls."""
@@ -2456,7 +2374,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         param_names = [p.name for p in bert_cmd.parameters]
         self.assertIn("favorite_prompt", param_names)
         self.assertIn("free", commands)
-        self.assertIn("purge-vram", commands)
+        self.assertNotIn("purge-vram", commands)
 
         # 6. Test PromptPaginationView with bertflow_callback
         from views import PromptPaginationView
@@ -2829,7 +2747,7 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(img_param.required)
 
         # 7. Test dynamic character autocomplete attached to commands
-        for cmd_name in ["bertflow", "imagine", "flux"]:
+        for cmd_name in ["bertflow", "imagine"]:
             self.assertIn(cmd_name, commands)
             cmd = commands[cmd_name]
             char_param = next((p for p in cmd.parameters if p.name == "character"), None)
@@ -3269,30 +3187,34 @@ class TestCUIBotFunctions(unittest.TestCase):
         char_selected = next(opt for opt in row1_items[0].options if opt.default)
         self.assertEqual(char_selected.value, "valerie")
 
-        # Row 2: Composition Select
+        # Row 2: Aspect Ratio Select
         row2_items = [c for c in view.children if c.row == 2]
         self.assertEqual(len(row2_items), 1)
-        self.assertEqual(row2_items[0].custom_id, f"set_blend_comp:{gen_id}")
+        self.assertEqual(row2_items[0].custom_id, f"set_blend_ar:{gen_id}")
+        ar_selected = next(opt for opt in row2_items[0].options if opt.default)
+        self.assertEqual(ar_selected.value, "16:9")
 
-        # Row 3: 1-Click Toggles & Cycles (3 buttons)
+        # Row 3: Semi-Realism Strength Select
         row3_items = [c for c in view.children if c.row == 3]
-        self.assertEqual(len(row3_items), 3)
-        sr_btn = next(c for c in row3_items if c.custom_id.startswith("toggle_blend_sr:"))
-        ar_btn = next(c for c in row3_items if c.custom_id.startswith("cycle_blend_ar:"))
-        style_btn = next(c for c in row3_items if c.custom_id.startswith("toggle_blend_sref:"))
-        self.assertIn("ON", sr_btn.label)
-        self.assertEqual(ar_btn.label, "📐 AR: 16:9")
-        self.assertIn("OFF", style_btn.label)
-        self.assertIn("--sref random", style_btn.label)
+        self.assertEqual(len(row3_items), 1)
+        self.assertEqual(row3_items[0].custom_id, f"set_blend_sr:{gen_id}")
+        sr_selected = next(opt for opt in row3_items[0].options if opt.default)
+        self.assertEqual(sr_selected.value, "sr75")
 
-        # Row 4: Action Launchers (2 buttons)
+        # Row 4: Action Launchers & Toggles (4 buttons)
         row4_items = [c for c in view.children if c.row == 4]
-        self.assertEqual(len(row4_items), 2)
-        edit_btn = next(c for c in row4_items if c.custom_id.startswith("edit_blend_prompt:"))
+        self.assertEqual(len(row4_items), 4)
         blend_btn = next(c for c in row4_items if c.custom_id.startswith("blend_desc:"))
-        self.assertEqual(edit_btn.label, "✏️ Edit Prompt")
+        edit_btn = next(c for c in row4_items if c.custom_id.startswith("edit_blend_prompt:"))
+        comp_btn = next(c for c in row4_items if c.custom_id.startswith("cycle_blend_comp:"))
+        style_btn = next(c for c in row4_items if c.custom_id.startswith("toggle_blend_sref:"))
+
         self.assertEqual(blend_btn.label, "🎨 Blend Image")
         self.assertEqual(blend_btn.custom_id, f"blend_desc:{gen_id}:blend")
+        self.assertEqual(edit_btn.label, "✏️ Edit Prompt")
+        self.assertIn("Comp:", comp_btn.label)
+        self.assertIn("OFF", style_btn.label)
+        self.assertIn("--sref random", style_btn.label)
 
         # 2. Test handle_generate_blended with desc_type == "blend"
         gen_data = {
@@ -3329,6 +3251,36 @@ class TestCUIBotFunctions(unittest.TestCase):
             mock_exec.assert_called_once()
             called_prompt = mock_exec.call_args.kwargs.get("prompt") or mock_exec.call_args.args[1]
             self.assertIn("samurai with glowing katana", called_prompt)
+
+        # 3. Test cycle_blend_comp interaction handling
+        import discord
+        comp_inter = MagicMock()
+        comp_inter.type = discord.InteractionType.component
+        comp_inter.data = {"custom_id": "cycle_blend_comp:gen_blend_exec_test"}
+        comp_inter.response.is_done.return_value = True
+        comp_inter.followup.send = AsyncMock()
+
+        with patch("bot.handle_update_blend_view", new=AsyncMock()) as mock_blend_update:
+            asyncio.run(bot.on_interaction(comp_inter))
+            mock_blend_update.assert_called_once()
+            self.assertEqual(mock_blend_update.call_args.kwargs.get("new_comp"), "low")
+
+        # 4. Test semi-realism dropdown values across all choices (.60, .70, .80, .90)
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_blend_exec_test", desc_type="blend",
+                ar="1:1", use_sr="sr60", char_choice="none", model_choice="wai"
+            ))
+            p_60 = mock_exec.call_args.kwargs.get("prompt") or mock_exec.call_args.args[1]
+            self.assertIn("--sr.60", p_60)
+
+        with patch.object(bot, "execute_blend_generation", new=AsyncMock()) as mock_exec:
+            asyncio.run(bot.handle_generate_blended(
+                mock_interaction, "gen_blend_exec_test", desc_type="blend",
+                ar="16:9", use_sr="sr90", char_choice="none", model_choice="wai"
+            ))
+            p_90 = mock_exec.call_args.kwargs.get("prompt") or mock_exec.call_args.args[1]
+            self.assertIn("--sr.90", p_90)
 
     def test_module73_krea_cog_modular_architecture(self):
         """Verify KreaCog and KreaService modular separation, registration, and backward compatibility."""
@@ -4016,38 +3968,24 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertEqual(get_checkpoint_display_name(None), "Default Model")
         self.assertEqual(get_checkpoint_display_name("custom_model.safetensors"), "custom_model")
 
-    def test_video_cog_registration_and_exports(self):
-        """Test VideoCog registration in bot.tree and backward-compatibility re-exports."""
+    def test_video_capabilities_retired(self):
+        """Test that all video commands, context menus, and cogs have been completely retired."""
         import bot
-        from cogs.video_cog import VideoCog
-        import services.video_service as video_service
 
-        # 1. Verify commands in bot.tree
+        # 1. Verify video commands absent from bot.tree
         cmd_names = [c.name for c in bot.bot.tree.get_commands()]
-        self.assertIn("video", cmd_names)
-        self.assertIn("ltx", cmd_names)
-        self.assertIn("Animate to Video", cmd_names)
+        self.assertNotIn("video", cmd_names)
+        self.assertNotIn("ltx", cmd_names)
+        self.assertNotIn("Animate to Video", cmd_names)
 
-        # 2. Verify re-exports on bot module
-        self.assertTrue(hasattr(bot, "video"))
-        self.assertTrue(hasattr(bot, "video_command"))
-        self.assertTrue(hasattr(bot, "ltx"))
-        self.assertTrue(hasattr(bot, "ltx_command"))
-        self.assertTrue(hasattr(bot, "animate_to_video_context"))
-        self.assertTrue(hasattr(bot, "execute_video_core"))
-        self.assertTrue(hasattr(bot, "handle_video_reroll"))
-        self.assertTrue(hasattr(bot, "handle_video_remix"))
-        self.assertTrue(hasattr(bot, "handle_video_toggle_fps"))
-        self.assertTrue(hasattr(bot, "execute_animate_message"))
-        self.assertTrue(hasattr(bot, "execute_ltx_core"))
-
-        # 3. Verify service functions are callable
-        self.assertTrue(callable(video_service.execute_video_core))
-        self.assertTrue(callable(video_service.execute_ltx_core))
-        self.assertTrue(callable(video_service.handle_video_reroll))
-        self.assertTrue(callable(video_service.handle_video_remix))
-        self.assertTrue(callable(video_service.handle_video_toggle_fps))
-        self.assertTrue(callable(video_service.execute_animate_message))
+        # 2. Verify no video command re-exports on bot module
+        self.assertFalse(hasattr(bot, "video"))
+        self.assertFalse(hasattr(bot, "video_command"))
+        self.assertFalse(hasattr(bot, "ltx"))
+        self.assertFalse(hasattr(bot, "ltx_command"))
+        self.assertFalse(hasattr(bot, "animate_to_video_context"))
+        self.assertFalse(hasattr(bot, "execute_video_core"))
+        self.assertFalse(hasattr(bot, "execute_ltx_core"))
 
     def test_system_cog_registration_and_exports(self):
         """Test SystemCog registration in bot.tree and backward-compatibility re-exports."""
@@ -4059,12 +3997,14 @@ class TestCUIBotFunctions(unittest.TestCase):
         cmd_names = [c.name for c in bot.bot.tree.get_commands()]
         expected_commands = [
             "cui-start", "cui-stop", "cui-status", 
-            "free", "purge-vram", "queue", 
+            "free", "queue", 
             "models", "scan_models", 
-            "variation_mode", "negative", "prompt", "style"
+            "negative", "prompt", "style"
         ]
         for cmd in expected_commands:
             self.assertIn(cmd, cmd_names, f"Expected /{cmd} to be registered in bot.tree")
+        self.assertNotIn("purge-vram", cmd_names)
+        self.assertNotIn("variation_mode", cmd_names)
 
         # 2. Verify re-exports on bot module
         self.assertTrue(hasattr(bot, "cui_start_command"))
@@ -4075,7 +4015,6 @@ class TestCUIBotFunctions(unittest.TestCase):
         self.assertTrue(hasattr(bot, "queue_command"))
         self.assertTrue(hasattr(bot, "models_command"))
         self.assertTrue(hasattr(bot, "scan_models_command"))
-        self.assertTrue(hasattr(bot, "variation_mode_command"))
         self.assertTrue(hasattr(bot, "negative_command"))
         self.assertTrue(hasattr(bot, "prompt_group"))
         self.assertTrue(hasattr(bot, "style_group"))

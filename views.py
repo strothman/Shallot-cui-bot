@@ -822,8 +822,15 @@ class BlendButtons(discord.ui.View):
             self.oga = oga
             self.char_choice = "ogarla" if oga else "none"
 
-        # Resolve sr state
-        is_sr_on = self.sr not in ["nosr", False, None]
+        # Resolve sr state & clean string for default matching
+        if self.sr in ["nosr", False, None]:
+            sr_val = "nosr"
+        elif isinstance(self.sr, str) and self.sr.startswith("sr"):
+            sr_val = self.sr
+        elif self.sr is True:
+            sr_val = "sr75"
+        else:
+            sr_val = str(self.sr)
 
         # Resolve --sref random toggle state
         is_sref_on = self.sref_rand in ["sref", "sref1", True] or (isinstance(self.sref_rand, str) and self.sref_rand.lower() in ["true", "1", "on"])
@@ -874,51 +881,61 @@ class BlendButtons(discord.ui.View):
         )
         self.add_item(char_select)
 
-        # Row 2: Reference & Composition Strength Dropdown
-        comp_options = [
-            discord.SelectOption(label="Style Reference Only (0.20 weight)", value="style", emoji="🎨", description="Transfers style/colors without copying layout", default=(self.comp_strength == "style")),
-            discord.SelectOption(label="Light Composition (0.35 weight)", value="low", emoji="🖼️", description="Soft pose/layout reference", default=(self.comp_strength == "low")),
-            discord.SelectOption(label="Medium Composition (0.60 weight)", value="med", emoji="🖼️", description="Balanced character identity & layout", default=(self.comp_strength == "med")),
-            discord.SelectOption(label="Strong Composition (0.85 weight)", value="high", emoji="🖼️", description="Strict pose, framing & structural locking", default=(self.comp_strength == "high")),
+        # Row 2: Aspect Ratio Dropdown
+        ar_options = [
+            discord.SelectOption(label="1:1 Square (1024x1024)", value="1:1", emoji="📐", description="Square avatar / profile framing", default=(self.ar == "1:1")),
+            discord.SelectOption(label="16:9 Widescreen (1344x768)", value="16:9", emoji="📐", description="Cinematic landscape & wallpaper", default=(self.ar == "16:9")),
+            discord.SelectOption(label="9:16 Portrait / Story (768x1344)", value="9:16", emoji="📐", description="Full vertical phone / reel format", default=(self.ar == "9:16")),
+            discord.SelectOption(label="4:3 Standard (1152x864)", value="4:3", emoji="📐", description="Classic standard landscape", default=(self.ar == "4:3")),
+            discord.SelectOption(label="3:4 Standard Tall (864x1152)", value="3:4", emoji="📐", description="Classic portrait framing", default=(self.ar == "3:4")),
+            discord.SelectOption(label="21:9 Ultra-Wide (1536x640)", value="21:9", emoji="📐", description="Panoramic cinematic banner", default=(self.ar == "21:9")),
+            discord.SelectOption(label="3:5 Mobile Portrait (768x1280)", value="3:5", emoji="📐", description="Tall mobile screen format", default=(self.ar == "3:5")),
+            discord.SelectOption(label="10:7 Classic Photo (1280x896)", value="10:7", emoji="📐", description="Classic print photograph ratio", default=(self.ar == "10:7")),
         ]
-        comp_select = discord.ui.Select(
-            placeholder="🖼️ Select Reference & Composition Strength...",
-            options=comp_options,
+        ar_select = discord.ui.Select(
+            placeholder="📐 Select Aspect Ratio...",
+            options=ar_options,
             min_values=1,
             max_values=1,
-            custom_id=f"set_blend_comp:{self.generation_id}",
+            custom_id=f"set_blend_ar:{self.generation_id}",
             row=2
         )
-        self.add_item(comp_select)
+        self.add_item(ar_select)
 
-        # Row 3: 1-Click Toggles & Cycle Buttons
-        # Semi-Realism 1-Click Toggle
-        sr_label = "✨ Semi-Realism: ON (.75)" if is_sr_on else "✨ Semi-Realism: OFF"
-        sr_style = discord.ButtonStyle.success if is_sr_on else discord.ButtonStyle.secondary
-        self.add_item(discord.ui.Button(
-            label=sr_label,
-            style=sr_style,
-            custom_id=f"toggle_blend_sr:{self.generation_id}",
+        # Row 3: Semi-Realism Strength Dropdown
+        sr_options = [
+            discord.SelectOption(label="OFF (Disabled)", value="nosr", emoji="🚫", description="No semi-realism LoRA applied", default=(sr_val == "nosr")),
+            discord.SelectOption(label="Subtle (--sr.60)", value="sr60", emoji="✨", description="Gentle hint of realism (weight 0.60)", default=(sr_val == "sr60")),
+            discord.SelectOption(label="Medium (--sr.70)", value="sr70", emoji="✨", description="Balanced anime realism (weight 0.70)", default=(sr_val == "sr70")),
+            discord.SelectOption(label="Default (--sr.75)", value="sr75", emoji="✨", description="Signature blend realism (weight 0.75)", default=(sr_val in ["sr75", "sr"])),
+            discord.SelectOption(label="Strong (--sr.80)", value="sr80", emoji="✨", description="Enhanced photographic textures (weight 0.80)", default=(sr_val == "sr80")),
+            discord.SelectOption(label="High (--sr.90)", value="sr90", emoji="✨", description="Maximum photographic realism (weight 0.90)", default=(sr_val == "sr90")),
+        ]
+        sr_select = discord.ui.Select(
+            placeholder="✨ Select Semi-Realism Strength...",
+            options=sr_options,
+            min_values=1,
+            max_values=1,
+            custom_id=f"set_blend_sr:{self.generation_id}",
             row=3
-        ))
+        )
+        self.add_item(sr_select)
 
-        # AR 1-Click Cycle Button
+        # Row 4: Action & Toggle Buttons
+        comp_button_labels = {
+            "style": "🎨 Comp: Style (.20)",
+            "low": "🖼️ Comp: Low (.35)",
+            "med": "🖼️ Comp: Med (.60)",
+            "high": "🖼️ Comp: High (.85)"
+        }
+        comp_btn_label = comp_button_labels.get(self.comp_strength, "🖼️ Comp: Low (.35)")
+
         self.add_item(discord.ui.Button(
-            label=f"📐 AR: {self.ar}",
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"cycle_blend_ar:{self.generation_id}",
-            row=3
+            label="🎨 Blend Image",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"blend_desc:{self.generation_id}:blend",
+            row=4
         ))
-
-        # --sref random 1-Click Toggle Button
-        self.add_item(discord.ui.Button(
-            label=sref_label,
-            style=sref_style,
-            custom_id=f"toggle_blend_sref:{self.generation_id}",
-            row=3
-        ))
-
-        # Row 4: Action Launchers
         self.add_item(discord.ui.Button(
             label="✏️ Edit Prompt",
             style=discord.ButtonStyle.secondary,
@@ -926,9 +943,15 @@ class BlendButtons(discord.ui.View):
             row=4
         ))
         self.add_item(discord.ui.Button(
-            label="🎨 Blend Image",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"blend_desc:{self.generation_id}:blend",
+            label=comp_btn_label,
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"cycle_blend_comp:{self.generation_id}",
+            row=4
+        ))
+        self.add_item(discord.ui.Button(
+            label=sref_label,
+            style=sref_style,
+            custom_id=f"toggle_blend_sref:{self.generation_id}",
             row=4
         ))
 
@@ -1986,205 +2009,8 @@ class AdoptButtons(discord.ui.View):
             custom_id=f"adopt_imagine:{adopt_id}",
             row=2
         ))
-        self.add_item(discord.ui.Button(
-            label="✨ Flux HD",
-            style=discord.ButtonStyle.success,
-            custom_id=f"adopt_flux:{adopt_id}",
-            row=2
-        ))
 
 
-
-class VideoPromptModal(discord.ui.Modal, title="🎬 Animate Image to Video"):
-    """Modal allowing the user to configure motion prompt and Wan 2.2 settings before queuing video generation."""
-    def __init__(self, default_prompt: str = "", default_duration: str = "10", default_smoothness: str = "smooth", on_submit_callback=None):
-        super().__init__()
-        self.on_submit_callback = on_submit_callback
-
-        self.prompt_input = discord.ui.TextInput(
-            label="Motion Prompt",
-            style=discord.TextStyle.paragraph,
-            placeholder="Describe desired motion or use flags (e.g. hair flowing, --zoom-in, --cinematic)",
-            default=default_prompt[:800] if default_prompt else "",
-            max_length=1000,
-            required=True
-        )
-        self.add_item(self.prompt_input)
-
-        self.duration_input = discord.ui.TextInput(
-            label="Duration in Seconds (10 or 5)",
-            style=discord.TextStyle.short,
-            placeholder="10 (default) or 5",
-            default=str(default_duration) if default_duration else "10",
-            max_length=2,
-            required=False
-        )
-        self.add_item(self.duration_input)
-
-        self.smoothness_input = discord.ui.TextInput(
-            label="Smoothness Mode (smooth / fast)",
-            style=discord.TextStyle.short,
-            placeholder="smooth (32 FPS) or fast (16 FPS)",
-            default=str(default_smoothness) if default_smoothness else "smooth",
-            max_length=10,
-            required=False
-        )
-        self.add_item(self.smoothness_input)
-
-        self.seed_input = discord.ui.TextInput(
-            label="Seed (Optional)",
-            style=discord.TextStyle.short,
-            placeholder="Leave empty for random seed",
-            default="",
-            max_length=20,
-            required=False
-        )
-        self.add_item(self.seed_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            if self.on_submit_callback:
-                await self.on_submit_callback(
-                    interaction,
-                    self.prompt_input.value.strip(),
-                    self.duration_input.value.strip(),
-                    self.smoothness_input.value.strip(),
-                    self.seed_input.value.strip()
-                )
-        except Exception as e:
-            logger.error(f"Error in VideoPromptModal submit: {e}")
-            await send_error_fallback(interaction, f"Failed to queue video animation: {e}")
-
-
-def build_video_complete_embed(
-    prompt: str,
-    duration_sec: float,
-    total_output_frames: int,
-    out_fps: int,
-    orig_w: int,
-    orig_h: int,
-    width: int,
-    height: int,
-    video_seed: int,
-    elapsed_time: float,
-    init_sec: float = 0.0,
-    sample_sec: float = 0.0,
-    post_sec: float = 0.0,
-    motion_badges: list = None,
-    smoothness: str = "smooth",
-    user_name: str = "User",
-    user_id: int = 0
-) -> discord.Embed:
-    """Builds a polished, 3-column inline studio dashboard embed for completed Wan 2.2 video animations."""
-    badges_str = " • ".join(motion_badges) if motion_badges else "🎬 Natural Motion"
-    mode_str = "Smooth (32 FPS • RIFE 2x)" if smoothness == "smooth" else "Fast (16 FPS • Native)"
-
-    embed = discord.Embed(
-        title="🎬 Wan 2.2 Studio Video Generation Complete",
-        color=discord.Color.from_rgb(88, 101, 242)
-    )
-
-    # Column 1: Motion & Camera
-    col1_val = (
-        f"**Prompt:** {prompt[:180]}{'...' if len(prompt) > 180 else ''}\n"
-        f"**Cues:** `{badges_str}`\n"
-        f"**Framing:** `{orig_w}x{orig_h}` → `{width}x{height}`"
-    )
-    embed.add_field(name="🎬 Motion & Camera", value=col1_val, inline=True)
-
-    # Column 2: Video Specs
-    col2_val = (
-        f"**Duration:** `{duration_sec:.1f}s`\n"
-        f"**Framerate:** `{out_fps} FPS`\n"
-        f"**Frames:** `{total_output_frames} frames`\n"
-        f"**Mode:** `{mode_str}`"
-    )
-    embed.add_field(name="⏱️ Video Specs", value=col2_val, inline=True)
-
-    # Column 3: Engine & Render
-    col3_val = (
-        f"**Model:** `Wan 2.2 14B GGUF`\n"
-        f"**Sampling:** `6 Steps (Shift 8.0)`\n"
-        f"**Render Time:** `{elapsed_time:.1f}s`\n"
-        f"**Seed:** `{video_seed}`"
-    )
-    embed.add_field(name="⚡ Engine & Render", value=col3_val, inline=True)
-
-    user_info = f"Requested by {user_name}" if user_name else "Requested"
-    id_info = f" (ID: {user_id})" if user_id else ""
-    embed.set_footer(text=f"{user_info}{id_info} • Sample: {sample_sec:.1f}s | Total: {elapsed_time:.1f}s")
-
-    return embed
-
-
-class VideoActionView(discord.ui.View):
-    """Interactive action view attached to completed /video generations."""
-    def __init__(
-        self,
-        generation_id: str,
-        on_reroll_cb=None,
-        on_remix_cb=None,
-        on_toggle_fps_cb=None,
-        smoothness: str = "smooth"
-    ):
-        super().__init__(timeout=1800)
-        self.generation_id = generation_id
-        self.on_reroll_cb = on_reroll_cb
-        self.on_remix_cb = on_remix_cb
-        self.on_toggle_fps_cb = on_toggle_fps_cb
-        self.smoothness = smoothness
-
-        # [ 🔄 Re-roll ]
-        self.reroll_btn = discord.ui.Button(
-            label="🔄 Re-roll",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"video_reroll:{generation_id}"
-        )
-        self.reroll_btn.callback = self._on_reroll
-        self.add_item(self.reroll_btn)
-
-        # [ ✏️ Remix Motion ]
-        self.remix_btn = discord.ui.Button(
-            label="✏️ Remix Motion",
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"video_remix:{generation_id}"
-        )
-        self.remix_btn.callback = self._on_remix
-        self.add_item(self.remix_btn)
-
-        # [ ⚡ Switch FPS Mode ]
-        toggle_label = "⚡ Switch to Fast (16 FPS)" if smoothness == "smooth" else "🎬 Switch to Smooth (32 FPS)"
-        self.toggle_btn = discord.ui.Button(
-            label=toggle_label,
-            style=discord.ButtonStyle.secondary,
-            custom_id=f"video_toggle_fps:{generation_id}"
-        )
-        self.toggle_btn.callback = self._on_toggle_fps
-        self.add_item(self.toggle_btn)
-
-    async def _on_reroll(self, interaction: discord.Interaction):
-        try:
-            if self.on_reroll_cb:
-                await self.on_reroll_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in VideoActionView reroll: {e}")
-            await send_error_fallback(interaction, f"Failed to re-roll video: {e}")
-
-    async def _on_remix(self, interaction: discord.Interaction):
-        try:
-            if self.on_remix_cb:
-                await self.on_remix_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in VideoActionView remix: {e}")
-            await send_error_fallback(interaction, f"Failed to open remix modal: {e}")
-
-    async def _on_toggle_fps(self, interaction: discord.Interaction):
-        try:
-            if self.on_toggle_fps_cb:
-                await self.on_toggle_fps_cb(interaction, self.generation_id)
-        except Exception as e:
-            logger.error(f"Error in VideoActionView toggle fps: {e}")
-            await send_error_fallback(interaction, f"Failed to toggle FPS mode: {e}")
 
 
 class BertflowButtons(discord.ui.View):

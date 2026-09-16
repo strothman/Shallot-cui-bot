@@ -4,6 +4,27 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-16]
+
+### Added
+* 📐 **`/blend-sdxl` Studio Dropdowns (Option A)**:
+  * Upgraded SDXL Blend Studio controls with direct **Aspect Ratio** (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`, `3:5`, `10:7`) and **Semi-Realism** (`OFF`, `.60`, `.70`, `.75`, `.80`, `.90`) select menus.
+  * Added 1-click **Composition** cycling button (`Style .20` → `Low .35` → `Med .60` → `High .85`) to the compact action row alongside `Blend Image`, `Edit Prompt`, and `--sref random` toggle.
+
+### Changed
+* 🧅 **Pure Image Synthesis Platform Conversion**:
+  * Completely retired and pruned all video features (`/video`, `/ltx`, and `"Animate to Video"` context menu), transforming the bot into a 100% focused image generation and blending studio.
+  * Safely archived video workflows (`wan22_i2v.json`, `ltx_i2v.json`, `hunyuan_i2v.json`) to `workflows/archive/`.
+  * Pruned unused `/flux` slash command and archived Flux workflows (`com_flux_gguf.json`, `flux_lowres.json`).
+  * Removed redundant `/purge-vram` command (consolidated into `/free`) and duplicate `"Adopt Midjourney Post"` context menu.
+
+### Maintenance
+* 🧪 **Automated Test Suite**:
+  * Updated `suite_test.py` across all command registration, modal, UI view, and character audit tests. All 101 automated tests passing 100% green.
+* 📚 **Documentation**:
+  * Updated `README.md` and `PROJECT_STATE.md` to reflect pure image studio workflows, new blend dropdowns, and updated test suite count (101 passed).
+
+---
 ## [2026-09-14]
 
 ### Maintenance
