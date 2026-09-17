@@ -372,6 +372,18 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
                 handler = _resolve_handler("handle_update_blend_krea_view", handle_update_blend_krea_view)
                 await handler(interaction, gen_id, new_model=next_model)
                 return True
+        elif custom_id.startswith("toggle_blend_krea_steps:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                gen_id = parts[1]
+                gen_data = db.get_generation(gen_id) or get_generation(gen_id) or {}
+                cur_steps = int(gen_data.get("steps", 8))
+                # Cycle 8 -> 10 -> 12 -> 16 -> 8
+                step_cycle = {8: 10, 10: 12, 12: 16}
+                next_steps = step_cycle.get(cur_steps, 8)
+                handler = _resolve_handler("handle_update_blend_krea_view", handle_update_blend_krea_view)
+                await handler(interaction, gen_id, new_steps=next_steps)
+                return True
         elif custom_id.startswith("toggle_blend_krea_wetness:"):
             parts = custom_id.split(":")
             if len(parts) >= 2:

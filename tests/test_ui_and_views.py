@@ -960,10 +960,13 @@ class TestUiAndViews(unittest.TestCase):
         commands = {cmd.name: cmd for cmd in bot.tree.get_commands()}
         self.assertIn("blend-krea", commands)
         bk_cmd = commands["blend-krea"]
-        self.assertEqual(len(bk_cmd.parameters), 1, "blend-krea must only require the image parameter")
-        img_param = bk_cmd.parameters[0]
+        self.assertIn("image", [p.name for p in bk_cmd.parameters])
+        self.assertIn("steps", [p.name for p in bk_cmd.parameters])
+        img_param = next(p for p in bk_cmd.parameters if p.name == "image")
         self.assertEqual(img_param.name, "image")
         self.assertTrue(img_param.required)
+        steps_param = next(p for p in bk_cmd.parameters if p.name == "steps")
+        self.assertFalse(steps_param.required)
 
         # 7. Test dynamic character autocomplete attached to commands
         for cmd_name in ["bertflow", "imagine"]:
@@ -1187,10 +1190,11 @@ class TestUiAndViews(unittest.TestCase):
         self.assertIn("steps", bert_params)
         self.assertIn("seed", bert_params)
 
-        # Verify blend-krea streamlined parameter (image only)
+        # Verify blend-krea parameters (image and steps)
         krea_cmd = commands["blend-krea"]
-        self.assertEqual(len(krea_cmd.parameters), 1)
-        self.assertEqual(krea_cmd.parameters[0].name, "image")
+        krea_params = [p.name for p in krea_cmd.parameters]
+        self.assertIn("image", krea_params)
+        self.assertIn("steps", krea_params)
 
         # 3. Test backward-compatibility re-exports on bot module
         self.assertTrue(callable(bot.execute_bertflow))
@@ -1488,6 +1492,81 @@ class TestUiAndViews(unittest.TestCase):
         wet_btn_matte_again = next(c for c in view_matte_again.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
         self.assertEqual(wet_btn_matte_again.label, "💧 Skin: Matte")
 
+    def test_blend_krea_steps_cycle(self):
+        """Test toggle_blend_krea_steps cycles correctly: 8 -> 10 -> 12 -> 16 -> 8."""
+        import bot
+        import db
+        from views import BlendKreaButtons, build_blend_krea_embed
+        from unittest.mock import MagicMock, AsyncMock
+
+        gen_id = "test_steps_cycle_gen"
+        gen_data = {
+            "caption": "A detailed portrait",
+            "detailed_caption": "A detailed portrait",
+            "krea2_prompt": "A detailed portrait",
+            "user_prompt": "",
+            "fused_prompt": "A detailed portrait",
+            "ar": "1:1",
+            "steps": 8,
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "composition": "off",
+            "char_choice": "none",
+            "celeb_choice": "none",
+            "author_str": "TestUser"
+        }
+        db.save_generation(gen_id, gen_data)
+
+        # 1. Initial state: Steps = 8
+        view = BlendKreaButtons(gen_id, steps=8)
+        step_btn = next(c for c in view.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_steps:{gen_id}")
+        self.assertEqual(step_btn.label, "⚡ Steps: 8")
+
+        embed = build_blend_krea_embed(db.get_generation(gen_id))
+        pipe_field = next(f.value for f in embed.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("⚡ **Steps:** `8`", pipe_field)
+
+        # 2. Click 1: Cycle 8 -> 10
+        mock_int1 = MagicMock()
+        mock_int1.type = bot.discord.InteractionType.component
+        mock_int1.data = {"custom_id": f"toggle_blend_krea_steps:{gen_id}"}
+        mock_int1.response.is_done.return_value = False
+        mock_int1.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_int1))
+        mock_int1.response.edit_message.assert_called_once()
+        self.assertEqual(db.get_generation(gen_id)["steps"], 10)
+
+        # 3. Click 2: Cycle 10 -> 12
+        mock_int2 = MagicMock()
+        mock_int2.type = bot.discord.InteractionType.component
+        mock_int2.data = {"custom_id": f"toggle_blend_krea_steps:{gen_id}"}
+        mock_int2.response.is_done.return_value = False
+        mock_int2.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_int2))
+        self.assertEqual(db.get_generation(gen_id)["steps"], 12)
+
+        # 4. Click 3: Cycle 12 -> 16
+        mock_int3 = MagicMock()
+        mock_int3.type = bot.discord.InteractionType.component
+        mock_int3.data = {"custom_id": f"toggle_blend_krea_steps:{gen_id}"}
+        mock_int3.response.is_done.return_value = False
+        mock_int3.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_int3))
+        self.assertEqual(db.get_generation(gen_id)["steps"], 16)
+
+        # 5. Click 4: Cycle 16 -> 8
+        mock_int4 = MagicMock()
+        mock_int4.type = bot.discord.InteractionType.component
+        mock_int4.data = {"custom_id": f"toggle_blend_krea_steps:{gen_id}"}
+        mock_int4.response.is_done.return_value = False
+        mock_int4.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_int4))
+        self.assertEqual(db.get_generation(gen_id)["steps"], 8)
+
     def test_dynamic_outpaint_button_lifecycle(self):
         """Test OutpaintDynamicButton persistent regex matching and directional callbacks."""
         from views import OutpaintDynamicButton
@@ -1535,6 +1614,20 @@ class TestUiAndViews(unittest.TestCase):
         with patch("services.grid_actions_service.handle_outpaint", new_callable=AsyncMock) as mock_handle:
             asyncio.run(btn_down.callback(mock_inter))
             mock_handle.assert_called_once_with(mock_inter, "gen_123", 2, "down")
+
+        # 4. Verify handle_outpaint executes without NameError on _update_button_state
+        from services.grid_actions_service import handle_outpaint
+        mock_inter2 = MagicMock()
+        mock_inter2.data = {"custom_id": "outpaint:gen_123:1:1.5x"}
+        mock_inter2.response.is_done.return_value = True
+        mock_inter2.followup.send = AsyncMock()
+        mock_inter2.message = MagicMock()
+        mock_inter2.message.components = []
+        with patch("services.grid_actions_service.safe_defer", new_callable=AsyncMock), \
+             patch("services.grid_actions_service.get_generation", return_value={"prompt": "test", "seed": 123}), \
+             patch("services.grid_actions_service.get_quadrant_bytes_async", return_value=None):
+            asyncio.run(handle_outpaint(mock_inter2, "gen_123", 1, "1.5x"))
+            mock_inter2.followup.send.assert_called_once_with("Could not locate image data to outpaint.", ephemeral=True)
 
 
 if __name__ == '__main__':

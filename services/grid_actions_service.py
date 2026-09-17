@@ -76,7 +76,8 @@ from core_helpers import (
     send_followup_fallback, 
     edit_message_fallback, 
     edit_original_fallback,
-    download_image
+    download_image,
+    _update_button_state
 )
 from config import (
     DEFAULT_NEGATIVE_PROMPT,

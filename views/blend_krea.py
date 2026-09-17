@@ -16,6 +16,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     user_prompt = gen_data.get("user_prompt", "").strip()
     fused_prompt = gen_data.get("fused_prompt") or vision_prompt
     ar = gen_data.get("ar", "16:9")
+    steps = int(gen_data.get("steps", 8))
     model_choice = gen_data.get("model_choice", "muse")
     wetness = float(gen_data.get("wetness", -2.0))
     comp = gen_data.get("composition", "off")
@@ -57,7 +58,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     embed.add_field(name="📜 Generation Prompt", value=disp_prompt, inline=False)
 
     settings_lines = [
-        f"📐 **Ratio:** `{ar}` • 🤖 **Engine:** `{model_display}` • 💧 **Skin:** `{skin_display}`",
+        f"📐 **Ratio:** `{ar}` • 🤖 **Engine:** `{model_display}` • ⚡ **Steps:** `{steps}` • 💧 **Skin:** `{skin_display}`",
         f"🖼️ **Direct Comp:** `{comp_display}`",
         f"🎭 **Character:** `{char_display}` • 🌟 **Celebrity:** `{celeb_display}`"
     ]
@@ -72,7 +73,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
 
 
 class BlendKreaButtons(discord.ui.View):
-    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none", celebrity: str = "none"):
+    def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none", celebrity: str = "none", steps: int = 8):
         super().__init__(timeout=None)
         self.generation_id = generation_id
         self.ar = ar
@@ -81,6 +82,7 @@ class BlendKreaButtons(discord.ui.View):
         self.composition = composition or "off"
         self.character = character or "none"
         self.celebrity = celebrity or "none"
+        self.steps = int(steps or 8)
 
         # Row 0: Aspect Ratios (21:9, 16:9, 1:1, 3:4, 9:16)
         ar_options = [("21:9", "21:9"), ("16:9", "16:9"), ("1:1", "1:1"), ("3:4", "3:4"), ("9:16", "9:16")]
@@ -207,6 +209,13 @@ class BlendKreaButtons(discord.ui.View):
             label=model_label,
             style=discord.ButtonStyle.primary,
             custom_id=f"toggle_blend_krea_model:{self.generation_id}",
+            row=4
+        ))
+
+        self.add_item(discord.ui.Button(
+            label=f"⚡ Steps: {self.steps}",
+            style=discord.ButtonStyle.secondary if self.steps == 8 else discord.ButtonStyle.primary,
+            custom_id=f"toggle_blend_krea_steps:{self.generation_id}",
             row=4
         ))
 

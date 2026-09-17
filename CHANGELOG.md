@@ -7,6 +7,12 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-16]
 
 ### Added
+* ⚡ **`/blend-krea` Configurable Sampling Steps & Studio Toggle**:
+  * Added optional `steps: int = 8` parameter to the `/blend-krea` slash command in [`cogs/krea_cog.py`](cogs/krea_cog.py) allowing users to directly type in sampling steps (e.g. 10–16 steps for ultra-fine macro close-ups to prevent latent thatching).
+  * Added interactive `⚡ Steps: {steps}` cycle button (`8` ➔ `10` ➔ `12` ➔ `16` ➔ `8`) to Row 4 of [`views/blend_krea.py`](views/blend_krea.py) (`BlendKreaButtons`).
+  * Updated [`services/krea_service.py`](services/krea_service.py) and [`services/interaction_dispatcher.py`](services/interaction_dispatcher.py) to preserve `steps` across dynamic updates and pass them into `execute_bertflow`.
+  * Displayed `⚡ **Steps:** \`{steps}\`` inside the `⚙️ Pipeline Settings` embed field for full visual feedback before synthesis.
+
 * 🧭 **Interactive Directional Outpaint (Pan Controls: ⬆️ ⬇️ ⬅️ ➡️ & Zoom 1.5x)**:
   * Added Midjourney-style directional pan controls to [`views/grid_views.py`](views/grid_views.py) (`IsolatedImageButtons` Row 1): `⬅️ Pan Left`, `⬆️ Pan Up`, `⬇️ Pan Down`, `➡️ Pan Right`, and `🔍 Zoom 1.5x`.
   * Added 4-way directional padding calculation in [`image_utils.py`](image_utils.py) (`calculate_outpaint_padding` & `calculate_outpaint_padding_async`), expanding the canvas by `384px` (64px divisible) strictly on the requested side while keeping the other 3 borders anchored.

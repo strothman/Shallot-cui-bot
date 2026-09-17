@@ -970,7 +970,8 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertIn("celebrity", [p.name for p in bert_cmd.parameters])
 
         blend_cmd = next(c for c in bot.bot.tree.get_commands() if c.name == "blend-krea")
-        self.assertEqual([p.name for p in blend_cmd.parameters], ["image"], "blend-krea is streamlined to image only")
+        self.assertIn("image", [p.name for p in blend_cmd.parameters])
+        self.assertIn("steps", [p.name for p in blend_cmd.parameters])
 
     def test_module67_lora_workflow_architecture_audit(self):
         """Audit all workflows, character profiles, resolvers, and parsers for 100% LoRA architecture match."""

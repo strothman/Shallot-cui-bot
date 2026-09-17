@@ -126,12 +126,16 @@ class KreaCog(commands.Cog):
         description="📸 Blend and remix an image using AI vision analysis and Bert's Krea 2 photorealism workflow!"
     )
     @app_commands.describe(
-        image="The image file you want to analyze and blend with Krea 2"
+        image="The image file you want to analyze and blend with Krea 2",
+        steps="Sampling steps (8 for Turbo, 10-16 for macro/close-up details)",
+        prompt="Optional extra instructions or details to blend into vision prompt"
     )
     async def blend_krea(
         self,
         interaction: discord.Interaction,
-        image: discord.Attachment
+        image: discord.Attachment,
+        steps: int = 8,
+        prompt: str = None
     ):
         await safe_defer(interaction, thinking=False, ephemeral=False)
         await edit_original_fallback(interaction, content="Analyzing image with Qwen2.5-VL for Krea 2 photorealism blend...")
@@ -148,6 +152,8 @@ class KreaCog(commands.Cog):
                 image_bytes=image_bytes,
                 filename=image.filename,
                 image_url=image.url,
+                prompt=prompt,
+                steps=steps,
                 client=client
             )
         except Exception as e:

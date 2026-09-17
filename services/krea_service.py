@@ -433,6 +433,7 @@ async def handle_update_blend_krea_view(
     interaction: discord.Interaction,
     generation_id: str,
     new_ar: str = None,
+    new_steps: int = None,
     new_model: str = None,
     new_wetness: float = None,
     new_comp: str = None,
@@ -447,6 +448,8 @@ async def handle_update_blend_krea_view(
 
     if new_ar:
         gen_data["ar"] = new_ar
+    if new_steps is not None:
+        gen_data["steps"] = int(new_steps)
     if new_model:
         gen_data["model_choice"] = new_model
     if new_wetness is not None:
@@ -473,7 +476,8 @@ async def handle_update_blend_krea_view(
         wetness=gen_data.get("wetness", -2.0),
         composition=gen_data.get("composition", "off"),
         character=gen_data.get("char_choice", "none"),
-        celebrity=gen_data.get("celeb_choice", "none")
+        celebrity=gen_data.get("celeb_choice", "none"),
+        steps=int(gen_data.get("steps", 8))
     )
     try:
         await interaction.response.edit_message(embed=embed, view=view)
@@ -500,7 +504,8 @@ async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction,
         wetness=gen_data.get("wetness", -2.0),
         composition=gen_data.get("composition", "off"),
         character=gen_data.get("char_choice", "none"),
-        celebrity=gen_data.get("celeb_choice", "none")
+        celebrity=gen_data.get("celeb_choice", "none"),
+        steps=int(gen_data.get("steps", 8))
     )
     await interaction.response.edit_message(embed=embed, view=view)
 
@@ -515,6 +520,7 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
 
     fused_prompt = gen_data.get("fused_prompt") or gen_data.get("krea2_prompt")
     ar = gen_data.get("ar", "16:9")
+    steps = int(gen_data.get("steps", 8))
     model_choice = gen_data.get("model_choice", "muse")
     wetness = float(gen_data.get("wetness", -2.0))
     comp = gen_data.get("composition", "off")
@@ -527,6 +533,7 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
         interaction,
         prompt=fused_prompt,
         aspect_ratio=ar,
+        steps=steps,
         model_name=unet_name,
         wetness_strength=wetness,
         init_image_name=uploaded_image_name if comp != "off" else None,
@@ -543,6 +550,7 @@ async def execute_blend_krea_core(
     filename: str,
     image_url: str,
     prompt: str = None,
+    steps: int = 8,
     aspect_ratio: str = None,
     model: str = "muse",
     wetness: float = -2.0,
@@ -599,6 +607,7 @@ async def execute_blend_krea_core(
             "image_url": effective_image_url,
             "source_image_url": image_url,
             "ar": resolved_ar,
+            "steps": int(steps or 8),
             "model_choice": model or "muse",
             "wetness": float(wetness if wetness is not None else -2.0),
             "composition": composition or "off",
@@ -616,7 +625,8 @@ async def execute_blend_krea_core(
             wetness=gen_data["wetness"],
             composition=gen_data["composition"],
             character=gen_data["char_choice"],
-            celebrity=gen_data["celeb_choice"]
+            celebrity=gen_data["celeb_choice"],
+            steps=gen_data["steps"]
         )
         await edit_original_fallback(interaction, content=None, embed=embed, view=view, attachments=[thumb_file])
 
