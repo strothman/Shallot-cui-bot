@@ -42,13 +42,13 @@ Here is a simple breakdown of the main files in the project and what each one is
 | [`cogs/krea_cog.py`](cogs/krea_cog.py) | **Krea Desk (Modular Cog):** Houses `/bertflow` and `/blend-krea` commands along with character, celebrity, and favorite prompt autocompletes. |
 | [`services/krea_service.py`](services/krea_service.py) | **Krea Service:** Executes Bertflow flow-matching generation, interactive button callbacks, upscale, and blend studio setup. |
 | [`characters.py`](characters.py) | **Character Wardrobe:** Stores character presets like **Cheri**, **Mageill**, **Valerie**, **Sully**, and **Ogarla**. Automatically applies character triggers/traits and protects real-person privacy. |
-| [`parsers.py`](parsers.py) | **Prompt Translator:** Reads flags like `--ar 16:9` (widescreen), `--smart` (auto-lighting), `--sref` (style copy), and wildcards `{a\|b\|c}`. |
+| [`parsers/`](parsers/) | **Prompt & Workflow Package:** Modular package (`parsers/prompts.py`, `parsers/workflows.py`, `parsers/styles.py`, `parsers/dimensions.py`) handling regex parsing (`--ar`, `--sref`, wildcards), ComfyUI AST manipulation, LoRA injection, and dynamic style generators. |
 | [`views.py`](views.py) | **Interactive Buttons:** Creates all clickable buttons in Discord (U1–U4, V1–V4, `🛑 Cancel`, unified Blend Studio, and `✏️ Remix` popup windows). |
 | [`comfy_client.py`](comfy_client.py) | **The Messenger:** Talks to ComfyUI on your computer, tracks render progress, journals active jobs, and automatically frees GPU memory when needed. |
 | [`image_utils.py`](image_utils.py) | **Image Crafter:** Stitches the 4 pictures into a 2x2 grid, cuts out individual images for upscaling, and optimizes file sizes asynchronously. |
 | [`db.py`](db.py) | **Memory & Notebook:** An SQLite database (`cache.db`) with WAL mode that journals active jobs, stores favorite prompts, and tracks generation metrics. |
 | [`config.py`](config.py) | **Settings & Guardrails:** Stores default models, safety limits, and admin permissions so only server owners can run sensitive controls. |
-| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 101 different parts of the bot to make sure nothing is broken. |
+| [`suite_test.py`](suite_test.py) | **Safety Inspector:** An automated test runner that checks 103 different parts of the bot and 4 architectural audits to make sure nothing is broken. |
 | [`auto_changelog.py`](auto_changelog.py) | **Secretary:** Keeps the [CHANGELOG.md](CHANGELOG.md) updated so you always know what was added or changed. |
 | [`workflows/`](workflows/) | **Recipe Book:** Pre-built ComfyUI recipes for SDXL, Krea 2 (Bertflow), and high-resolution upscaling. |
 

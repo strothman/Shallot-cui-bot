@@ -25,6 +25,14 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
   * Migrated background tasks (`update_presence`, `periodic_scratch_maintenance`, `idle_memory_watchdog`) and ❌ reaction deletion listener into [`cogs/system_cog.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/cogs/system_cog.py).
   * Reduced `bot.py` by **90.5%** overall (from 4,726 lines down to **446 lines**), transforming it into a clean, idiomatic bot entry point while maintaining 100% backward-compatibility for external imports and test mocks (103/103 tests green).
 
+* 📦 **Modular `parsers/` Package Segregation (Phase 6)**:
+  * Decomposed the 2,158-line monolithic [`parsers.py`](parsers.py) into dedicated submodules under [`parsers/`](parsers/):
+    * [`parsers/dimensions.py`](parsers/dimensions.py): Aspect ratio resolution, bounding boxes, and Bertflow/Wan dimensional calculation math.
+    * [`parsers/styles.py`](parsers/styles.py): SREF style constants, lighting, palettes, textures, and dynamic procedural style generator.
+    * [`parsers/prompts.py`](parsers/prompts.py): Prompt flag extraction (`--ar`, `--sref`, `--cref`, `--seed`, `--magic`, wildcards, tags), metadata extractors, and character prompt builders.
+    * [`parsers/workflows.py`](parsers/workflows.py): ComfyUI graph AST manipulation, dynamic LoRA injection, Face Detailer, IPAdapter, and Bertflow pipeline preparation.
+    * [`parsers/__init__.py`](parsers/__init__.py): Central re-exporter and `__all__` registry preserving 100% backward compatibility for all existing imports and test assertions.
+
 ### Fixed
 * 💧 **Blend Krea Skin Finish 3-Way Cycle**:
   * Fixed cache-staleness in `ActiveGenerationsProxy` where repeatedly clicking the `Skin:` button retrieved outdated generation state, trapping the button between Matte and Natural without looping back around.
