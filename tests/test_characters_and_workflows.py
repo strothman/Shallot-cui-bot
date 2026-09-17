@@ -715,14 +715,16 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertEqual(wf["822"]["inputs"]["lora_1"]["strength"], -2.0)
         self.assertEqual(wf["763"]["class_type"], "ConditioningZeroOut")
 
-        # 4. Test BertflowButtons (4 buttons: reroll, remix, toggle char, upscale)
+        # 4. Test BertflowButtons (9 buttons: Row 0 actions [reroll, remix, toggle char, upscale] + Row 1 pan controls)
         view = BertflowButtons(generation_id="bert_test_123", character=None)
-        self.assertEqual(len(view.children), 4)
+        self.assertEqual(len(view.children), 9)
         btn_ids = [c.custom_id for c in view.children]
         self.assertIn("bertflow_reroll:bert_test_123", btn_ids)
         self.assertIn("bertflow_remix:bert_test_123", btn_ids)
         self.assertIn("bertflow_toggle_char:bert_test_123", btn_ids)
         self.assertIn("bertflow_upscale:bert_test_123", btn_ids)
+        self.assertIn("outpaint:bert_test_123:1:up", btn_ids)
+        self.assertIn("outpaint:bert_test_123:1:down", btn_ids)
         self.assertEqual(view.toggle_char_btn.label, "🌿 Ogarla: OFF")
 
         # Test BertflowButtons with active character

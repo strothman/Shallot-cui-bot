@@ -332,17 +332,20 @@ class BertflowButtons(discord.ui.View):
         self.on_toggle_char_cb = on_toggle_char_cb
         self.on_upscale_cb = on_upscale_cb
 
+        # Row 0: Actions (Re-roll, Remix, Character toggle, Upscale)
         self.reroll_btn = discord.ui.Button(
             label="🔄 Re-roll",
             style=discord.ButtonStyle.primary,
-            custom_id=f"bertflow_reroll:{generation_id}"
+            custom_id=f"bertflow_reroll:{generation_id}",
+            row=0
         )
         self.add_item(self.reroll_btn)
 
         self.remix_btn = discord.ui.Button(
             label="✏️ Remix",
             style=discord.ButtonStyle.secondary,
-            custom_id=f"bertflow_remix:{generation_id}"
+            custom_id=f"bertflow_remix:{generation_id}",
+            row=0
         )
         self.add_item(self.remix_btn)
 
@@ -357,13 +360,47 @@ class BertflowButtons(discord.ui.View):
         self.toggle_char_btn = discord.ui.Button(
             label=char_label,
             style=char_style,
-            custom_id=f"bertflow_toggle_char:{generation_id}"
+            custom_id=f"bertflow_toggle_char:{generation_id}",
+            row=0
         )
         self.add_item(self.toggle_char_btn)
 
         self.upscale_btn = discord.ui.Button(
             label="🔍 Upscale (1.5x)",
             style=discord.ButtonStyle.secondary,
-            custom_id=f"bertflow_upscale:{generation_id}"
+            custom_id=f"bertflow_upscale:{generation_id}",
+            row=0
         )
         self.add_item(self.upscale_btn)
+
+        # Row 1: Directional Pan & Zoom Controls (5 buttons max)
+        self.add_item(discord.ui.Button(
+            label="⬅️ Pan Left",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{generation_id}:1:left",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="⬆️ Pan Up",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{generation_id}:1:up",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="⬇️ Pan Down",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{generation_id}:1:down",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="➡️ Pan Right",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{generation_id}:1:right",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="🔍 Zoom 1.5x",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{generation_id}:1:1.5x",
+            row=1
+        ))

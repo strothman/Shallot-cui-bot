@@ -328,8 +328,12 @@ async def save_quadrant_images_async(generation_id: str, images: list):
     await asyncio.to_thread(save_quadrant_images, generation_id, images)
 
 def get_quadrant_bytes(generation_id: str, index: int):
-    """Retrieves PNG bytes for quadrant index (1-4)."""
+    """Retrieves PNG bytes for quadrant index (1-4) or single-image generation."""
     path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}_{index}.png")
+    if not os.path.exists(path):
+        path_single = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}.png")
+        if os.path.exists(path_single):
+            path = path_single
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:

@@ -204,8 +204,9 @@ async def execute_bertflow(
             await send_error_fallback(interaction, "Generation succeeded on ComfyUI but failed to retrieve image bytes.")
             return
 
-        db.save_generation(generation_id, {
+        bert_record = {
             "is_bertflow": True,
+            "engine": "krea2",
             "prompt": cleaned_prompt,
             "original_prompt": prompt,
             "aspect_ratio": aspect_ratio,
@@ -214,17 +215,26 @@ async def execute_bertflow(
             "steps": steps,
             "seed": actual_seed,
             "unet_model": active_unet,
+            "wetness": wetness_strength,
             "character": character,
             "celebrity": celebrity,
-            "user_id": interaction.user.id
-        })
-
-        cache_path = os.path.join(QUADRANT_CACHE_DIR, f"{generation_id}.png")
+            "user_id": interaction.user.id if getattr(interaction, "user", None) else None
+        }
+        db.save_generation(generation_id, bert_record)
         try:
-            with open(cache_path, "wb") as f:
-                f.write(image_bytes)
+            from services.generation_service import active_generations
+            active_generations[generation_id] = bert_record
         except Exception:
             pass
+
+        try:
+            os.makedirs(QUADRANT_CACHE_DIR, exist_ok=True)
+            for fname in [f"{generation_id}.png", f"{generation_id}_1.png"]:
+                path = os.path.join(QUADRANT_CACHE_DIR, fname)
+                with open(path, "wb") as f:
+                    f.write(image_bytes)
+        except Exception as err:
+            logger.warning(f"Failed to cache Bertflow image: {err}")
 
         complete_embed = discord.Embed(
             title="📸 Bertflow Realism",
