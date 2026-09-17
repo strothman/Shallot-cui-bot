@@ -1154,7 +1154,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
                 unet_model=unet_choice,
                 wetness_strength=gen_data.get("wetness", -2.0),
                 init_image=img_filename,
-                comp_strength="medium",
+                outpaint_pad=(left, top, right, bottom),
                 character=gen_data.get("character"),
                 celebrity=gen_data.get("celebrity"),
             )

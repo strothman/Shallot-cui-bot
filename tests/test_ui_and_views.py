@@ -1674,6 +1674,25 @@ class TestUiAndViews(unittest.TestCase):
                      patch("services.grid_actions_service._update_button_state", new_callable=AsyncMock):
                     asyncio.run(handle_outpaint(mock_inter, "gen_test", 1, direction))
                     mock_followup.assert_called_once()
+                    sent_wf = mock_client.generate.call_args[0][0]
+                    if is_bert:
+                        self.assertIn("901", sent_wf)
+                        self.assertEqual(sent_wf["901"]["class_type"], "ImagePadForOutpaint")
+                        self.assertIn("902", sent_wf)
+                        self.assertEqual(sent_wf["902"]["class_type"], "VAEEncodeForInpaint")
+                        self.assertEqual(sent_wf["599"]["inputs"]["latent_image"], ["902", 0])
+                        if direction == "down":
+                            self.assertEqual(sent_wf["901"]["inputs"]["bottom"], 384)
+                            self.assertEqual(sent_wf["901"]["inputs"]["top"], 0)
+                        elif direction == "up":
+                            self.assertEqual(sent_wf["901"]["inputs"]["top"], 384)
+                            self.assertEqual(sent_wf["901"]["inputs"]["bottom"], 0)
+                        elif direction == "left":
+                            self.assertEqual(sent_wf["901"]["inputs"]["left"], 384)
+                            self.assertEqual(sent_wf["901"]["inputs"]["right"], 0)
+                        elif direction == "right":
+                            self.assertEqual(sent_wf["901"]["inputs"]["right"], 384)
+                            self.assertEqual(sent_wf["901"]["inputs"]["left"], 0)
 
     def test_dynamic_item_dispatch_deduplication(self):
         """Test that is_dynamic_component prevents duplicate interaction dispatching for native DynamicItems."""

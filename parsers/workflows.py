@@ -717,7 +717,8 @@ def prepare_bertflow_workflow(
     filename_prefix: str = None,
     character: str = None,
     character_strength: float = None,
-    celebrity: str = None
+    celebrity: str = None,
+    outpaint_pad: tuple[int, int, int, int] = None
 ) -> dict:
     """
     Loads workflows/bertflow.json and populates prompt, seed, dimensions, steps, model, wetness strength,
@@ -863,8 +864,48 @@ def prepare_bertflow_workflow(
 
     set_workflow_filename_prefix(wf, chosen_prefix)
 
-    # Optional direct compositional reference (img2img / VAE latent injection)
-    if init_image and comp_strength and str(comp_strength).lower() not in ["off", "none", "style", "false"]:
+    # 1. Native Directional Outpainting with ImagePadForOutpaint + VAEEncodeForInpaint
+    if init_image and outpaint_pad:
+        left, top, right, bottom = outpaint_pad
+        wf["900"] = {
+            "inputs": {
+                "image": init_image,
+                "upload": "image"
+            },
+            "class_type": "LoadImage",
+            "_meta": {"title": "Load Original Image for Outpaint"}
+        }
+        wf["901"] = {
+            "inputs": {
+                "image": ["900", 0],
+                "left": left,
+                "top": top,
+                "right": right,
+                "bottom": bottom,
+                "feathering": 72
+            },
+            "class_type": "ImagePadForOutpaint",
+            "_meta": {"title": "Pad Image for Outpainting"}
+        }
+        wf["902"] = {
+            "inputs": {
+                "pixels": ["901", 0],
+                "vae": ["757", 0],
+                "mask": ["901", 1],
+                "grow_mask_by": 6
+            },
+            "class_type": "VAEEncodeForInpaint",
+            "_meta": {"title": "VAE Encode (for Inpainting)"}
+        }
+        if "599" in wf and "inputs" in wf["599"]:
+            wf["599"]["inputs"]["latent_image"] = ["902", 0]
+            wf["599"]["inputs"]["start_at_step"] = 0
+            wf["599"]["inputs"]["end_at_step"] = steps
+            wf["599"]["inputs"]["add_noise"] = "enable"
+            wf["599"]["inputs"]["return_with_leftover_noise"] = "disable"
+
+    # 2. Optional direct compositional reference (img2img / VAE latent injection)
+    elif init_image and comp_strength and str(comp_strength).lower() not in ["off", "none", "style", "false"]:
         wf["900"] = {
             "inputs": {
                 "image": init_image,
@@ -901,7 +942,7 @@ def prepare_bertflow_workflow(
         else:  # default medium (~70% denoise)
             start_step = max(1, min(steps - 1, round(steps * 0.30)))
 
-        if "599" in wf:
+        if "599" in wf and "inputs" in wf["599"]:
             wf["599"]["inputs"]["latent_image"] = ["902", 0]
             wf["599"]["inputs"]["start_at_step"] = start_step
             wf["599"]["inputs"]["add_noise"] = "enable"
