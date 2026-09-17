@@ -885,3 +885,14 @@ class ComfyClient:
             "missing": missing,
             "ok": len(missing) == 0,
         }
+
+
+# Default singleton instance for module-level convenience
+try:
+    from config import COMFYUI_ADDRESS
+except Exception:
+    import os
+    COMFYUI_ADDRESS = os.getenv("COMFYUI_ADDRESS", "127.0.0.1:8188")
+
+comfy_client = ComfyClient(server_address=COMFYUI_ADDRESS)
+

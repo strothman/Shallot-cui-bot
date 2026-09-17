@@ -1392,6 +1392,95 @@ class TestUiAndViews(unittest.TestCase):
         up_view = UpscaleButtons(generation_id="gen123", index=1)
         self.assertEqual(up_view.upscale_scale, "2.0")
 
+    def test_blend_krea_skin_wetness_cycling(self):
+        """Test that the Blend Krea Skin finish button cycles through Matte -> Natural -> Glossy -> Matte."""
+        import bot
+        import db
+        from views import BlendKreaButtons, build_blend_krea_embed
+        from unittest.mock import MagicMock, AsyncMock
+
+        gen_id = "test_wetness_cycle_gen"
+        gen_data = {
+            "caption": "A scenic view",
+            "detailed_caption": "A scenic view",
+            "krea2_prompt": "A scenic view",
+            "user_prompt": "",
+            "fused_prompt": "A scenic view",
+            "ar": "16:9",
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "composition": "off",
+            "char_choice": "none",
+            "celeb_choice": "none",
+            "author_str": "TestUser"
+        }
+        db.save_generation(gen_id, gen_data)
+
+        # 1. Initial state: Matte (-2.0)
+        view_matte = BlendKreaButtons(gen_id, wetness=-2.0)
+        wet_btn_matte = next(c for c in view_matte.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
+        self.assertEqual(wet_btn_matte.label, "💧 Skin: Matte")
+        self.assertEqual(wet_btn_matte.style, bot.discord.ButtonStyle.primary)
+
+        embed_matte = build_blend_krea_embed(db.get_generation(gen_id))
+        pipe_field = next(f.value for f in embed_matte.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("💧 **Skin:** `Matte Pores (-2.0)`", pipe_field)
+
+        # 2. Click 1: Cycle Matte (-2.0) -> Natural (0.0)
+        mock_interaction1 = MagicMock()
+        mock_interaction1.type = bot.discord.InteractionType.component
+        mock_interaction1.data = {"custom_id": f"toggle_blend_krea_wetness:{gen_id}"}
+        mock_interaction1.response.is_done.return_value = False
+        mock_interaction1.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_interaction1))
+        mock_interaction1.response.edit_message.assert_called_once()
+        gen_after_1 = db.get_generation(gen_id)
+        self.assertEqual(gen_after_1["wetness"], 0.0)
+
+        view_natural = BlendKreaButtons(gen_id, wetness=gen_after_1["wetness"])
+        wet_btn_natural = next(c for c in view_natural.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
+        self.assertEqual(wet_btn_natural.label, "💧 Skin: Natural")
+
+        embed_natural = build_blend_krea_embed(gen_after_1)
+        pipe_field = next(f.value for f in embed_natural.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("💧 **Skin:** `Natural Baseline (0.0)`", pipe_field)
+
+        # 3. Click 2: Cycle Natural (0.0) -> Glossy (1.0)
+        mock_interaction2 = MagicMock()
+        mock_interaction2.type = bot.discord.InteractionType.component
+        mock_interaction2.data = {"custom_id": f"toggle_blend_krea_wetness:{gen_id}"}
+        mock_interaction2.response.is_done.return_value = False
+        mock_interaction2.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_interaction2))
+        mock_interaction2.response.edit_message.assert_called_once()
+        gen_after_2 = db.get_generation(gen_id)
+        self.assertEqual(gen_after_2["wetness"], 1.0)
+
+        view_glossy = BlendKreaButtons(gen_id, wetness=gen_after_2["wetness"])
+        wet_btn_glossy = next(c for c in view_glossy.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
+        self.assertEqual(wet_btn_glossy.label, "💧 Skin: Glossy")
+
+        embed_glossy = build_blend_krea_embed(gen_after_2)
+        pipe_field = next(f.value for f in embed_glossy.fields if f.name == "⚙️ Pipeline Settings")
+        self.assertIn("💧 **Skin:** `Glossy / Dewy (+1.0)`", pipe_field)
+
+        # 4. Click 3: Cycle Glossy (1.0) -> Loops back to Matte (-2.0)
+        mock_interaction3 = MagicMock()
+        mock_interaction3.type = bot.discord.InteractionType.component
+        mock_interaction3.data = {"custom_id": f"toggle_blend_krea_wetness:{gen_id}"}
+        mock_interaction3.response.is_done.return_value = False
+        mock_interaction3.response.edit_message = AsyncMock()
+
+        asyncio.run(bot.on_interaction(mock_interaction3))
+        mock_interaction3.response.edit_message.assert_called_once()
+        gen_after_3 = db.get_generation(gen_id)
+        self.assertEqual(gen_after_3["wetness"], -2.0)
+
+        view_matte_again = BlendKreaButtons(gen_id, wetness=gen_after_3["wetness"])
+        wet_btn_matte_again = next(c for c in view_matte_again.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
+        self.assertEqual(wet_btn_matte_again.label, "💧 Skin: Matte")
 
 
 if __name__ == '__main__':

@@ -1020,11 +1020,11 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     celeb_choice = gen_data.get("celeb_choice", "none")
 
     model_display = "Muse v3.5 Extended" if "muse" in model_choice.lower() else "Pornmaster v2 (FP8)"
-    if wetness == -2.0:
+    if wetness <= -1.0:
         skin_display = "Matte Pores (-2.0)"
-    elif wetness == 0.0:
+    elif wetness < 0.5:
         skin_display = "Natural Baseline (0.0)"
-    elif wetness == 1.0:
+    elif wetness <= 1.5:
         skin_display = "Glossy / Dewy (+1.0)"
     else:
         skin_display = f"{wetness:+.1f}"
@@ -1233,10 +1233,10 @@ class BlendKreaButtons(discord.ui.View):
             row=4
         ))
 
-        if self.wetness == -2.0:
+        if self.wetness <= -1.0:
             wet_label = "💧 Skin: Matte"
             wet_style = discord.ButtonStyle.primary
-        elif self.wetness == 0.0:
+        elif self.wetness < 0.5:
             wet_label = "💧 Skin: Natural"
             wet_style = discord.ButtonStyle.secondary
         else:

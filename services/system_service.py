@@ -10,6 +10,7 @@ Provides decoupled business logic for:
 
 import os
 import sys
+import time
 import json
 import logging
 import asyncio
@@ -406,17 +407,40 @@ def get_comfyui_pids() -> List[int]:
     return pids
 
 
+def _get_default_client():
+    """Dynamically resolves a ComfyClient instance."""
+    try:
+        from comfy_client import comfy_client as default_client
+        if default_client is not None:
+            return default_client
+    except Exception:
+        pass
+    try:
+        from services.generation_service import _comfy_client
+        if _comfy_client is not None:
+            return _comfy_client
+    except Exception:
+        pass
+    try:
+        from comfy_client import ComfyClient
+        from config import COMFYUI_ADDRESS
+        return ComfyClient(server_address=COMFYUI_ADDRESS)
+    except Exception:
+        return None
+
+
 async def purge_vram_core(client=None, trim_working_set: bool = True) -> bool:
     """Sends command to ComfyUI client to unload models, free PyTorch CUDA cache, and trim system RAM working set."""
     if client is None:
-        from comfy_client import comfy_client as default_client
-        client = default_client
+        client = _get_default_client()
     
     success = False
     try:
-        success = await client.free_memory(unload_models=True, free_memory=True)
+        if client and hasattr(client, "free_memory"):
+            success = await client.free_memory(unload_models=True, free_memory=True)
     except Exception as e:
         logger.warning(f"Error calling comfy_client.free_memory: {e}")
+
 
     await asyncio.to_thread(gc.collect)
 
@@ -433,3 +457,173 @@ async def purge_vram_core(client=None, trim_working_set: bool = True) -> bool:
             logger.debug(f"Working set trim warning: {trim_err}")
 
     return success
+
+
+# =========================================================================
+# System Activity, Console Title, and Bot Presence Synchronization
+# =========================================================================
+
+def create_progress_bar(value: int, max_val: int, length: int = 10) -> str:
+    """Renders a text progress bar with percentage and step count."""
+    if max_val <= 0:
+        percent = 0
+    else:
+        percent = min(100, int((value / max_val) * 100))
+    filled = int(round((percent / 100) * length))
+    bar = "█" * filled + "░" * (length - filled)
+    return f"`[{bar}] {percent}%` (Step {value}/{max_val})"
+
+
+def update_console_title(status_text: str = None):
+    """Updates the Windows Command Prompt / Terminal window title bar with live status."""
+    if not status_text:
+        full_title = "Shallot-CUI Bot"
+    else:
+        full_title = f"Shallot-CUI Bot | {status_text}"
+    try:
+        if os.name == "nt":
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleTitleW(full_title)
+        sys.stdout.write(f"\x1b]2;{full_title}\x07")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def get_effective_queue_counts(comfy_queue: Optional[dict] = None) -> tuple[int, int]:
+    """
+    Calculates combined active (running) and pending jobs across ComfyUI and EngineAwareQueue.
+    ComfyUI processes 1 job at a time while EngineAwareQueue buffers pending jobs
+    to prevent VRAM thrashing on 8GB GPUs.
+    """
+    running = 0
+    pending = 0
+    if comfy_queue:
+        running = len(comfy_queue.get("queue_running", []))
+        pending = len(comfy_queue.get("queue_pending", []))
+
+    try:
+        from services.engine_queue import get_engine_queue
+        eq = get_engine_queue()
+        if eq and eq.get_status().get("is_running", False):
+            eq_status = eq.get_status()
+            if eq_status.get("active_job"):
+                running = max(running, 1)
+            pending += eq_status.get("pending_count", 0)
+    except Exception as e:
+        logger.debug(f"Could not read EngineAwareQueue status: {e}")
+
+    return running, pending
+
+
+def format_presence_status_text(running: int, pending: int) -> tuple[str, discord.ActivityType]:
+    """Generates the presence string and Discord activity type from queue counts."""
+    if running > 0:
+        status_text = f"Processing {running} job{'s' if running != 1 else ''}"
+        if pending > 0:
+            status_text += f" | {pending} queued"
+        return status_text, discord.ActivityType.playing
+    elif pending > 0:
+        status_text = f"{pending} queued job{'s' if pending != 1 else ''}"
+        return status_text, discord.ActivityType.watching
+    else:
+        return "Ready ✓ | /imagine", discord.ActivityType.watching
+
+
+_last_presence_sync_time: float = 0.0
+_presence_sync_task: Optional[asyncio.Task] = None
+
+_last_generation_activity: float = time.time()
+_idle_purged: bool = False
+IDLE_PURGE_TIMEOUT: float = float(os.getenv("IDLE_PURGE_TIMEOUT_SECONDS", "1800"))  # 30 minutes
+
+
+def touch_activity():
+    """Updates the last activity timestamp and resets the idle purge state."""
+    global _last_generation_activity, _idle_purged
+    _last_generation_activity = time.time()
+    _idle_purged = False
+
+
+def get_last_generation_activity() -> float:
+    return _last_generation_activity
+
+
+def is_idle_purged() -> bool:
+    return _idle_purged
+
+
+def set_idle_purged(val: bool):
+    global _idle_purged
+    _idle_purged = val
+
+
+async def sync_presence_now(bot=None, client=None):
+    """Immediately synchronizes bot presence with current ComfyUI and EngineAwareQueue state."""
+    global _last_presence_sync_time
+    _last_presence_sync_time = time.time()
+    if bot is None:
+        from core_helpers import get_active_bot
+        bot = get_active_bot()
+    if client is None:
+        client = _get_default_client()
+
+    if not bot:
+        return
+
+    try:
+        session = getattr(client, "session", None)
+        queue = await fetch_comfyui_queue(session=session)
+        if queue is None:
+            activity = discord.Activity(
+                type=discord.ActivityType.watching,
+                name="ComfyUI (offline)"
+            )
+            await bot.change_presence(status=discord.Status.dnd, activity=activity)
+            update_console_title("ComfyUI (offline)")
+            return
+
+        running, pending = get_effective_queue_counts(queue)
+        status_text, activity_type = format_presence_status_text(running, pending)
+
+        activity = discord.Activity(
+            type=activity_type,
+            name=status_text
+        )
+        await bot.change_presence(status=discord.Status.online, activity=activity)
+        update_console_title(status_text)
+    except Exception as e:
+        logger.debug(f"Presence update failed: {e}")
+
+
+def on_engine_queue_change(bot=None, client=None):
+    """Throttled callback triggered on EngineAwareQueue enqueue/start/cancel/completion."""
+    global _last_presence_sync_time, _presence_sync_task
+    touch_activity()
+    if bot is None:
+        from core_helpers import get_active_bot
+        bot = get_active_bot()
+    if not bot or not bot.is_ready():
+        return
+    now = time.time()
+    # Respect Discord rate limits (minimum 3.5s interval between gateway presence updates)
+    if now - _last_presence_sync_time >= 3.5:
+        if _presence_sync_task and not _presence_sync_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            _presence_sync_task = loop.create_task(sync_presence_now(bot, client))
+        except RuntimeError:
+            pass
+    else:
+        if _presence_sync_task is None or _presence_sync_task.done():
+            delay = max(0.5, 3.5 - (now - _last_presence_sync_time))
+            async def _delayed_sync():
+                await asyncio.sleep(delay)
+                await sync_presence_now(bot, client)
+            try:
+                loop = asyncio.get_running_loop()
+                _presence_sync_task = loop.create_task(_delayed_sync())
+            except RuntimeError:
+                pass
+

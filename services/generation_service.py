@@ -134,29 +134,28 @@ class ActiveGenerationsProxy:
 
     def __getitem__(self, key):
         k = str(key)
-        if k in self._cache:
-            self._cache.move_to_end(k)
-            return self._cache[k]
-        val = db.get_generation(k)
-        if val is None:
-            raise KeyError(key)
-        self._cache[k] = val
-        if len(self._cache) > self._max_size:
-            self._cache.popitem(last=False)
-        return val
-
-    def get(self, key, default=None):
-        k = str(key)
-        if k in self._cache:
-            self._cache.move_to_end(k)
-            return self._cache[k]
         val = db.get_generation(k)
         if val is not None:
             self._cache[k] = val
+            self._cache.move_to_end(k)
             if len(self._cache) > self._max_size:
                 self._cache.popitem(last=False)
             return val
-        return default
+        if k in self._cache:
+            self._cache.move_to_end(k)
+            return self._cache[k]
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        k = str(key)
+        val = db.get_generation(k)
+        if val is not None:
+            self._cache[k] = val
+            self._cache.move_to_end(k)
+            if len(self._cache) > self._max_size:
+                self._cache.popitem(last=False)
+            return val
+        return self._cache.get(k, default)
 
     def __setitem__(self, key, value):
         k = str(key)

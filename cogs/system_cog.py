@@ -9,14 +9,16 @@ Houses slash commands for:
 
 import os
 import sys
+import time
 import logging
 import asyncio
 import subprocess
 from typing import Optional
 
+import re
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from config import (
     COMFYUI_ADDRESS, 
@@ -46,7 +48,12 @@ from services.system_service import (
     fetch_comfyui_system_stats,
     build_queue_embed,
     build_models_embed,
-    purge_vram_core
+    purge_vram_core,
+    sync_presence_now,
+    get_last_generation_activity,
+    is_idle_purged,
+    set_idle_purged,
+    IDLE_PURGE_TIMEOUT
 )
 
 logger = logging.getLogger("DiscordBot.SystemCog")
@@ -116,6 +123,167 @@ class SystemCog(commands.Cog):
 
     def _get_comfy_client(self):
         return getattr(self.bot, "comfy_client", None)
+
+    async def cog_load(self):
+        """Called when the cog is loaded onto the bot. Background tasks start once bot is ready."""
+        if getattr(self.bot, "is_ready", lambda: False)():
+            self.start_tasks()
+
+    def start_tasks(self):
+        """Starts background loops safely if not already running."""
+        if not self.update_presence_task.is_running():
+            self.update_presence_task.start()
+        if not self.periodic_scratch_maintenance_task.is_running():
+            self.periodic_scratch_maintenance_task.start()
+        if not self.idle_memory_watchdog_task.is_running():
+            self.idle_memory_watchdog_task.start()
+
+    async def cog_unload(self):
+        """Called when the cog is unloaded. Cancels background tasks cleanly."""
+        if self.update_presence_task.is_running():
+            self.update_presence_task.cancel()
+        if self.periodic_scratch_maintenance_task.is_running():
+            self.periodic_scratch_maintenance_task.cancel()
+        if self.idle_memory_watchdog_task.is_running():
+            self.idle_memory_watchdog_task.cancel()
+
+    # =========================================================================
+    # Background Tasks & Watchdogs
+    # =========================================================================
+
+    @tasks.loop(seconds=10)
+    async def update_presence_task(self):
+        """Periodic fallback loop to update bot presence and console title with queue info."""
+        await sync_presence_now(self.bot, self._get_comfy_client())
+
+    @update_presence_task.before_loop
+    async def before_update_presence_task(self):
+        try:
+            await self.bot.wait_until_ready()
+        except RuntimeError:
+            while not getattr(self.bot, "is_ready", lambda: False)():
+                await asyncio.sleep(1)
+
+    @tasks.loop(hours=6)
+    async def periodic_scratch_maintenance_task(self):
+        """Periodically purges orphaned quadrant scratch files and vacuums SQLite database."""
+        try:
+            stats = await asyncio.to_thread(db.cleanup_orphaned_quadrants, 48.0)
+            await asyncio.to_thread(db.vacuum_database)
+            if stats.get("deleted", 0) > 0:
+                reclaimed_mb = round(stats.get("reclaimed_bytes", 0) / (1024 * 1024), 2)
+                logger.info(f"🧹 Scratch maintenance: evicted {stats['deleted']} stale scratch file(s) ({reclaimed_mb} MB reclaimed).")
+        except Exception as e:
+            logger.debug(f"Periodic scratch maintenance warning: {e}")
+
+    @periodic_scratch_maintenance_task.before_loop
+    async def before_periodic_scratch_maintenance_task(self):
+        try:
+            await self.bot.wait_until_ready()
+        except RuntimeError:
+            while not getattr(self.bot, "is_ready", lambda: False)():
+                await asyncio.sleep(1)
+
+    @tasks.loop(minutes=5)
+    async def idle_memory_watchdog_task(self):
+        """Periodically purges ComfyUI model caches from RAM/VRAM and runs garbage collection after extended inactivity."""
+        try:
+            now = time.time()
+            idle_seconds = now - get_last_generation_activity()
+            if idle_seconds >= IDLE_PURGE_TIMEOUT and not is_idle_purged():
+                running = 0
+                pending = 0
+                try:
+                    from services.engine_queue import get_engine_queue
+                    eq = get_engine_queue()
+                    if eq:
+                        q_stat = eq.get_queue_status()
+                        running = 1 if q_stat.get("active_job") else 0
+                        pending = q_stat.get("queue_length", 0)
+                except Exception:
+                    pass
+
+                if running == 0 and pending == 0:
+                    logger.info(f"🧹 Idle memory watchdog: Bot has been idle for {int(idle_seconds // 60)}m. Purging ComfyUI RAM/VRAM cache and trimming working set...")
+                    try:
+                        await purge_vram_core(client=self._get_comfy_client(), trim_working_set=True)
+                    except Exception as purge_err:
+                        logger.debug(f"Idle watchdog purge_vram_core warning: {purge_err}")
+                    set_idle_purged(True)
+                    logger.info("✅ Idle memory purge complete: ComfyUI models evicted, Python GC run, and host RAM trimmed.")
+        except Exception as e:
+            logger.debug(f"Idle memory watchdog error: {e}")
+
+    @idle_memory_watchdog_task.before_loop
+    async def before_idle_memory_watchdog_task(self):
+        try:
+            await self.bot.wait_until_ready()
+        except RuntimeError:
+            while not getattr(self.bot, "is_ready", lambda: False)():
+                await asyncio.sleep(1)
+
+    # =========================================================================
+    # Event Listeners
+    # =========================================================================
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Allows command requesters or server moderators to delete bot messages via ❌ reaction."""
+        if payload.user_id == self.bot.user.id:
+            return
+
+        if str(payload.emoji) in ["❌", "x", "X"]:
+            try:
+                channel = self.bot.get_channel(payload.channel_id)
+                if channel is None:
+                    channel = await self.bot.fetch_channel(payload.channel_id)
+                message = await channel.fetch_message(payload.message_id)
+
+                if message.author.id == self.bot.user.id:
+                    allowed_ids = set()
+
+                    # 1. Check mentioned users in message content
+                    for m in message.mentions:
+                        allowed_ids.add(m.id)
+
+                    # 2. Check user tags/mentions in message content (e.g. <@123456789>)
+                    if message.content:
+                        for uid in re.findall(r'<@!?(\d+)>', message.content):
+                            allowed_ids.add(int(uid))
+
+                    # 3. Check interaction author
+                    meta = getattr(message, 'interaction_metadata', None)
+                    if meta and hasattr(meta, 'user') and meta.user:
+                        allowed_ids.add(meta.user.id)
+                    elif hasattr(message, 'interaction') and message.interaction and hasattr(message.interaction, 'user') and message.interaction.user:
+                        allowed_ids.add(message.interaction.user.id)
+
+                    # 4. Check embed footer ID
+                    if message.embeds:
+                        for emb in message.embeds:
+                            if emb.footer and emb.footer.text:
+                                for match in re.finditer(r'(?:ID:\s*|id:\s*|user:\s*)(\d+)', emb.footer.text, flags=re.IGNORECASE):
+                                    allowed_ids.add(int(match.group(1)))
+
+                    # 5. Check permissions for moderator/admin override
+                    is_moderator = False
+                    if payload.guild_id:
+                        guild = self.bot.get_guild(payload.guild_id) or await self.bot.fetch_guild(payload.guild_id)
+                        member = guild.get_member(payload.user_id) if guild else None
+                        if member is None and guild:
+                            try:
+                                member = await guild.fetch_member(payload.user_id)
+                            except Exception:
+                                pass
+                        if member and channel:
+                            permissions = channel.permissions_for(member)
+                            is_moderator = permissions.manage_messages or permissions.administrator
+
+                    if payload.user_id in allowed_ids or is_moderator:
+                        await message.delete()
+                        logger.info(f"Deleted message {message.id} after ❌ reaction from user {payload.user_id}")
+            except Exception as e:
+                logger.error(f"Error in reaction delete handler: {e}")
 
     async def _run_imagine(self, interaction: discord.Interaction, prompt: str):
         bot = interaction.client

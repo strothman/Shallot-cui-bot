@@ -872,6 +872,30 @@ class TestSystemAndMaintenance(unittest.TestCase):
         self.assertTrue(purge_res)
         mock_client.free_memory.assert_awaited_once_with(unload_models=True, free_memory=True)
 
+    def test_cui_start_command_imports_and_timing(self):
+        """Verify cui_start command executes without NameError on time or dependencies."""
+        from cogs.system_cog import SystemCog
+        mock_bot = MagicMock()
+        mock_bot.comfy_client = MagicMock()
+        mock_bot.comfy_client.is_online = AsyncMock(return_value=True)
+
+        cog = SystemCog(mock_bot)
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = 12345
+        mock_interaction.user.guild_permissions.administrator = True
+        mock_interaction.response.is_done.return_value = True
+        mock_interaction.followup.send = AsyncMock()
+
+        with patch("cogs.system_cog.is_authorized_admin", return_value=True), \
+             patch("cogs.system_cog.safe_defer", AsyncMock()), \
+             patch("cogs.system_cog.terminate_existing_comfyui", return_value=False), \
+             patch("cogs.system_cog.check_gpu_vram_caution", return_value=(False, {})), \
+             patch("os.path.exists", return_value=True), \
+             patch("asyncio.create_subprocess_exec", AsyncMock(return_value=MagicMock(pid=12345))), \
+             patch("asyncio.sleep", AsyncMock()):
+            asyncio.run(cog.cui_start.callback(cog, mock_interaction, force=False))
+            mock_interaction.followup.send.assert_called()
+
 
 
 

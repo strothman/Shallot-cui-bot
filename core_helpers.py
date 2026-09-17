@@ -62,11 +62,18 @@ def get_active_architecture():
 
 async def safe_defer(interaction: discord.Interaction, thinking: bool = False, ephemeral: bool = False):
     """Safely defers an interaction response without raising 404 Unknown Interaction errors if token expired."""
-    if not interaction.response.is_done():
-        try:
-            await interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
-        except (discord.NotFound, discord.HTTPException) as e:
-            logger.debug(f"Interaction defer skipped or expired: {e}")
+    for attempt in range(3):
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
+                return
+            except (discord.NotFound, discord.HTTPException) as e:
+                if attempt < 2:
+                    await asyncio.sleep(0.5 * (2 ** attempt))
+                else:
+                    logger.debug(f"Interaction defer skipped or expired: {e}")
+        else:
+            return
 
 
 async def download_image(url: str) -> bytes:

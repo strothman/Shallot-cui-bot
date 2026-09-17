@@ -448,9 +448,12 @@ async def handle_update_blend_krea_view(
     if new_celeb:
         gen_data["celeb_choice"] = new_celeb
 
-    if not gen_data.get("fused_prompt"):
-        gen_data["fused_prompt"] = fuse_krea2_blend_prompt(gen_data.get("krea2_prompt", ""), gen_data.get("user_prompt", ""))
     db.save_generation(generation_id, gen_data)
+    try:
+        from services.generation_service import active_generations
+        active_generations[generation_id] = gen_data
+    except Exception:
+        pass
 
     embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
     view = BlendKreaButtons(

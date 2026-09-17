@@ -21,7 +21,15 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * 🧩 **Modular Cog & Service Architecture (`bot.py` De-bloat)**:
   * Extracted `/imagine`, `/study`, and `"Adopt Post / Image"` to [`cogs/imagine_cog.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/cogs/imagine_cog.py).
   * Extracted multi-quadrant generation pipeline, ComfyUI synthesis, grid completion, button handlers (`U1–U4`, `V1–V4`, isolate, reroll, cancel, remix, outpaint), and blend generation pipeline into [`services/generation_service.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/services/generation_service.py).
-  * Reduced `bot.py` by 58% (from 4,726 lines down to 1,955 lines) while maintaining 100% backward-compatibility for external imports and test mocks.
+  * Extracted the 684-line component button router from `on_interaction` into [`services/interaction_dispatcher.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/services/interaction_dispatcher.py).
+  * Migrated background tasks (`update_presence`, `periodic_scratch_maintenance`, `idle_memory_watchdog`) and ❌ reaction deletion listener into [`cogs/system_cog.py`](file:///c:/Users/strot/Antigravity%20IDE/Shallot-cui-bot/cogs/system_cog.py).
+  * Reduced `bot.py` by **90.5%** overall (from 4,726 lines down to **446 lines**), transforming it into a clean, idiomatic bot entry point while maintaining 100% backward-compatibility for external imports and test mocks (103/103 tests green).
+
+### Fixed
+* 💧 **Blend Krea Skin Finish 3-Way Cycle**:
+  * Fixed cache-staleness in `ActiveGenerationsProxy` where repeatedly clicking the `Skin:` button retrieved outdated generation state, trapping the button between Matte and Natural without looping back around.
+  * Ensured `ActiveGenerationsProxy` and `interaction_dispatcher` synchronize directly with SQLite `db.get_generation()`, enabling seamless 3-state looping: `💧 Skin: Matte (-2.0)` → `💧 Skin: Natural (0.0)` → `💧 Skin: Glossy (+1.0)` → `💧 Skin: Matte (-2.0)`.
+  * Fortified float comparisons in `views.py` with range checks to prevent IEEE 754 precision boundary mismatches.
 
 ### Performance & Reliability
 * 🧠 **Inactive RAM Working Set Optimization**:
