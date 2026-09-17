@@ -412,11 +412,6 @@ async def on_interaction(interaction: discord.Interaction):
         await dispatch_interaction(interaction)
 
 
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    await _system_cog.on_raw_reaction_add(payload)
-
-
 async def on_close():
     await comfy_client.stop()
 

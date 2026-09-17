@@ -282,6 +282,11 @@ class SystemCog(commands.Cog):
                     if payload.user_id in allowed_ids or is_moderator:
                         await message.delete()
                         logger.info(f"Deleted message {message.id} after ❌ reaction from user {payload.user_id}")
+            except discord.NotFound:
+                # Message was already deleted
+                pass
+            except discord.Forbidden:
+                logger.debug(f"Missing permissions to delete message {payload.message_id}")
             except Exception as e:
                 logger.error(f"Error in reaction delete handler: {e}")
 
