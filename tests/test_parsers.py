@@ -209,6 +209,39 @@ class TestParsers(unittest.TestCase):
         left_z, top_z, right_z, bottom_z, _, zw, zh = calculate_outpaint_padding(dummy_bytes, "1.5x")
         self.assertTrue(left_z > 0 and top_z > 0)
 
+        # Test Directional Pan (Up, Down, Left, Right)
+        l_up, t_up, r_up, b_up, _, w_up, h_up = calculate_outpaint_padding(dummy_bytes, "up")
+        self.assertEqual(t_up, 384)
+        self.assertEqual(b_up, 0)
+        self.assertEqual(l_up, 0)
+        self.assertEqual(r_up, 0)
+        self.assertEqual(h_up, 1024 + 384)
+        self.assertEqual(w_up, 1024)
+
+        l_down, t_down, r_down, b_down, _, w_down, h_down = calculate_outpaint_padding(dummy_bytes, "down")
+        self.assertEqual(t_down, 0)
+        self.assertEqual(b_down, 384)
+        self.assertEqual(l_down, 0)
+        self.assertEqual(r_down, 0)
+        self.assertEqual(h_down, 1024 + 384)
+        self.assertEqual(w_down, 1024)
+
+        l_left, t_left, r_left, b_left, _, w_left, h_left = calculate_outpaint_padding(dummy_bytes, "left")
+        self.assertEqual(t_left, 0)
+        self.assertEqual(b_left, 0)
+        self.assertEqual(l_left, 384)
+        self.assertEqual(r_left, 0)
+        self.assertEqual(w_left, 1024 + 384)
+        self.assertEqual(h_left, 1024)
+
+        l_right, t_right, r_right, b_right, _, w_right, h_right = calculate_outpaint_padding(dummy_bytes, "right")
+        self.assertEqual(t_right, 0)
+        self.assertEqual(b_right, 0)
+        self.assertEqual(l_right, 0)
+        self.assertEqual(r_right, 384)
+        self.assertEqual(w_right, 1024 + 384)
+        self.assertEqual(h_right, 1024)
+
 
     def test_module14_wan_video_dimensions(self):
         """Test Wan 2.2 video dimension math for 8GB VRAM cards across different source aspect ratios."""

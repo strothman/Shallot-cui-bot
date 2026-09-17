@@ -54,59 +54,91 @@ class IsolatedImageButtons(discord.ui.View):
             row=0
         ))
 
-        # Row 1: Actions, Favorites, Remix & Studio Loop (up to 5 buttons max)
+        # Row 1: Directional Pan & Zoom Controls (5 buttons max)
+        self.add_item(discord.ui.Button(
+            label="⬅️ Pan Left",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{self.generation_id}:{self.index}:left",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="⬆️ Pan Up",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{self.generation_id}:{self.index}:up",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="⬇️ Pan Down",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{self.generation_id}:{self.index}:down",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="➡️ Pan Right",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{self.generation_id}:{self.index}:right",
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="🔍 Zoom 1.5x",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"outpaint:{self.generation_id}:{self.index}:1.5x",
+            row=1
+        ))
+
+        # Row 2: Actions, Favorites, Remix & Studio Loop (up to 5 buttons max)
         if has_sref:
             self.add_item(discord.ui.Button(
                 label="⭐ Favorite Style",
                 style=discord.ButtonStyle.success,
                 custom_id=f"fav_style:{self.generation_id}",
-                row=1
+                row=2
             ))
         self.add_item(discord.ui.Button(
             label="⭐ Favorite Prompt",
             style=discord.ButtonStyle.success,
             custom_id=f"fav_prompt:{self.generation_id}",
-            row=1
+            row=2
         ))
         self.add_item(discord.ui.Button(
             label="📋 Copy Prompt",
             style=discord.ButtonStyle.secondary,
             custom_id=f"copy_prompt:{self.generation_id}",
-            row=1
+            row=2
         ))
         self.add_item(discord.ui.Button(
             label="✏️ Remix",
             style=discord.ButtonStyle.primary,
             custom_id=f"remix:{self.generation_id}",
-            row=1
+            row=2
         ))
         if is_blend:
             self.add_item(discord.ui.Button(
                 label="🎛️ Adjust Blend",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"reblend:{self.generation_id}",
-                row=1
+                row=2
             ))
 
-        # Row 2: Change Style Reference (--sref) (only if has_sref=True, 3 buttons max)
+        # Row 3: Change Style Reference (--sref) (only if has_sref=True, 3 buttons max)
         if has_sref:
             self.add_item(discord.ui.Button(
                 label="🎨 Custom --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_custom:{self.generation_id}:{self.index}",
-                row=2
+                row=3
             ))
             self.add_item(discord.ui.Button(
                 label="🎲 Random --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_random:{self.generation_id}:{self.index}",
-                row=2
+                row=3
             ))
             self.add_item(discord.ui.Button(
                 label="⭐ Saved --sref",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"sref_change_saved:{self.generation_id}:{self.index}",
-                row=2
+                row=3
             ))
 
 

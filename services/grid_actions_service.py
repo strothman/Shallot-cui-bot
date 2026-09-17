@@ -54,7 +54,9 @@ from parsers import (
     apply_magic_enhancement,
     calculate_wan_dimensions,
     extract_positive_prompt,
-    apply_face_detailer_to_workflow
+    apply_face_detailer_to_workflow,
+    prepare_bertflow_workflow,
+    get_bertflow_unet_model,
 )
 from characters import get_character, mask_character_in_prompt
 from views import (
@@ -1032,13 +1034,16 @@ async def handle_remix(interaction: discord.Interaction, generation_id: str):
 
 
 async def handle_outpaint(interaction: discord.Interaction, generation_id: str, index: int, target_ratio: str):
-    """Outpaint an image to expanding aspect ratio (16:9, 21:9) or Zoom Out (1.5x, 2.0x)."""
+    """Outpaint an image via directional panning (left, right, up, down) or expanding aspect ratio / zoom."""
     await safe_defer(interaction, thinking=True)
 
     clicked_custom_id = interaction.data.get("custom_id", "")
     await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.primary, disabled=True)
 
     gen_data = get_generation(generation_id) or {}
+    if not gen_data:
+        gen_data = db.get_generation(generation_id) or {}
+
     raw_prompt = gen_data.get("prompt", "")
     original_prompt = gen_data.get("original_prompt", raw_prompt)
 
@@ -1059,6 +1064,8 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
     if not loras:
         _, loras = parse_loras(original_prompt or raw_prompt, is_flux=False)
     seed = random.randint(1, 1125899906842624)
+
+    is_bertflow = bool(gen_data.get("is_bertflow") or gen_data.get("engine") == "krea2")
 
     q_bytes = await get_quadrant_bytes_async(generation_id, index)
     if not q_bytes and interaction.message and interaction.message.attachments:
@@ -1090,55 +1097,81 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         await interaction.followup.send(f"Failed to upload image to ComfyUI: {e}", ephemeral=True)
         return
 
-    workflow_path = "workflows/outpaint_lowres.json"
-    try:
-        with open(workflow_path, "r", encoding="utf-8") as f:
-            workflow = json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading outpaint workflow: {e}")
-        await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
-        await interaction.followup.send("Failed to load outpaint workflow template.", ephemeral=True)
-        return
-
-    workflow = apply_loras_to_workflow(workflow, loras)
-
     sref_info = gen_data.get("sref_info")
-    sref_suffix = f"_sref{sref_info['code']}" if sref_info and "code" in sref_info else ""
+    cref_image = gen_data.get("cref_image")
+    cref_weight = gen_data.get("cref_weight", 0.80)
 
-    try:
-        workflow["4"]["inputs"]["ckpt_name"] = checkpoint
-        workflow["6"]["inputs"]["text"] = expanded_p
-        workflow["7"]["inputs"]["text"] = neg_prompt
-        workflow["30"]["inputs"]["image"] = img_filename
-        
-        workflow["31"]["inputs"]["left"] = left
-        workflow["31"]["inputs"]["top"] = top
-        workflow["31"]["inputs"]["right"] = right
-        workflow["31"]["inputs"]["bottom"] = bottom
-        workflow["31"]["inputs"]["feathering"] = 64
-        
-        workflow["3"]["inputs"]["seed"] = seed
-        workflow["3"]["inputs"]["cfg"] = cfg
-        workflow["3"]["inputs"]["denoise"] = 0.80
-        workflow["9"]["class_type"] = "PreviewImage"
-        workflow["9"]["inputs"].pop("filename_prefix", None)
+    if is_bertflow:
+        # Architecture-aware Krea 2 / Bertflow outpainting
+        try:
+            unet_choice = gen_data.get("unet_model") or get_bertflow_unet_model()
+            workflow = prepare_bertflow_workflow(
+                prompt=expanded_p,
+                width=out_w,
+                height=out_h,
+                seed=seed,
+                steps=gen_data.get("steps", 8),
+                unet_model=unet_choice,
+                wetness_strength=gen_data.get("wetness", -2.0),
+                init_image=img_filename,
+                comp_strength="medium",
+                character=gen_data.get("character"),
+                celebrity=gen_data.get("celebrity"),
+            )
+        except Exception as e:
+            logger.error(f"Error preparing Bertflow outpaint workflow: {e}")
+            await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
+            await interaction.followup.send(f"Failed to prepare Krea 2 outpaint workflow: {e}", ephemeral=True)
+            return
+    else:
+        # SDXL outpaint with soft feathering and anti-ghosting denoise
+        workflow_path = "workflows/outpaint_lowres.json"
+        try:
+            with open(workflow_path, "r", encoding="utf-8") as f:
+                workflow = json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading outpaint workflow: {e}")
+            await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
+            await interaction.followup.send("Failed to load outpaint workflow template.", ephemeral=True)
+            return
+
+        workflow = apply_loras_to_workflow(workflow, loras)
 
         try:
-            workflow = build_blend_workflow([img_filename], expanded_p, neg_prompt, checkpoint, out_w, out_h, seed, cfg, workflow_template=workflow)
-        except Exception as ip_err:
-            logger.error(f"Failed to chain IP-Adapter for outpaint: {ip_err}")
+            workflow["4"]["inputs"]["ckpt_name"] = checkpoint
+            workflow["6"]["inputs"]["text"] = expanded_p
+            workflow["7"]["inputs"]["text"] = neg_prompt
+            workflow["30"]["inputs"]["image"] = img_filename
+            
+            workflow["31"]["inputs"]["left"] = left
+            workflow["31"]["inputs"]["top"] = top
+            workflow["31"]["inputs"]["right"] = right
+            workflow["31"]["inputs"]["bottom"] = bottom
+            workflow["31"]["inputs"]["feathering"] = 72  # Soft mask feathering to eliminate box seams
+            
+            workflow["3"]["inputs"]["seed"] = seed
+            workflow["3"]["inputs"]["cfg"] = cfg
+            workflow["3"]["inputs"]["denoise"] = 0.80  # Controlled denoise to prevent duplicate bodies
+            workflow["9"]["class_type"] = "PreviewImage"
+            workflow["9"]["inputs"].pop("filename_prefix", None)
 
-        cref_image = gen_data.get("cref_image")
-        cref_weight = gen_data.get("cref_weight", 0.80)
-        if cref_image:
-            workflow = apply_ipadapter_to_workflow(workflow, cref_image, weight=cref_weight, node_prefix="cref")
-    except KeyError as e:
-        logger.error(f"Invalid outpaint workflow structure: {e}")
-        await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
-        await interaction.followup.send("Outpaint workflow template has an invalid structure.", ephemeral=True)
-        return
+            if cref_image:
+                workflow = apply_ipadapter_to_workflow(workflow, cref_image, weight=cref_weight, node_prefix="cref")
+        except KeyError as e:
+            logger.error(f"Invalid outpaint workflow structure: {e}")
+            await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)
+            await interaction.followup.send("Outpaint workflow template has an invalid structure.", ephemeral=True)
+            return
 
-    await interaction.followup.send(f"Outpainting image {index} to {target_ratio} ({out_w}x{out_h}, Seed: {seed})...", ephemeral=True)
+    direction_display = {
+        "up": "⬆️ Pan Up",
+        "down": "⬇️ Pan Down",
+        "left": "⬅️ Pan Left",
+        "right": "➡️ Pan Right",
+        "1.5x": "🔍 Zoom 1.5x",
+    }.get(str(target_ratio).lower(), f"Expand {target_ratio}")
+
+    await interaction.followup.send(f"Outpainting ({direction_display}): `{out_w}x{out_h}` (Seed: `{seed}`)...", ephemeral=True)
 
     try:
         images = await comfy_client.generate(workflow, timeout=14400)
@@ -1147,9 +1180,8 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
             await interaction.followup.send("ComfyUI did not return an outpainted image.", ephemeral=True)
             return
 
-        sref_info = gen_data.get("sref_info")
         new_gen_id = str(random.randint(100000, 999999))
-        active_generations[new_gen_id] = {
+        new_gen_data = {
             "prompt": expanded_p,
             "original_prompt": expanded_original,
             "negative_prompt": neg_prompt,
@@ -1159,24 +1191,34 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
             "loras": loras,
             "checkpoint": checkpoint,
             "cfg": cfg,
+            "is_bertflow": is_bertflow,
+            "engine": "krea2" if is_bertflow else "sdxl",
+            "unet_model": gen_data.get("unet_model"),
+            "character": gen_data.get("character"),
+            "celebrity": gen_data.get("celebrity"),
             "variation_depth": 0,
             "sref_info": sref_info,
             "cref_image": cref_image,
             "cref_weight": cref_weight
         }
+        active_generations[new_gen_id] = new_gen_data
+        db.save_generation(new_gen_id, new_gen_data)
         save_generations()
 
         await save_quadrant_images_async(new_gen_id, [images[0]])
 
         out_file_io = await embed_metadata_async(images[0], expanded_original, neg_prompt, seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{target_ratio.replace(':', '_')}", seed, "png", sref=sref_code))
+        safe_ratio_name = str(target_ratio).replace(':', '_').replace('.', '_')
+        file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{safe_ratio_name}", seed, "png", sref=sref_code))
 
+        model_label = gen_data.get("unet_model") if is_bertflow else checkpoint
         desc_lines = [
             f"**Prompt:** {truncate_prompt(expanded_original, 250)}",
-            f"**Model:** {checkpoint}",
-            f"**Target Size:** {out_w}x{out_h}",
-            f"**Seed:** {seed}"
+            f"**Engine:** {'Krea 2 Turbo' if is_bertflow else 'SDXL'}",
+            f"**Model:** `{model_label}`",
+            f"**Canvas Size:** `{out_w}x{out_h}` ({direction_display})",
+            f"**Seed:** `{seed}`"
         ]
         if sref_info and "code" in sref_info:
             desc_lines.append(f"**Style Reference:** --sref {sref_info['code']} ({sref_info['name']})")
@@ -1184,13 +1226,16 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
             desc_lines.append(f"**Character Reference:** --cref (weight: {cref_weight:.2f})")
 
         embed = discord.Embed(
-            title=f"Outpainted Canvas ({target_ratio})",
-            description="\n".join(desc_lines)
+            title=f"Outpainted Canvas ({direction_display})",
+            description="\n".join(desc_lines),
+            color=discord.Color.from_rgb(235, 140, 52) if is_bertflow else discord.Color.blurple()
         )
         embed.set_footer(text=f"Requested by {interaction.user.name} (ID: {interaction.user.id})")
-        view = UpscaleButtons(new_gen_id, 1)
+        
+        # IsolatedImageButtons enables recursive panning and 2x/4x upscale on the outpainted canvas
+        view = IsolatedImageButtons(new_gen_id, 1, has_sref=bool(sref_info and "code" in sref_info))
 
-        await send_followup_fallback(interaction, content=f"**Outpaint ({target_ratio}):** {truncate_prompt(expanded_original, 100)}", embed=embed, file=file, view=view)
+        await send_followup_fallback(interaction, content=f"**Outpaint ({direction_display}):** {truncate_prompt(expanded_original, 100)}", embed=embed, file=file, view=view)
         await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.success, disabled=True)
     except Exception as e:
         logger.error(f"Error generating outpaint: {e}")

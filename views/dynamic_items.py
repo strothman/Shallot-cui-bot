@@ -139,3 +139,40 @@ class RemixDynamicButton(
     async def callback(self, interaction: discord.Interaction):
         from services.grid_actions_service import handle_remix
         await handle_remix(interaction, self.generation_id)
+
+
+class OutpaintDynamicButton(
+    discord.ui.DynamicItem[discord.ui.Button], 
+    template=r"outpaint:(?P<gen_id>[a-zA-Z0-9_\-]+):(?P<index>[1-4]):(?P<direction>[a-zA-Z0-9_\.:]+)"
+):
+    """Persistent Directional Pan and Outpaint button."""
+    def __init__(self, generation_id: str, index: int, direction: str):
+        label_map = {
+            "left": "⬅️ Pan Left",
+            "up": "⬆️ Pan Up",
+            "down": "⬇️ Pan Down",
+            "right": "➡️ Pan Right",
+            "1.5x": "🔍 Zoom 1.5x",
+        }
+        super().__init__(
+            discord.ui.Button(
+                label=label_map.get(direction, f"Pan ({direction})"),
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"outpaint:{generation_id}:{index}:{direction}"
+            )
+        )
+        self.generation_id = generation_id
+        self.index = int(index)
+        self.direction = direction
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match: re.Match[str], /):
+        gen_id = match.group("gen_id")
+        index = int(match.group("index"))
+        direction = match.group("direction")
+        return cls(gen_id, index, direction)
+
+    async def callback(self, interaction: discord.Interaction):
+        from services.grid_actions_service import handle_outpaint
+        await handle_outpaint(interaction, self.generation_id, self.index, self.direction)
+

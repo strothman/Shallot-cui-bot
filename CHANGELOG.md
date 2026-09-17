@@ -7,6 +7,15 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-16]
 
 ### Added
+* 🧭 **Interactive Directional Outpaint (Pan Controls: ⬆️ ⬇️ ⬅️ ➡️ & Zoom 1.5x)**:
+  * Added Midjourney-style directional pan controls to [`views/grid_views.py`](views/grid_views.py) (`IsolatedImageButtons` Row 1): `⬅️ Pan Left`, `⬆️ Pan Up`, `⬇️ Pan Down`, `➡️ Pan Right`, and `🔍 Zoom 1.5x`.
+  * Added 4-way directional padding calculation in [`image_utils.py`](image_utils.py) (`calculate_outpaint_padding` & `calculate_outpaint_padding_async`), expanding the canvas by `384px` (64px divisible) strictly on the requested side while keeping the other 3 borders anchored.
+  * Overhauled [`services/grid_actions_service.py`](services/grid_actions_service.py) with **multi-architecture awareness**:
+    * **Zero Model Amnesia:** Inspects `is_bertflow` and generation metadata to automatically route SDXL images through SDXL inpainting and Krea 2 images through Bertflow photorealism with matching LoRAs, UNETs, and character weights.
+    * **Anti-Ghosting Denoise:** Tuned sampler denoise to `0.80` (replacing naive `0.95`) with `72px` soft mask feathering to permanently eliminate ghost duplicate bodies and rectangular box seams.
+    * **Recursive Canvas Expansion:** Outpaint outputs return with interactive `IsolatedImageButtons` so creators can continue panning in any direction recursively or upscale to 2K/4K.
+  * Registered `OutpaintDynamicButton` in [`views/dynamic_items.py`](views/dynamic_items.py) and `ShallotBot.setup_hook()`, making directional pan buttons persistent across bot reboots.
+
 * 📐 **`/blend-sdxl` Studio Dropdowns (Option A)**:
   * Upgraded SDXL Blend Studio controls with direct **Aspect Ratio** (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `21:9`, `3:5`, `10:7`) and **Semi-Realism** (`OFF`, `.60`, `.70`, `.75`, `.80`, `.90`) select menus.
   * Added 1-click **Composition** cycling button (`Style .20` → `Low .35` → `Med .60` → `High .85`) to the compact action row alongside `Blend Image`, `Edit Prompt`, and `--sref random` toggle.

@@ -58,6 +58,7 @@ from views.dynamic_items import (
     VariationDynamicButton,
     RerollDynamicButton,
     RemixDynamicButton,
+    OutpaintDynamicButton,
 )
 
 __all__ = [
@@ -104,4 +105,5 @@ __all__ = [
     "VariationDynamicButton",
     "RerollDynamicButton",
     "RemixDynamicButton",
+    "OutpaintDynamicButton",
 ]

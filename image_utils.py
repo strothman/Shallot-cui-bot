@@ -196,38 +196,113 @@ def calculate_outpaint_padding(image_bytes: bytes, mode_or_ratio: str):
     else:
         w, h = orig_w, orig_h
 
-    if mode_or_ratio == "16:9":
+    mode = str(mode_or_ratio).lower().strip()
+
+    # Directional pan expansion (384px extension aligned to 64px boundary)
+    if mode in ["up", "pan_up"]:
+        pad_step = 384
+        top = pad_step
+        bottom = 0
+        left = 0
+        right = 0
+        target_w = w
+        target_h = h + pad_step
+    elif mode in ["down", "pan_down"]:
+        pad_step = 384
+        top = 0
+        bottom = pad_step
+        left = 0
+        right = 0
+        target_w = w
+        target_h = h + pad_step
+    elif mode in ["left", "pan_left"]:
+        pad_step = 384
+        top = 0
+        bottom = 0
+        left = pad_step
+        right = 0
+        target_w = w + pad_step
+        target_h = h
+    elif mode in ["right", "pan_right"]:
+        pad_step = 384
+        top = 0
+        bottom = 0
+        left = 0
+        right = pad_step
+        target_w = w + pad_step
+        target_h = h
+    elif mode == "16:9":
         target_w = int(round((h * 16 / 9) / 64) * 64) if w / h < 16 / 9 else w
         target_h = h if w / h < 16 / 9 else int(round((w * 9 / 16) / 64) * 64)
-    elif mode_or_ratio == "21:9":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "21:9":
         target_w = int(round((h * 21 / 9) / 64) * 64) if w / h < 21 / 9 else w
         target_h = h if w / h < 21 / 9 else int(round((w * 9 / 21) / 64) * 64)
-    elif mode_or_ratio == "9:16":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "9:16":
         target_w = w if w / h > 9 / 16 else int(round((h * 9 / 16) / 64) * 64)
         target_h = int(round((w * 16 / 9) / 64) * 64) if w / h > 9 / 16 else h
-    elif mode_or_ratio == "3:5":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "3:5":
         target_w = w if w / h > 3 / 5 else int(round((h * 3 / 5) / 64) * 64)
         target_h = int(round((w * 5 / 3) / 64) * 64) if w / h > 3 / 5 else h
-    elif mode_or_ratio == "10:7":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "10:7":
         target_w = int(round((h * 10 / 7) / 64) * 64) if w / h < 10 / 7 else w
         target_h = h if w / h < 10 / 7 else int(round((w * 7 / 10) / 64) * 64)
-    elif mode_or_ratio == "1.5x":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "1.5x":
         target_w = int(round((w * 1.5) / 64) * 64)
         target_h = int(round((h * 1.5) / 64) * 64)
-    elif mode_or_ratio == "2.0x":
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
+    elif mode == "2.0x":
         target_w = int(round((w * 2.0) / 64) * 64)
         target_h = int(round((h * 2.0) / 64) * 64)
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
     else:
         target_w = int(round((h * 16 / 9) / 64) * 64)
         target_h = h
-
-    total_pad_w = max(0, target_w - w)
-    total_pad_h = max(0, target_h - h)
-
-    left = total_pad_w // 2
-    right = total_pad_w - left
-    top = total_pad_h // 2
-    bottom = total_pad_h - top
+        total_pad_w = max(0, target_w - w)
+        total_pad_h = max(0, target_h - h)
+        left = total_pad_w // 2
+        right = total_pad_w - left
+        top = total_pad_h // 2
+        bottom = total_pad_h - top
 
     out_io = io.BytesIO()
     img.save(out_io, format="PNG")

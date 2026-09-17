@@ -1,9 +1,9 @@
 # 🧅 PROJECT STATE — Shallot-CUI Bot
 
 > **Project Name:** Shallot-CUI Bot (*Your Discord AI Creation Studio*)  
-> **Current Version:** `v2.7.2`  
-> **Last Updated:** September 13, 2026  
-> **Status:** 🟢 Stable & Healthy (95/95 Automated Tests Passing)  
+> **Current Version:** `v2.8.0`  
+> **Last Updated:** September 16, 2026  
+> **Status:** 🟢 Stable & Healthy (104/104 Automated Tests Passing)  
 
 ---
 
@@ -154,40 +154,50 @@ The tool is built with **automatic state resumption**:
 
 ---
 
-## 🗺️ Architectural Roadmap
+## 🗺️ Architectural Roadmap (Progress & Current Status)
 
 * **Phase 1: Zero-Risk Refinements [COMPLETED]**
   * Centralized character display badge resolution in `characters.py`.
   * Silenced test-induced multi-instance warning banner.
 * **Phase 2: Dynamic Character Autocomplete [COMPLETED]**
   * Replaced static `app_commands.choices` arrays with dynamic `app_commands.autocomplete` querying `characters.py` and `scan_krea2_loras()`. Newly added LoRAs dropped into models folders immediately appear in Discord autocomplete without code edits or command re-syncing.
-* **Phase 3: Modular Cog Architecture [PILOT COMPLETED — EXPAND WHEN READY]**
-  * ✅ **Pilot Phase Verified:** Successfully extracted `/blend-sdxl`, `/blend` alias, and `Blend Image (SDXL)` context menu into [`cogs/vision_cog.py`](cogs/vision_cog.py) and pure execution logic into [`services/vision_service.py`](services/vision_service.py), eliminating 468 lines from `bot.py` with 100% backward compatibility and 71/71 tests passing.
-  * 📋 **Remaining Roadmap:** Decompose remaining modules (`cogs/krea_cog.py`, `cogs/imagine_cog.py`, `cogs/admin_cog.py`) whenever ready. See [`docs/modular_cog_architecture_plan.md`](docs/modular_cog_architecture_plan.md) for execution blueprint.
-* **Phase 4: Client Distribution & Custom Hardware Packaging [FUTURE ROADMAP — TARGET: NEXT MONTH / NOT NOW]**
-  * Package Shallot-CUI Bot for standalone deployment on an external user's PC with their own ComfyUI server, custom checkpoints, and custom LoRAs.
-  * 🟢 **Feasibility Rating:** Highly Feasible (8.5/10). Because the bot communicates via standard ComfyUI REST/WebSocket APIs (`127.0.0.1:8188`), it is already decoupled from local hardware.
-  * ⏳ **Timeline Note:** This is scheduled for future implementation next month. The feasibility plan is preserved in the docs archive for when we are ready to build it.
-  * **Core Deliverables Required:**
-    1. **Dynamic Model Discovery:** Query ComfyUI `/object_info` at startup to populate Discord autocomplete directly with the user's installed checkpoints and LoRAs, replacing hardcoded lists.
-    2. **Pre-Flight Environment Validator (`tools/check_comfy_env.py`):** Automatically verifies ComfyUI connectivity, core nodes, and extension nodes (Florence-2, VideoHelperSuite, GGUF) and provides 1-click install links for missing components.
-    3. **Turnkey Installer Package:** 1-click `setup.bat` (creates isolated `.venv` and installs dependencies), `run_bot.bat` launcher, and a friendly 5-minute setup guide (`README_FRIEND.md`).
-  * 📋 **Detailed Feasibility Plan:** See [`docs/client_distribution_packaging_plan.md`](docs/client_distribution_packaging_plan.md) for full gap analysis, architecture adapters, and packaging roadmap.
+* **Phase 3: Modular Cog Architecture [COMPLETED]**
+  * Decomposed monolithic `bot.py` from 4,726 lines down to **446 lines** (90.5% reduction).
+  * Extracted focused domain cogs: `imagine_cog.py`, `upscale_cog.py`, `system_cog.py`, `vision_cog.py`, `krea_cog.py`.
+* **Phase 4: Modular Parsers & Views Packages [COMPLETED]**
+  * Segregated monolithic `parsers.py` (2,158 lines) into modular package [`parsers/`](parsers/) (`dimensions`, `styles`, `prompts`, `workflows`).
+  * Segregated monolithic `views.py` (2,074 lines) into modular package [`views/`](views/) (`grid_views`, `blend_sdxl`, `blend_krea`, `pagination`, `modals`).
+  * Decomposed `services/generation_service.py` into `blend_generation_service.py` and `grid_actions_service.py`.
+* **Phase 5: Native Persistent Dynamic Buttons [COMPLETED]**
+  * Implemented Discord.py 2.3+ native `DynamicItem` persistent buttons (`[Cancel]`, `[U1–U4]`, `[V1–V4]`, `[🔄 Reroll]`, `[✏️ Remix]`, `[Pan]`) registered in `setup_hook()`.
+  * Grid action buttons survive bot restarts permanently without expiring.
+* **Phase 6: Interactive Directional Outpaint (Pan Controls) [COMPLETED]**
+  * Added Midjourney-style directional pan controls: `[ ⬅️ Pan Left ]`, `[ ⬆️ Pan Up ]`, `[ ⬇️ Pan Down ]`, `[ ➡️ Pan Right ]`, and `[ 🔍 Zoom 1.5x ]`.
+  * Architecture-aware dispatch (SDXL vs Krea 2 Bertflow photorealism) with `72px` soft mask feathering and `0.80` anti-ghosting denoise (eliminating duplicate bodies, floating limbs, and box seams).
+  * Recursive expansion enabled via returned `IsolatedImageButtons`.
 
-* **Phase 5: Technical Debt & Performance Optimizations [SCHEDULED FOR NEXT WEEK]**
-  * Preserved full architectural gap analysis and solution blueprints in [`docs/technical_debt_and_optimization_audit.md`](docs/technical_debt_and_optimization_audit.md).
-  * **Prioritized Implementation Backlog (Next Week):**
-    1. **Outpaint Multi-Architecture Awareness & Seam Blending (Priority #1)**: Eliminate the hardcoded WaiIllustrious anime model on non-SDXL images and fix the hidden variable reference bug.
-    2. **Decompose 670-Line `on_interaction` String Dispatcher (Priority #2)**: Replace cascading string prefix matching with a table-driven interaction registry.
-    3. **Persistent Button DNA (Priority #3)**: Embed generation DNA into UI components to permanently eliminate "Session Data Expired" errors on older grids after bot restarts.
-    4. **Modularize `parsers.py` (Priority #4)**: Segregate the 2,100-line junk drawer into focused submodules (`flags.py`, `workflow_graph.py`, `metadata.py`, `dimensions.py`).
+---
+
+## 💡 Future Expansion Ideas (Archived for Later)
+
+*The following features are designed to run smoothly on a single-user, single-GPU workstation whenever we wish to expand beyond our current stable scope:*
+
+1. **A/B Model & Style Comparison Studio (`/compare`)**:
+   * Pits two models (e.g. SDXL Powerhouse vs Krea 2 Bertflow, or Checkpoint A vs Checkpoint B) side-by-side with locked identical seeds.
+   * Emits a dual comparison card in Discord with `[ 🏆 Pick Left ]`, `[ 🏆 Pick Right ]`, and `[ 🔄 Reroll Both ]` branching buttons.
+2. **Local "Smart Prompt" Expander (Midjourney-Style Prompting)**:
+   * Enables short, casual prompts (e.g. `/imagine prompt: a girl in a library --magic`) by leveraging our local Florence-2 or lightweight 1B LLM to enrich them into cinematic photographic descriptions in ~0.4s.
+3. **Instant Face Swap / Identity Transplant (`/swapface` or Context Menu)**:
+   * Uses ReActor / InsightFace to transplant any character or reference face onto any generated outfit or scene in ~1.5s with minimal VRAM overhead.
+4. **Standalone Turnkey Installer & Packaging Package**:
+   * Pre-flight environment validator (`tools/check_comfy_env.py`) and 1-click `setup.bat` allowing friends or external workstations to spin up Shallot-CUI Bot with automated ComfyUI node verification.
 
 ---
 
 ## 🧪 6. Testing & Quality Assurance
 
 Every time you run the bot using `run_bot.bat`, it performs an automatic safety check:
-* **Automated Tests:** **95 / 95 tests passing** (`python suite_test.py`).
+* **Automated Tests:** **104 / 104 tests passing** (`python suite_test.py`) with 4/4 architectural audits passing 100% green.
 * **What is tested:**
   * Aspect ratio math and sizing.
   * Wildcard randomization (`{cat|dog|fox}`).

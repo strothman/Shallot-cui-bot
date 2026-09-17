@@ -556,31 +556,37 @@ class TestUiAndViews(unittest.TestCase):
         self.assertIn("--sr.60", fields["🎭 Aesthetics & Identity"])
         self.assertIn("576522", fields["🎭 Aesthetics & Identity"])
 
-        # 2. Test IsolatedImageButtons with is_blend=True and has_sref=True (3 rows max)
+        # 2. Test IsolatedImageButtons with is_blend=True and has_sref=True (Includes Directional Pan Controls)
         iso_view_sref = IsolatedImageButtons("gen_iso_1", index=3, has_sref=True, is_blend=True)
         r0 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 0]
         r1 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 1]
         r2 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 2]
         r3 = [c for c in iso_view_sref.children if getattr(c, "row", None) == 3]
 
-        self.assertEqual(len(r0), 4) # 1.25x, 1.5x, vary subtle, vary strong
-        self.assertEqual(len(r1), 5) # fav_style, fav_prompt, copy_prompt, remix, reblend
-        self.assertEqual(len(r2), 3) # custom, random, saved sref
-        self.assertEqual(len(r3), 0) # Consolidated from 4 rows down to 3!
+        self.assertEqual(len(r0), 4) # 2x, 4x, vary subtle, vary strong
+        self.assertEqual(len(r1), 5) # pan left, up, down, right, zoom 1.5x
+        self.assertEqual(len(r2), 5) # fav_style, fav_prompt, copy_prompt, remix, reblend
+        self.assertEqual(len(r3), 3) # custom, random, saved sref
 
-        btn_ids = [c.custom_id for c in r1]
-        self.assertIn("remix:gen_iso_1", btn_ids)
-        self.assertIn("reblend:gen_iso_1", btn_ids)
+        pan_ids = [c.custom_id for c in r1]
+        self.assertIn("outpaint:gen_iso_1:3:up", pan_ids)
+        self.assertIn("outpaint:gen_iso_1:3:down", pan_ids)
 
-        # 3. Test IsolatedImageButtons with is_blend=True and has_sref=False (2 rows max!)
+        action_ids = [c.custom_id for c in r2]
+        self.assertIn("remix:gen_iso_1", action_ids)
+        self.assertIn("reblend:gen_iso_1", action_ids)
+
+        # 3. Test IsolatedImageButtons with is_blend=True and has_sref=False (3 rows without sref)
         iso_view_nosref = IsolatedImageButtons("gen_iso_2", index=1, has_sref=False, is_blend=True)
         r0_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 0]
         r1_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 1]
         r2_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 2]
+        r3_no = [c for c in iso_view_nosref.children if getattr(c, "row", None) == 3]
 
         self.assertEqual(len(r0_no), 4)
-        self.assertEqual(len(r1_no), 4) # fav_prompt, copy_prompt, remix, reblend
-        self.assertEqual(len(r2_no), 0) # Only 2 rows!
+        self.assertEqual(len(r1_no), 5) # pan left, up, down, right, zoom 1.5x
+        self.assertEqual(len(r2_no), 4) # fav_prompt, copy_prompt, remix, reblend
+        self.assertEqual(len(r3_no), 0) # No sref row
 
     def test_module43_video_views_retired(self):
         """Test that video dashboard, VideoActionView, and VideoPromptModal are cleanly retired from views."""
@@ -1482,6 +1488,55 @@ class TestUiAndViews(unittest.TestCase):
         wet_btn_matte_again = next(c for c in view_matte_again.children if getattr(c, "custom_id", "") == f"toggle_blend_krea_wetness:{gen_id}")
         self.assertEqual(wet_btn_matte_again.label, "💧 Skin: Matte")
 
+    def test_dynamic_outpaint_button_lifecycle(self):
+        """Test OutpaintDynamicButton persistent regex matching and directional callbacks."""
+        from views import OutpaintDynamicButton
+        import re
+
+        # 1. Verify custom_id template matching
+        template_pattern = OutpaintDynamicButton.__discord_ui_compiled_template__
+        match_up = template_pattern.fullmatch("outpaint:gen_999:2:up")
+        self.assertIsNotNone(match_up)
+        self.assertEqual(match_up.group("gen_id"), "gen_999")
+        self.assertEqual(match_up.group("index"), "2")
+        self.assertEqual(match_up.group("direction"), "up")
+
+        match_down = template_pattern.fullmatch("outpaint:gen_888:1:down")
+        self.assertIsNotNone(match_down)
+        self.assertEqual(match_down.group("direction"), "down")
+
+        match_zoom = template_pattern.fullmatch("outpaint:gen_777:4:1.5x")
+        self.assertIsNotNone(match_zoom)
+        self.assertEqual(match_zoom.group("direction"), "1.5x")
+
+        # 2. Verify button labels and custom_id formatting
+        btn_up = OutpaintDynamicButton("gen_123", 1, "up")
+        self.assertEqual(btn_up.item.label, "⬆️ Pan Up")
+        self.assertEqual(btn_up.item.custom_id, "outpaint:gen_123:1:up")
+
+        btn_down = OutpaintDynamicButton("gen_123", 2, "down")
+        self.assertEqual(btn_down.item.label, "⬇️ Pan Down")
+        self.assertEqual(btn_down.item.custom_id, "outpaint:gen_123:2:down")
+
+        btn_left = OutpaintDynamicButton("gen_123", 3, "left")
+        self.assertEqual(btn_left.item.label, "⬅️ Pan Left")
+        self.assertEqual(btn_left.item.custom_id, "outpaint:gen_123:3:left")
+
+        btn_right = OutpaintDynamicButton("gen_123", 4, "right")
+        self.assertEqual(btn_right.item.label, "➡️ Pan Right")
+        self.assertEqual(btn_right.item.custom_id, "outpaint:gen_123:4:right")
+
+        btn_zoom = OutpaintDynamicButton("gen_123", 1, "1.5x")
+        self.assertEqual(btn_zoom.item.label, "🔍 Zoom 1.5x")
+        self.assertEqual(btn_zoom.item.custom_id, "outpaint:gen_123:1:1.5x")
+
+        # 3. Verify callback dispatches to handle_outpaint
+        mock_inter = MagicMock()
+        with patch("services.grid_actions_service.handle_outpaint", new_callable=AsyncMock) as mock_handle:
+            asyncio.run(btn_down.callback(mock_inter))
+            mock_handle.assert_called_once_with(mock_inter, "gen_123", 2, "down")
+
 
 if __name__ == '__main__':
     unittest.main()
+

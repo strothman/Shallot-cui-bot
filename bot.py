@@ -226,6 +226,7 @@ async def setup_hook():
         VariationDynamicButton,
         RerollDynamicButton,
         RemixDynamicButton,
+        OutpaintDynamicButton,
     )
     bot.add_dynamic_items(
         CancelGenDynamicButton,
@@ -233,6 +234,7 @@ async def setup_hook():
         VariationDynamicButton,
         RerollDynamicButton,
         RemixDynamicButton,
+        OutpaintDynamicButton,
     )
 
 bot.setup_hook = setup_hook
