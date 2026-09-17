@@ -405,10 +405,50 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 pass
 
 
+def is_dynamic_component(custom_id: str) -> bool:
+    """
+    Checks if a custom_id is matched by any registered discord.ui.DynamicItem.
+    Dynamic items are scheduled and handled natively by discord.py's ViewStore.
+    """
+    if not custom_id:
+        return False
+    try:
+        view_store = getattr(bot._connection, "_view_store", None)
+        if view_store and hasattr(view_store, "_dynamic_items"):
+            for pattern in view_store._dynamic_items.keys():
+                if pattern.fullmatch(custom_id):
+                    return True
+    except Exception:
+        pass
+    from views.dynamic_items import (
+        CancelGenDynamicButton,
+        IsolateDynamicButton,
+        VariationDynamicButton,
+        RerollDynamicButton,
+        RemixDynamicButton,
+        OutpaintDynamicButton,
+    )
+    for cls in (
+        CancelGenDynamicButton,
+        IsolateDynamicButton,
+        VariationDynamicButton,
+        RerollDynamicButton,
+        RemixDynamicButton,
+        OutpaintDynamicButton,
+    ):
+        template = getattr(cls, "__discord_ui_compiled_template__", None)
+        if template and template.fullmatch(custom_id):
+            return True
+    return False
+
+
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     touch_activity()
     if interaction.type == discord.InteractionType.component:
+        custom_id = interaction.data.get("custom_id", "") if interaction.data else ""
+        if custom_id and is_dynamic_component(custom_id):
+            return
         await dispatch_interaction(interaction)
 
 

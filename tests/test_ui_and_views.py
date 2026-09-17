@@ -1675,7 +1675,47 @@ class TestUiAndViews(unittest.TestCase):
                     asyncio.run(handle_outpaint(mock_inter, "gen_test", 1, direction))
                     mock_followup.assert_called_once()
 
+    def test_dynamic_item_dispatch_deduplication(self):
+        """Test that is_dynamic_component prevents duplicate interaction dispatching for native DynamicItems."""
+        import discord
+        from bot import is_dynamic_component, on_interaction
+
+        # 1. Dynamic item custom_id detection
+        self.assertTrue(is_dynamic_component("outpaint:gen_123:1:1.5x"))
+        self.assertTrue(is_dynamic_component("outpaint:gen_123:1:left"))
+        self.assertTrue(is_dynamic_component("outpaint:gen_123:1:up"))
+        self.assertTrue(is_dynamic_component("cancel_gen:gen_123"))
+        self.assertTrue(is_dynamic_component("upscale:gen_123:1"))
+        self.assertTrue(is_dynamic_component("variation:gen_123:2"))
+        self.assertTrue(is_dynamic_component("reroll:gen_123"))
+        self.assertTrue(is_dynamic_component("remix:gen_123"))
+
+        # 2. Non-dynamic items must return False
+        self.assertFalse(is_dynamic_component("fav_style:gen_123"))
+        self.assertFalse(is_dynamic_component("copy_prompt:gen_123"))
+        self.assertFalse(is_dynamic_component("set_blend_krea_ar:16:9"))
+        self.assertFalse(is_dynamic_component("stasis_pause:gen_123:456"))
+
+        # 3. Verify on_interaction ignores dynamic items to avoid dual-dispatch race conditions
+        mock_dynamic_inter = MagicMock()
+        mock_dynamic_inter.type = discord.InteractionType.component
+        mock_dynamic_inter.data = {"custom_id": "outpaint:gen_123:1:1.5x"}
+
+        with patch("bot.dispatch_interaction", new=AsyncMock()) as mock_dispatch:
+            asyncio.run(on_interaction(mock_dynamic_inter))
+            mock_dispatch.assert_not_called()
+
+        # 4. Verify on_interaction forwards non-dynamic items to dispatch_interaction
+        mock_nondynamic_inter = MagicMock()
+        mock_nondynamic_inter.type = discord.InteractionType.component
+        mock_nondynamic_inter.data = {"custom_id": "fav_style:gen_123"}
+
+        with patch("bot.dispatch_interaction", new=AsyncMock()) as mock_dispatch:
+            asyncio.run(on_interaction(mock_nondynamic_inter))
+            mock_dispatch.assert_called_once_with(mock_nondynamic_inter)
+
 
 if __name__ == '__main__':
     unittest.main()
+
 
