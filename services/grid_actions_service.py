@@ -31,6 +31,7 @@ from error_handler import (
     AutoFixResult
 )
 from image_utils import (
+    create_grid,
     create_grid_async,
     save_quadrant_images_async,
     get_quadrant_bytes_async,
@@ -38,7 +39,11 @@ from image_utils import (
     upscale_isolated_image_async,
     calculate_outpaint_padding_async,
     boost_image_vibrancy_and_contrast_async,
-    crop_quadrant_from_grid_bytes_async
+    crop_quadrant_from_grid_bytes_async,
+    get_dated_save_prefix,
+    embed_metadata_async,
+    format_image_filename,
+    get_checkpoint_abbrev
 )
 from parsers import (
     parse_aspect_ratio,
@@ -57,6 +62,8 @@ from parsers import (
     apply_face_detailer_to_workflow,
     prepare_bertflow_workflow,
     get_bertflow_unet_model,
+    truncate_prompt,
+    clean_quadrant_prompts,
 )
 from characters import get_character, mask_character_in_prompt
 from views import (
@@ -68,7 +75,8 @@ from views import (
     StasisPausedView,
     SavedSrefSelectView,
     CustomSrefModal,
-    RemixModal
+    RemixModal,
+    build_blended_image_embed
 )
 from core_helpers import (
     safe_defer, 
@@ -84,7 +92,8 @@ from config import (
     CHECKPOINT_CONFIGS,
     SDXL_CHECKPOINT_CHOICES,
     SDXL_ENHANCEMENT_CHOICES,
-    COMFYUI_CHECKPOINT
+    COMFYUI_CHECKPOINT,
+    PipelineDefaults
 )
 from services.system_service import settings
 
@@ -103,6 +112,27 @@ class _ComfyClientProxy:
 
 
 comfy_client = _ComfyClientProxy()
+
+
+class _ActiveGenerationsProxy:
+    def __getitem__(self, key):
+        from services.generation_service import active_generations as _ag
+        return _ag[key]
+
+    def __setitem__(self, key, value):
+        from services.generation_service import active_generations as _ag
+        _ag[key] = value
+
+    def __contains__(self, key):
+        from services.generation_service import active_generations as _ag
+        return key in _ag
+
+    def get(self, key, default=None):
+        from services.generation_service import active_generations as _ag
+        return _ag.get(key, default)
+
+
+active_generations = _ActiveGenerationsProxy()
 
 
 def get_generation(generation_id: str):

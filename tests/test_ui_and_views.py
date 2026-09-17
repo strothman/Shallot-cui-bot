@@ -1629,6 +1629,52 @@ class TestUiAndViews(unittest.TestCase):
             asyncio.run(handle_outpaint(mock_inter2, "gen_123", 1, "1.5x"))
             mock_inter2.followup.send.assert_called_once_with("Could not locate image data to outpaint.", ephemeral=True)
 
+    def test_handle_outpaint_all_directions_and_bertflow(self):
+        """Test handle_outpaint executes end-to-end across left, right, up, down, 1.5x for both SDXL and Bertflow."""
+        from services.grid_actions_service import handle_outpaint
+        import io
+        from PIL import Image
+
+        # Create a 64x64 valid PNG
+        img = Image.new("RGB", (64, 64), color="red")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_png = buf.getvalue()
+
+        for is_bert in [True, False]:
+            for direction in ["left", "right", "up", "down", "1.5x"]:
+                mock_inter = MagicMock()
+                mock_inter.data = {"custom_id": f"outpaint:gen_test:1:{direction}"}
+                mock_inter.response.is_done.return_value = True
+                mock_inter.followup.send = AsyncMock()
+                mock_inter.message = MagicMock()
+                mock_inter.message.components = []
+                mock_inter.user.name = "TestUser"
+                mock_inter.user.id = 12345
+
+                gen_data = {
+                    "prompt": "a portrait",
+                    "original_prompt": "a portrait",
+                    "seed": 999,
+                    "is_bertflow": is_bert,
+                    "unet_model": "museByStableYogi_v35Int8Extended.safetensors",
+                    "character": "ogarla.85",
+                    "checkpoint": "waiIllustriousSDXL_v170.safetensors"
+                }
+
+                mock_client = MagicMock()
+                mock_client.upload_image = AsyncMock(return_value={"name": "test_up.png"})
+                mock_client.generate = AsyncMock(return_value=[dummy_png])
+
+                with patch("services.grid_actions_service.safe_defer", new_callable=AsyncMock), \
+                     patch("services.grid_actions_service.get_generation", return_value=gen_data), \
+                     patch("services.grid_actions_service.get_quadrant_bytes_async", return_value=dummy_png), \
+                     patch("services.grid_actions_service.comfy_client", mock_client), \
+                     patch("services.grid_actions_service.send_followup_fallback", new_callable=AsyncMock) as mock_followup, \
+                     patch("services.grid_actions_service._update_button_state", new_callable=AsyncMock):
+                    asyncio.run(handle_outpaint(mock_inter, "gen_test", 1, direction))
+                    mock_followup.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()
