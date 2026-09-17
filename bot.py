@@ -214,10 +214,26 @@ _imagine_cog = ImagineCog(bot)
 ALL_COGS = [_vision_cog, _krea_cog, _system_cog, _upscale_cog, _imagine_cog]
 
 async def setup_hook():
-    """Asynchronously registers all modular cogs on startup."""
+    """Asynchronously registers all modular cogs and persistent dynamic UI items on startup."""
     for cog in ALL_COGS:
         if cog.qualified_name not in bot.cogs:
             await bot.add_cog(cog)
+            
+    # Register persistent dynamic items for UI buttons
+    from views import (
+        CancelGenDynamicButton,
+        IsolateDynamicButton,
+        VariationDynamicButton,
+        RerollDynamicButton,
+        RemixDynamicButton,
+    )
+    bot.add_dynamic_items(
+        CancelGenDynamicButton,
+        IsolateDynamicButton,
+        VariationDynamicButton,
+        RerollDynamicButton,
+        RemixDynamicButton,
+    )
 
 bot.setup_hook = setup_hook
 

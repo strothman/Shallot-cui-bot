@@ -28,8 +28,9 @@ Here is a simple breakdown of the main files in the project and what each one is
 | File | What It Does (Plain English) |
 | :--- | :--- |
 | [`bot.py`](bot.py) | **The Front Desk:** Listens to Discord messages, coordinates startup lifecycle, and dispatches background tasks. |
-| [`cogs/imagine_cog.py`](cogs/imagine_cog.py) | **Imagine Desk (Modular Cog):** Houses `/imagine`, `/study`, and 'Adopt Post / Image' context menu in a clean modular cog. |
-| [`services/generation_service.py`](services/generation_service.py) | **Generation Service:** Executes multi-quadrant workflow compilation, ComfyUI synthesis, grid stitching, upscale/isolate/variation/reroll button handlers, and blend generation pipeline. |
+| [`services/generation_service.py`](services/generation_service.py) | **Generation Service:** Orchestrates primary generation lifecycle (`execute_imagine`, `complete_grid_generation`) and re-exports blend & grid actions for full backward compatibility. |
+| [`services/grid_actions_service.py`](services/grid_actions_service.py) | **Grid Actions & Variations Service:** Executes post-generation quadrant isolation, super-res upscaling, variations V1–V4, rerolls, remix, outpainting, and stasis lifecycle. |
+| [`services/blend_generation_service.py`](services/blend_generation_service.py) | **Blend Generation Service:** Compiles multi-image IPAdapter workflows, manages blend studio interactive callbacks, and executes SDXL blend image synthesis. |
 | [`cogs/upscale_cog.py`](cogs/upscale_cog.py) | **Upscale Desk (Modular Cog):** Houses modernized `/upscale` with choices for scaling (2x, 4x, 1.5x), engine mode (Fast Clean vs Generative Clarity), style, and prompt guidance. |
 | [`services/upscale_service.py`](services/upscale_service.py) | **Upscale Service:** Executes multi-tier AI super-resolution (fast Remacri model passes with smart lanczos aspect fit, and 2-stage generative clarity refiners with SDXL low-denoise KSampler). |
 | [`cogs/system_cog.py`](cogs/system_cog.py) | **System & Admin Desk (Modular Cog):** Houses server controls (`/cui-start`, `/cui-stop`, `/cui-status`), GPU cleanup (`/free`, `/queue`), model discovery (`/models`, `/scan_models`), and settings (`/negative`, `/style`, `/prompt`). |

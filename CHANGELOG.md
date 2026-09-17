@@ -42,6 +42,16 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
     * [`views/modals.py`](views/modals.py): All popup modal dialogs (`RemixModal`, `CustomSrefModal`, `EditBlendPromptModal`, `EditBlendKreaModal`, `StudyImagineModal`, `EditStyleModal`, `EditPromptModal`, `EditAdoptPromptModal`, `SavedSrefSelectView`).
     * [`views/__init__.py`](views/__init__.py): Central re-exporter and `__all__` registry maintaining 100% backward compatibility (103/103 tests and 4 architectural audits green).
 
+* ⚡ **Generation Service Segregation (Milestone 10)**:
+  * Extracted the 2,741-line monolithic [`services/generation_service.py`](services/generation_service.py) into domain-specific submodules:
+    * [`services/blend_generation_service.py`](services/blend_generation_service.py) (680 lines): IPAdapter workflow compilation (`build_blend_workflow`), blend studio view updates, prompt editing, and blend image synthesis (`execute_blend_generation`).
+    * [`services/grid_actions_service.py`](services/grid_actions_service.py) (1,328 lines): Quadrant isolation (`handle_isolate`), 2-stage upscaling (`handle_upscale`), subtle/strong variations (`handle_variation`), rerolls (`handle_reroll`), remixing, outpainting, style changes, and stasis lifecycle.
+    * [`services/generation_service.py`](services/generation_service.py) (922 lines): Core generation pipeline (`execute_imagine`, `complete_grid_generation`), proxy handlers, and backward-compatibility re-exports.
+
+* 🔲 **Native `discord.ui.DynamicItem` Persistent Button Routing (Milestone 9)**:
+  * Added typed persistent dynamic items in [`views/dynamic_items.py`](views/dynamic_items.py) (`CancelGenDynamicButton`, `IsolateDynamicButton`, `VariationDynamicButton`, `RerollDynamicButton`, `RemixDynamicButton`).
+  * Registered dynamic items in `ShallotBot.setup_hook()`, providing native compile-time regex matching and clean lifecycle handling across bot restarts without manual string splitting.
+
 ### Fixed
 * 💧 **Blend Krea Skin Finish 3-Way Cycle**:
   * Fixed cache-staleness in `ActiveGenerationsProxy` where repeatedly clicking the `Skin:` button retrieved outdated generation state, trapping the button between Matte and Natural without looping back around.
