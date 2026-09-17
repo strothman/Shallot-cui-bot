@@ -3,7 +3,8 @@ import logging
 import os
 import asyncio
 from datetime import datetime
-from PIL import Image, ImageDraw
+import math
+from PIL import Image, ImageDraw, ImageChops, ImageFilter
 from PIL.PngImagePlugin import PngInfo
 
 import re
@@ -186,12 +187,18 @@ def calculate_outpaint_padding(image_bytes: bytes, mode_or_ratio: str):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     orig_w, orig_h = img.size
 
-    # Upscale to SDXL native base resolution (max side 1024) if smaller
+    # Normalize input image to SDXL/Krea native base resolution (max side 1024)
+    # Upscale if smaller than 1024, or clamp if oversized (> 1280px / > 1.5M pixels) to prevent canvas explosion
     max_side = max(orig_w, orig_h)
     if max_side < 1024:
         scale = 1024 / max_side
         w = int(round(orig_w * scale))
         h = int(round(orig_h * scale))
+        img = img.resize((w, h), Image.Resampling.LANCZOS)
+    elif max_side > 1280 or (orig_w * orig_h > 1_500_000):
+        scale = 1024 / max_side
+        w = int(round((orig_w * scale) / 64) * 64)
+        h = int(round((orig_h * scale) / 64) * 64)
         img = img.resize((w, h), Image.Resampling.LANCZOS)
     else:
         w, h = orig_w, orig_h
@@ -365,6 +372,206 @@ async def upscale_isolated_image_async(image_bytes: bytes, target_w: int = 1024,
 async def calculate_outpaint_padding_async(image_bytes: bytes, mode_or_ratio: str):
     """Non-blocking async variant of calculate_outpaint_padding."""
     return await asyncio.to_thread(calculate_outpaint_padding, image_bytes, mode_or_ratio)
+
+def composite_outpaint_seamless(
+    original_img_bytes: bytes,
+    generated_img_bytes: bytes,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    feather_radius: int = 36
+) -> bytes:
+    """
+    Seamlessly blends the pristine original image content onto the outpainted canvas
+    using an S-curve cosine alpha feather along padded boundaries. Eliminates harsh
+    rectangular VAE decoding box seams and exposure/lighting cutoffs.
+    """
+    try:
+        gen_img = Image.open(io.BytesIO(generated_img_bytes)).convert("RGBA")
+        gen_w, gen_h = gen_img.size
+
+        orig_img = Image.open(io.BytesIO(original_img_bytes)).convert("RGBA")
+        orig_w, orig_h = orig_img.size
+
+        inner_w = gen_w - left - right
+        inner_h = gen_h - top - bottom
+
+        if (orig_w != inner_w or orig_h != inner_h) and inner_w > 0 and inner_h > 0:
+            orig_img = orig_img.resize((inner_w, inner_h), Image.Resampling.LANCZOS)
+            orig_w, orig_h = inner_w, inner_h
+
+        # Construct smooth cosine-feathered alpha mask using pure Pillow (zero numpy dependency)
+        mask_h = Image.new("L", (orig_w, orig_h), 255)
+        mask_v = Image.new("L", (orig_w, orig_h), 255)
+
+        if (left > 0 or right > 0) and feather_radius > 0:
+            r = min(feather_radius, orig_w // 2)
+            if r > 0:
+                ramp_bytes = bytes([int(255.0 * 0.5 * (1.0 - math.cos(math.pi * i / r))) for i in range(r)])
+                ramp_left = Image.frombytes("L", (r, 1), ramp_bytes).resize((r, orig_h), Image.Resampling.BILINEAR)
+                if left > 0:
+                    mask_h.paste(ramp_left, (0, 0))
+                if right > 0:
+                    ramp_right = ramp_left.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                    mask_h.paste(ramp_right, (orig_w - r, 0))
+
+        if (top > 0 or bottom > 0) and feather_radius > 0:
+            r = min(feather_radius, orig_h // 2)
+            if r > 0:
+                ramp_bytes = bytes([int(255.0 * 0.5 * (1.0 - math.cos(math.pi * i / r))) for i in range(r)])
+                ramp_top = Image.frombytes("L", (1, r), ramp_bytes).resize((orig_w, r), Image.Resampling.BILINEAR)
+                if top > 0:
+                    mask_v.paste(ramp_top, (0, 0))
+                if bottom > 0:
+                    ramp_bottom = ramp_top.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+                    mask_v.paste(ramp_bottom, (0, orig_h - r))
+
+        alpha = ImageChops.darker(mask_h, mask_v)
+        orig_img.putalpha(alpha)
+
+        gen_img.paste(orig_img, (left, top), orig_img)
+        final_img = gen_img.convert("RGB")
+
+        out_buf = io.BytesIO()
+        final_img.save(out_buf, format="PNG")
+        return out_buf.getvalue()
+    except Exception as e:
+        logger.error(f"Error in composite_outpaint_seamless: {e}")
+        return generated_img_bytes
+
+async def composite_outpaint_seamless_async(
+    original_img_bytes: bytes,
+    generated_img_bytes: bytes,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    feather_radius: int = 36
+) -> bytes:
+    """Non-blocking async variant of composite_outpaint_seamless."""
+    return await asyncio.to_thread(
+        composite_outpaint_seamless,
+        original_img_bytes,
+        generated_img_bytes,
+        left,
+        top,
+        right,
+        bottom,
+        feather_radius
+    )
+
+def create_outpaint_edge_bleed_canvas(
+    image_bytes: bytes,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    blur_radius: int = 16,
+    feather_radius: int = 36
+) -> bytes:
+    """
+    Creates an enlarged pre-filled RGBA canvas where margin pixels are directionally
+    replicated and blurred from the original image boundaries, preserving the scene's
+    ambient lighting, contrast, and color palette. The Alpha channel acts as the
+    exact inpaint/outpaint mask (255 opaque in the center, 0 transparent in margins).
+    """
+    try:
+        orig = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        orig_w, orig_h = orig.size
+        new_w = orig_w + left + right
+        new_h = orig_h + top + bottom
+
+        # Create enlarged canvas with replicated edge pixels
+        canvas = Image.new("RGB", (new_w, new_h))
+        canvas.paste(orig, (left, top))
+
+        # Replicate horizontal strips
+        if left > 0:
+            left_strip = orig.crop((0, 0, 1, orig_h)).resize((left, orig_h))
+            canvas.paste(left_strip, (0, top))
+        if right > 0:
+            right_strip = orig.crop((orig_w - 1, 0, orig_w, orig_h)).resize((right, orig_h))
+            canvas.paste(right_strip, (left + orig_w, top))
+
+        # Replicate vertical strips (including corners)
+        if top > 0:
+            top_strip = canvas.crop((0, top, new_w, top + 1)).resize((new_w, top))
+            canvas.paste(top_strip, (0, 0))
+        if bottom > 0:
+            bot_strip = canvas.crop((0, top + orig_h - 1, new_w, top + orig_h)).resize((new_w, bottom))
+            canvas.paste(bot_strip, (0, top + orig_h))
+
+        # Softly blur the canvas to blend directional streaks into smooth ambient color
+        blurred = canvas.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        # Keep center pristine
+        blurred.paste(orig, (left, top))
+
+        # Build Alpha channel: 255 in center (with smooth cosine ramp near edges), 0 in margins
+        # ComfyUI's LoadImage interprets RGBA alpha as: Mask = 1.0 - (Alpha / 255.0)
+        # So Alpha = 255 -> Mask = 0.0 (Preserve), Alpha = 0 -> Mask = 1.0 (Outpaint)
+        alpha_canvas = Image.new("L", (new_w, new_h), 0)
+
+        # Create feathered alpha for original image box
+        mask_h = Image.new("L", (orig_w, orig_h), 255)
+        mask_v = Image.new("L", (orig_w, orig_h), 255)
+
+        if (left > 0 or right > 0) and feather_radius > 0:
+            r = min(feather_radius, orig_w // 2)
+            if r > 0:
+                ramp_bytes = bytes([int(255.0 * 0.5 * (1.0 - math.cos(math.pi * i / r))) for i in range(r)])
+                ramp_left = Image.frombytes("L", (r, 1), ramp_bytes).resize((r, orig_h), Image.Resampling.BILINEAR)
+                if left > 0:
+                    mask_h.paste(ramp_left, (0, 0))
+                if right > 0:
+                    ramp_right = ramp_left.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                    mask_h.paste(ramp_right, (orig_w - r, 0))
+
+        if (top > 0 or bottom > 0) and feather_radius > 0:
+            r = min(feather_radius, orig_h // 2)
+            if r > 0:
+                ramp_bytes = bytes([int(255.0 * 0.5 * (1.0 - math.cos(math.pi * i / r))) for i in range(r)])
+                ramp_top = Image.frombytes("L", (1, r), ramp_bytes).resize((orig_w, r), Image.Resampling.BILINEAR)
+                if top > 0:
+                    mask_v.paste(ramp_top, (0, 0))
+                if bottom > 0:
+                    ramp_bottom = ramp_top.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+                    mask_v.paste(ramp_bottom, (0, orig_h - r))
+
+        inner_alpha = ImageChops.darker(mask_h, mask_v)
+        alpha_canvas.paste(inner_alpha, (left, top))
+
+        rgba_img = blurred.convert("RGBA")
+        rgba_img.putalpha(alpha_canvas)
+
+        out_buf = io.BytesIO()
+        rgba_img.save(out_buf, format="PNG")
+        return out_buf.getvalue()
+    except Exception as e:
+        logger.error(f"Error in create_outpaint_edge_bleed_canvas: {e}")
+        return image_bytes
+
+async def create_outpaint_edge_bleed_canvas_async(
+    image_bytes: bytes,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    blur_radius: int = 16,
+    feather_radius: int = 36
+) -> bytes:
+    """Non-blocking async variant of create_outpaint_edge_bleed_canvas."""
+    return await asyncio.to_thread(
+        create_outpaint_edge_bleed_canvas,
+        image_bytes,
+        left,
+        top,
+        right,
+        bottom,
+        blur_radius,
+        feather_radius
+    )
+
 
 async def boost_image_vibrancy_and_contrast_async(image_bytes: bytes, saturation: float = 1.22, contrast: float = 1.08) -> bytes:
     """Non-blocking async variant of boost_image_vibrancy_and_contrast."""

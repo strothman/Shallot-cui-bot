@@ -128,17 +128,33 @@ class KreaCog(commands.Cog):
     @app_commands.describe(
         image="The image file you want to analyze and blend with Krea 2",
         steps="Sampling steps (8 for Turbo, 10-16 for macro/close-up details)",
-        prompt="Optional extra instructions or details to blend into vision prompt"
+        prompt="Optional extra instructions or details to blend into vision prompt",
+        vision_model="Vision model for analysis (Qwen2.5-VL fast default, JoyCaption for uncensored NSFW)"
+    )
+    @app_commands.choices(
+        vision_model=[
+            app_commands.Choice(name="📸 Qwen2.5-VL (Fast Photorealism - Default)", value="qwen2.5-vl"),
+            app_commands.Choice(name="🧠 JoyCaption (Best for NSFW / Uncensored Erotica)", value="joycaption"),
+            app_commands.Choice(name="⚡ Florence-2 (Fast 2s)", value="florence2"),
+        ]
     )
     async def blend_krea(
         self,
         interaction: discord.Interaction,
         image: discord.Attachment,
         steps: int = 8,
-        prompt: str = None
+        prompt: str = None,
+        vision_model: app_commands.Choice[str] = None
     ):
+        chosen_engine = vision_model.value if vision_model else "qwen2.5-vl"
+        status_names = {
+            "joycaption": "JoyCaption (uncensored deep vision)",
+            "qwen2.5-vl": "Qwen2.5-VL",
+            "florence2": "Florence-2"
+        }
+        disp_engine = status_names.get(chosen_engine, chosen_engine)
         await safe_defer(interaction, thinking=False, ephemeral=False)
-        await edit_original_fallback(interaction, content="Analyzing image with Qwen2.5-VL for Krea 2 photorealism blend...")
+        await edit_original_fallback(interaction, content=f"Analyzing image with {disp_engine} for Krea 2 photorealism blend...")
 
         if not image.content_type or not image.content_type.startswith("image/"):
             await edit_original_fallback(interaction, content="❌ Please upload a valid image file (PNG/JPG).")
@@ -154,6 +170,7 @@ class KreaCog(commands.Cog):
                 image_url=image.url,
                 prompt=prompt,
                 steps=steps,
+                vision_engine=chosen_engine,
                 client=client
             )
         except Exception as e:

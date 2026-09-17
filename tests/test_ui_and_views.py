@@ -1190,11 +1190,12 @@ class TestUiAndViews(unittest.TestCase):
         self.assertIn("steps", bert_params)
         self.assertIn("seed", bert_params)
 
-        # Verify blend-krea parameters (image and steps)
+        # Verify blend-krea parameters (image, steps, vision_model)
         krea_cmd = commands["blend-krea"]
         krea_params = [p.name for p in krea_cmd.parameters]
         self.assertIn("image", krea_params)
         self.assertIn("steps", krea_params)
+        self.assertIn("vision_model", krea_params)
 
         # 3. Test backward-compatibility re-exports on bot module
         self.assertTrue(callable(bot.execute_bertflow))
@@ -1214,6 +1215,7 @@ class TestUiAndViews(unittest.TestCase):
         mock_interaction = MagicMock()
         mock_interaction.response.is_done.return_value = True
         mock_interaction.followup.send = AsyncMock()
+        mock_interaction.user.name = "TestUser"
 
         gen_id = "test_krea_service_gen_777"
         gen_data = {
@@ -1240,6 +1242,38 @@ class TestUiAndViews(unittest.TestCase):
             asyncio.run(handle_bertflow_toggle_char(mock_interaction, gen_id))
             mock_exec.assert_called_once()
             self.assertIsNone(mock_exec.call_args.kwargs["character"])
+
+        # Test execute_blend_krea_core forwards vision_engine to run_vision_interrogate
+        mock_vision_res = {
+            "uploaded_name": "test_upload.png",
+            "krea2_prompt": "A photographic portrait with soft lighting",
+            "detailed_caption": "A photographic portrait with soft lighting",
+            "engine_used": "joycaption"
+        }
+        with patch("services.krea_service.run_vision_interrogate", new=AsyncMock(return_value=mock_vision_res)) as mock_vi, \
+             patch("services.krea_service.edit_original_fallback", new=AsyncMock()) as mock_edit:
+            # Create a 64x64 PNG in memory
+            from PIL import Image
+            import io
+            buf = io.BytesIO()
+            Image.new("RGB", (64, 64), color="blue").save(buf, format="PNG")
+            test_img_bytes = buf.getvalue()
+
+            asyncio.run(execute_blend_krea_core(
+                interaction=mock_interaction,
+                image_bytes=test_img_bytes,
+                filename="test.png",
+                image_url="http://test.com/test.png",
+                vision_engine="joycaption"
+            ))
+            mock_vi.assert_called_once()
+            self.assertEqual(mock_vi.call_args.kwargs["engine"], "joycaption")
+            mock_edit.assert_called_once()
+            call_kwargs = mock_edit.call_args.kwargs
+            self.assertIn("embed", call_kwargs)
+            embed = call_kwargs["embed"]
+            self.assertIn("JoyCaption AI Vision", embed.description)
+            self.assertIn("JoyCaption AI Vision", embed.footer.text)
 
     def test_blend_sdxl_sref_random_toggle_interaction(self):
         """Test /blend-sdxl style button is ONLY a 1-click --sref random toggle on/off."""
@@ -1670,6 +1704,9 @@ class TestUiAndViews(unittest.TestCase):
                      patch("services.grid_actions_service.get_generation", return_value=gen_data), \
                      patch("services.grid_actions_service.get_quadrant_bytes_async", return_value=dummy_png), \
                      patch("services.grid_actions_service.comfy_client", mock_client), \
+                     patch("services.grid_actions_service.save_quadrant_images_async", new_callable=AsyncMock), \
+                     patch("services.grid_actions_service.db.save_generation"), \
+                     patch("services.grid_actions_service.save_generations"), \
                      patch("services.grid_actions_service.send_followup_fallback", new_callable=AsyncMock) as mock_followup, \
                      patch("services.grid_actions_service._update_button_state", new_callable=AsyncMock):
                     asyncio.run(handle_outpaint(mock_inter, "gen_test", 1, direction))
@@ -1677,22 +1714,25 @@ class TestUiAndViews(unittest.TestCase):
                     sent_wf = mock_client.generate.call_args[0][0]
                     if is_bert:
                         self.assertIn("901", sent_wf)
-                        self.assertEqual(sent_wf["901"]["class_type"], "ImagePadForOutpaint")
+                        self.assertEqual(sent_wf["901"]["class_type"], "VAEEncode")
                         self.assertIn("902", sent_wf)
-                        self.assertEqual(sent_wf["902"]["class_type"], "VAEEncodeForInpaint")
+                        self.assertEqual(sent_wf["902"]["class_type"], "SetLatentNoiseMask")
                         self.assertEqual(sent_wf["599"]["inputs"]["latent_image"], ["902", 0])
+                    else:
+                        self.assertIn("31", sent_wf)
+                        self.assertEqual(sent_wf["31"]["class_type"], "ImagePadForOutpaint")
                         if direction == "down":
-                            self.assertEqual(sent_wf["901"]["inputs"]["bottom"], 384)
-                            self.assertEqual(sent_wf["901"]["inputs"]["top"], 0)
+                            self.assertEqual(sent_wf["31"]["inputs"]["bottom"], 384)
+                            self.assertEqual(sent_wf["31"]["inputs"]["top"], 0)
                         elif direction == "up":
-                            self.assertEqual(sent_wf["901"]["inputs"]["top"], 384)
-                            self.assertEqual(sent_wf["901"]["inputs"]["bottom"], 0)
+                            self.assertEqual(sent_wf["31"]["inputs"]["top"], 384)
+                            self.assertEqual(sent_wf["31"]["inputs"]["bottom"], 0)
                         elif direction == "left":
-                            self.assertEqual(sent_wf["901"]["inputs"]["left"], 384)
-                            self.assertEqual(sent_wf["901"]["inputs"]["right"], 0)
+                            self.assertEqual(sent_wf["31"]["inputs"]["left"], 384)
+                            self.assertEqual(sent_wf["31"]["inputs"]["right"], 0)
                         elif direction == "right":
-                            self.assertEqual(sent_wf["901"]["inputs"]["right"], 384)
-                            self.assertEqual(sent_wf["901"]["inputs"]["left"], 0)
+                            self.assertEqual(sent_wf["31"]["inputs"]["right"], 384)
+                            self.assertEqual(sent_wf["31"]["inputs"]["left"], 0)
 
     def test_dynamic_item_dispatch_deduplication(self):
         """Test that is_dynamic_component prevents duplicate interaction dispatching for native DynamicItems."""

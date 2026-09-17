@@ -4,6 +4,24 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-17]
+
+### Maintenance
+* Component polish: Updated `krea_cog.py`
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Image processing (grid stitching, splitting, and scaling)
+* Component polish: Updated `workflows.py`
+* Component polish: Updated `grid_actions_service.py`
+* Component polish: Updated `krea_service.py`
+* Component polish: Updated `recovery_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_parsers.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `blend_krea.py`
+* Component polish: Updated `DESCRIBE_joycaption.json`
+* Component polish: Updated `DESCRIBE_qwen_vl.json`
+
+---
 ## [2026-09-16]
 
 ### Added

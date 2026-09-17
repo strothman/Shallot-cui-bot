@@ -35,6 +35,10 @@ from parsers import (
 )
 from image_utils import (
     calculate_outpaint_padding,
+    composite_outpaint_seamless,
+    composite_outpaint_seamless_async,
+    create_outpaint_edge_bleed_canvas,
+    create_outpaint_edge_bleed_canvas_async,
     save_quadrant_images,
     get_quadrant_bytes,
 )
@@ -241,6 +245,112 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(r_right, 384)
         self.assertEqual(w_right, 1024 + 384)
         self.assertEqual(h_right, 1024)
+
+        # Test oversized input image normalization (preventing multi-megapixel explosion)
+        oversized = Image.new("RGB", (1624, 940), color="blue")
+        buf_over = io.BytesIO()
+        oversized.save(buf_over, format="PNG")
+        l_over, t_over, r_over, b_over, pad_bytes, w_over, h_over = calculate_outpaint_padding(buf_over.getvalue(), "1.5x")
+        self.assertTrue(w_over <= 1664)
+        self.assertTrue(h_over <= 1024)
+        self.assertTrue(w_over * h_over <= 1_600_000)
+
+    def test_module4_composite_outpaint_seamless(self):
+        """Test seamless alpha-feathered outpaint compositing to eliminate seam lines."""
+        # Create a red original image (100x100)
+        orig = Image.new("RGB", (100, 100), color=(255, 0, 0))
+        buf_o = io.BytesIO()
+        orig.save(buf_o, format="PNG")
+
+        # Create a green generated canvas (160x160)
+        gen = Image.new("RGB", (160, 160), color=(0, 255, 0))
+        buf_g = io.BytesIO()
+        gen.save(buf_g, format="PNG")
+
+        # Composite with 30px padding on all sides
+        res_bytes = composite_outpaint_seamless(
+            original_img_bytes=buf_o.getvalue(),
+            generated_img_bytes=buf_g.getvalue(),
+            left=30,
+            top=30,
+            right=30,
+            bottom=30,
+            feather_radius=10
+        )
+        self.assertTrue(len(res_bytes) > 0)
+        res_img = Image.open(io.BytesIO(res_bytes))
+        self.assertEqual(res_img.size, (160, 160))
+
+        # Deep center pixel should be pristine original red
+        center_color = res_img.getpixel((80, 80))
+        self.assertEqual(center_color, (255, 0, 0))
+
+        # Outer padding pixel should be pure generated green
+        outer_color = res_img.getpixel((5, 5))
+        self.assertEqual(outer_color, (0, 255, 0))
+
+        # Boundary pixel should be a smooth blend
+        blend_color = res_img.getpixel((33, 80))
+        self.assertTrue(0 < blend_color[0] < 255)
+        self.assertTrue(0 < blend_color[1] < 255)
+
+        # Async variant test
+        import asyncio
+        async_res = asyncio.run(composite_outpaint_seamless_async(
+            original_img_bytes=buf_o.getvalue(),
+            generated_img_bytes=buf_g.getvalue(),
+            left=30,
+            top=30,
+            right=30,
+            bottom=30,
+            feather_radius=10
+        ))
+        self.assertEqual(len(async_res), len(res_bytes))
+
+    def test_module4_outpaint_edge_bleed_and_prompt_adaptation(self):
+        """Test directional edge-bleed canvas generation and prompt adaptation for outpainting."""
+        from services.grid_actions_service import adapt_prompt_for_outpaint
+
+        # 1. Test prompt adaptation
+        raw_p = "A portrait featuring three characters against a red background. The central figure is a skeleton, close-up of face."
+        adapted_zoom = adapt_prompt_for_outpaint(raw_p, "1.5x")
+        self.assertNotIn("three characters", adapted_zoom.lower())
+        self.assertIn("characters", adapted_zoom.lower())
+        self.assertNotIn("close-up", adapted_zoom.lower())
+        self.assertIn("wider angle view", adapted_zoom.lower())
+
+        adapted_down = adapt_prompt_for_outpaint(raw_p, "down")
+        self.assertIn("lower body", adapted_down.lower())
+
+        # 2. Test edge-bleed canvas generation
+        orig = Image.new("RGB", (100, 100), color=(180, 20, 20))
+        buf = io.BytesIO()
+        orig.save(buf, format="PNG")
+
+        bleed_bytes = create_outpaint_edge_bleed_canvas(
+            buf.getvalue(), left=20, top=20, right=20, bottom=20, blur_radius=8, feather_radius=15
+        )
+        self.assertTrue(len(bleed_bytes) > 0)
+        bleed_img = Image.open(io.BytesIO(bleed_bytes))
+        self.assertEqual(bleed_img.size, (140, 140))
+        self.assertEqual(bleed_img.mode, "RGBA")
+
+        # Margin pixel should carry the edge-bled color with Alpha = 0 (outpaint mask)
+        margin_px = bleed_img.getpixel((5, 5))
+        self.assertEqual(margin_px[0], 180)
+        self.assertEqual(margin_px[3], 0)
+
+        # Center pixel should have Alpha = 255 (keep mask)
+        center_px = bleed_img.getpixel((70, 70))
+        self.assertEqual(center_px[3], 255)
+
+        # 3. Test async variant
+        import asyncio
+        async_bleed = asyncio.run(create_outpaint_edge_bleed_canvas_async(
+            buf.getvalue(), left=10, top=10, right=10, bottom=10
+        ))
+        self.assertTrue(len(async_bleed) > 0)
+
 
 
     def test_module14_wan_video_dimensions(self):

@@ -293,7 +293,27 @@ class ComfyClient:
                         status = entry.get("status", {})
                         if status.get("status_str") == "error":
                             messages = status.get("messages", [])
-                            err_msg = str(messages) if messages else "Execution error"
+                            err_msg = "Execution error"
+                            if isinstance(messages, list):
+                                for item in messages:
+                                    if isinstance(item, (list, tuple)) and len(item) > 1:
+                                        if item[0] == "execution_error" and isinstance(item[1], dict):
+                                            err_dict = item[1]
+                                            e_type = err_dict.get("exception_type", "Error")
+                                            e_msg = err_dict.get("exception_message", "").strip()
+                                            n_id = err_dict.get("node_id", "?")
+                                            n_type = err_dict.get("node_type", "UnknownNode")
+                                            err_msg = f"{e_type} on node {n_id} ({n_type}): {e_msg}"
+                                            break
+                                    elif isinstance(item, dict) and "exception_message" in item:
+                                        e_type = item.get("exception_type", "Error")
+                                        e_msg = item.get("exception_message", "").strip()
+                                        n_id = item.get("node_id", "?")
+                                        n_type = item.get("node_type", "UnknownNode")
+                                        err_msg = f"{e_type} on node {n_id} ({n_type}): {e_msg}"
+                                        break
+                                if err_msg == "Execution error" and messages:
+                                    err_msg = str(messages[0])[:300]
                             raise Exception(f"ComfyUI execution error from history: {err_msg}")
                         return entry.get("outputs", {})
         except Exception as e:

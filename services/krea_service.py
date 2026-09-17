@@ -557,21 +557,23 @@ async def execute_blend_krea_core(
     composition: str = "off",
     character: str = "none",
     celebrity: str = "none",
+    vision_engine: str = "qwen2.5-vl",
     client: ComfyClient = None,
 ):
-    """Core logic to analyze an image with Qwen2.5-VL and initialize the Krea 2 Blend Studio dashboard."""
+    """Core logic to analyze an image with Qwen2.5-VL / JoyCaption / Florence-2 and initialize the Krea 2 Blend Studio dashboard."""
     try:
         safe_filename = filename or f"blend_krea_{random.randint(100000, 999999)}.png"
-        logger.info(f"Analyzing Krea 2 blend image {safe_filename} using Qwen2.5-VL vision engine (fallback: Florence-2)...")
+        resolved_engine = vision_engine or "qwen2.5-vl"
+        logger.info(f"Analyzing Krea 2 blend image {safe_filename} using {resolved_engine} vision engine...")
         vision_res = await run_vision_interrogate(
             image_bytes=image_bytes,
             filename=safe_filename,
-            engine="qwen2.5-vl",
+            engine=resolved_engine,
             target_arch="krea2",
             client=client
         )
         if not vision_res:
-            await edit_original_fallback(interaction, content="❌ Failed to analyze image with Qwen2.5-VL or Florence-2 vision engine.")
+            await edit_original_fallback(interaction, content=f"❌ Failed to analyze image with {resolved_engine} vision engine.")
             return
 
         uploaded_name = vision_res["uploaded_name"]
@@ -596,6 +598,7 @@ async def execute_blend_krea_core(
         thumb_file = discord.File(io.BytesIO(thumb_bytes), filename=thumb_filename)
         effective_image_url = f"attachment://{thumb_filename}"
 
+        engine_used_name = vision_res.get("engine_used", resolved_engine)
         generation_id = str(random.randint(100000, 999999))
         gen_data = {
             "caption": detailed_caption,
@@ -613,6 +616,7 @@ async def execute_blend_krea_core(
             "composition": composition or "off",
             "char_choice": character or "none",
             "celeb_choice": celebrity or "none",
+            "vision_engine": engine_used_name,
             "author_str": interaction.user.name
         }
         db.save_generation(generation_id, gen_data)

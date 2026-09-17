@@ -85,14 +85,17 @@ async def reconcile_pending_jobs(bot: discord.Client, comfy_client: Any) -> Dict
             except Exception as hist_err:
                 if "ComfyUI execution error" in str(hist_err):
                     # Execution failed inside ComfyUI
-                    logger.warning(f"Pending job {prompt_id} failed during execution: {hist_err}")
+                    clean_msg = str(hist_err).strip()
+                    if len(clean_msg) > 350:
+                        clean_msg = clean_msg[:347] + "..."
+                    logger.warning(f"Pending job {prompt_id} failed during execution: {clean_msg}")
                     db.complete_pending_job(prompt_id, status="failed")
                     stats["failed"] += 1
                     await _notify_discord_job_status(
                         bot, channel_id, message_id, user_id,
                         status="failed",
                         title=f"⚠️ {command_type.capitalize()} Execution Failed",
-                        description=f"Job was interrupted or encountered an error in ComfyUI:\n`{hist_err}`"
+                        description=f"Job was interrupted or encountered an error in ComfyUI:\n`{clean_msg}`"
                     )
                     continue
                 else:

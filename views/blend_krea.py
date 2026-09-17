@@ -45,9 +45,19 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     char_display = get_character_display_badge(char_choice, architecture="krea2")
     celeb_display = get_celebrity_display_badge(celeb_choice)
 
+    raw_v_engine = str(gen_data.get("vision_engine", "")).lower()
+    if "joy" in raw_v_engine:
+        vision_engine_display = "JoyCaption AI Vision"
+    elif "qwen" in raw_v_engine:
+        vision_engine_display = "Qwen2.5-VL AI Vision"
+    elif "florence" in raw_v_engine:
+        vision_engine_display = "Florence-2 AI Vision"
+    else:
+        vision_engine_display = "AI Vision"
+
     embed = discord.Embed(
         title="📸 Krea 2 Blend Studio",
-        description="Blend and remix your uploaded image using Florence-2 AI vision and Bert's Krea 2 Turbo photorealism pipeline.",
+        description=f"Blend and remix your uploaded image using {vision_engine_display} and Bert's Krea 2 Turbo photorealism pipeline.",
         color=discord.Color.from_rgb(220, 90, 40)
     )
     thumb_url = image_url or gen_data.get("image_url")
@@ -68,7 +78,7 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
         value="\n".join(settings_lines),
         inline=False
     )
-    embed.set_footer(text=f"Requested by {author_str} • Krea 2 Turbo Flow-Matching")
+    embed.set_footer(text=f"{vision_engine_display} • Requested by {author_str} • Krea 2 Turbo Flow-Matching")
     return embed
 
 

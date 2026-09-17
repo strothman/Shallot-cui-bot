@@ -17,8 +17,8 @@
       "model": "joycaption-alpha-two",
       "quantization": "Maximum Savings (4-bit)",
       "prompt_style": "Descriptive",
-      "caption_length": "any",
-      "memory_management": "Clear After Run"
+      "caption_length": "long",
+      "memory_management": "Global Cache"
     },
     "class_type": "JC",
     "_meta": {

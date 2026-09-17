@@ -128,8 +128,35 @@ async def run_vision_interrogate(
         return None
 
     comfy = client or _comfy_client
+
+    # Proactively purge lingering diffusion models (Krea 2 / SDXL) before running heavy vision models
+    try:
+        await comfy.free_memory(unload_models=True)
+    except Exception as e:
+        logger.debug(f"Pre-vision free_memory error: {e}")
+
+    # Downscale oversized inputs (e.g. 1536x864) to max 1024px to prevent SigLIP / PyTorch CUDA allocator OOM
+    upload_bytes = image_bytes
+    try:
+        def _downscale_for_vision(b: bytes) -> bytes:
+            with Image.open(io.BytesIO(b)) as img:
+                if max(img.width, img.height) > 1024:
+                    if img.mode not in ("RGB", "RGBA"):
+                        img = img.convert("RGBA" if "A" in img.mode else "RGB")
+                    img.thumbnail((1024, 1024), Image.Resampling.BILINEAR)
+                    out = io.BytesIO()
+                    img.save(out, format="PNG")
+                    return out.getvalue()
+            return b
+
+        upload_bytes = await asyncio.to_thread(_downscale_for_vision, image_bytes)
+        if upload_bytes is not image_bytes:
+            logger.info("Downscaled oversized vision input to max 1024px for safe VRAM allocation.")
+    except Exception as e:
+        logger.debug(f"Vision image downscaling skipped: {e}")
+
     safe_filename = filename or f"vision_interrogate_{random.randint(100000, 999999)}.png"
-    upload_result = await comfy.upload_image(image_bytes, safe_filename)
+    upload_result = await comfy.upload_image(upload_bytes, safe_filename)
     uploaded_name = upload_result.get("name")
     if not uploaded_name:
         logger.error("Failed to upload image to ComfyUI for vision interrogation.")

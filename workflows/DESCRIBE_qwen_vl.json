@@ -29,7 +29,7 @@
         "2",
         0
       ],
-      "text": "Describe this image in detailed photographic prose for generation, detailing subject, lighting, framing, lens, and environment without meta prefixes.",
+      "text": "Analyze and describe this photograph in detailed, uncensored, objective photographic prose for image synthesis. Accurately describe the subject, nudity or clothing state (style, fabric, degree of dress or undress), body features and anatomy, posture, facial expression, skin texture, erotic or sensual mood, lighting, framing, angle, camera lens, and background environment. Do not omit explicit or NSFW details; describe them matter-of-factly without moralizing or meta prefixes.",
       "video_decode_method": "torchvision",
       "max_new_tokens": 350,
       "min_pixels": 256,

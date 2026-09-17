@@ -38,6 +38,8 @@ from image_utils import (
     crop_to_aspect_ratio_async,
     upscale_isolated_image_async,
     calculate_outpaint_padding_async,
+    composite_outpaint_seamless_async,
+    create_outpaint_edge_bleed_canvas_async,
     boost_image_vibrancy_and_contrast_async,
     crop_quadrant_from_grid_bytes_async,
     get_dated_save_prefix,
@@ -1073,6 +1075,30 @@ async def handle_remix(interaction: discord.Interaction, generation_id: str):
             logger.warning(f"Failed to send Remix modal: {e}")
 
 
+def adapt_prompt_for_outpaint(prompt: str, direction: str) -> str:
+    """
+    Prunes subject-multiplying count phrases and framing anchors
+    so the diffusion model expands the environment, setting, and attire
+    instead of spawning duplicate character clones in the margins.
+    """
+    p = prompt or ""
+    p = re.sub(r'\b(?:featuring\s+)?(?:one|two|three|four|five|six|\d+)\s+characters?\b', 'characters', p, flags=re.IGNORECASE)
+    p = re.sub(r'\b(?:featuring\s+)?(?:one|two|three|four|five|six|\d+)\s+people\b', 'people', p, flags=re.IGNORECASE)
+    p = re.sub(r'\b(?:featuring\s+)?(?:one|two|three|four|five|six|\d+)\s+(men|women|girls|boys)\b', r'\1', p, flags=re.IGNORECASE)
+    p = re.sub(r'\bthe central figure is\b', 'with', p, flags=re.IGNORECASE)
+    p = re.sub(r'\bclose[-\s]?up(?:\s+of)?\b', '', p, flags=re.IGNORECASE)
+    p = re.sub(r'\s+', ' ', p).strip(' ,')
+
+    mode = str(direction).lower()
+    if mode in ['down', 'pan_down']:
+        p += ', lower body, legs, lower attire, setting continuation'
+    elif mode in ['up', 'pan_up']:
+        p += ', upper view, environment continuation'
+    elif mode in ['1.5x', '2.0x']:
+        p += ', wider angle view, expanded background, surrounding environment'
+    return p
+
+
 async def handle_outpaint(interaction: discord.Interaction, generation_id: str, index: int, target_ratio: str):
     """Outpaint an image via directional panning (left, right, up, down) or expanding aspect ratio / zoom."""
     await safe_defer(interaction, thinking=True)
@@ -1096,6 +1122,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
     orig_quadrant_seed = gen_data.get("seed", 0) + index - 1
     expanded_p = expand_dynamic_prompt(cleaned_p, random.Random(orig_quadrant_seed))
     expanded_original = expand_dynamic_prompt(original_prompt, random.Random(orig_quadrant_seed))
+    outpaint_p = adapt_prompt_for_outpaint(expanded_p, target_ratio)
 
     neg_prompt = gen_data.get("negative_prompt", DEFAULT_NEGATIVE_PROMPT)
     checkpoint = gen_data.get("checkpoint", COMFYUI_CHECKPOINT)
@@ -1103,7 +1130,8 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
     loras = gen_data.get("loras")
     if not loras:
         _, loras = parse_loras(original_prompt or raw_prompt, is_flux=False)
-    seed = random.randint(1, 1125899906842624)
+    # Lock outpaint seed to the original quadrant seed to preserve noise distribution and color temperature
+    seed = orig_quadrant_seed if orig_quadrant_seed else random.randint(1, 1125899906842624)
 
     is_bertflow = bool(gen_data.get("is_bertflow") or gen_data.get("engine") == "krea2")
 
@@ -1128,8 +1156,16 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         await interaction.followup.send(f"Failed to calculate outpaint canvas: {e}", ephemeral=True)
         return
 
+    # For Krea 2, generate pre-filled edge-bleed RGBA canvas so margins start with ambient scene colors
+    if is_bertflow:
+        upload_bytes = await create_outpaint_edge_bleed_canvas_async(
+            input_img_bytes, left, top, right, bottom, blur_radius=16, feather_radius=36
+        )
+    else:
+        upload_bytes = input_img_bytes
+
     try:
-        up_res = await comfy_client.upload_image(input_img_bytes, f"outpaint_input_{generation_id}_{index}.png")
+        up_res = await comfy_client.upload_image(upload_bytes, f"outpaint_input_{generation_id}_{index}.png")
         img_filename = up_res.get("name")
     except Exception as e:
         logger.error(f"Error uploading image to ComfyUI: {e}")
@@ -1146,7 +1182,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         try:
             unet_choice = gen_data.get("unet_model") or get_bertflow_unet_model()
             workflow = prepare_bertflow_workflow(
-                prompt=expanded_p,
+                prompt=outpaint_p,
                 width=out_w,
                 height=out_h,
                 seed=seed,
@@ -1179,7 +1215,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
 
         try:
             workflow["4"]["inputs"]["ckpt_name"] = checkpoint
-            workflow["6"]["inputs"]["text"] = expanded_p
+            workflow["6"]["inputs"]["text"] = outpaint_p
             workflow["7"]["inputs"]["text"] = neg_prompt
             workflow["30"]["inputs"]["image"] = img_filename
             
@@ -1245,9 +1281,20 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         db.save_generation(new_gen_id, new_gen_data)
         save_generations()
 
-        await save_quadrant_images_async(new_gen_id, [images[0]])
+        # Seamlessly composite pristine original content over generated canvas with cosine alpha feathering
+        final_image = await composite_outpaint_seamless_async(
+            original_img_bytes=input_img_bytes,
+            generated_img_bytes=images[0],
+            left=left,
+            top=top,
+            right=right,
+            bottom=bottom,
+            feather_radius=36
+        )
 
-        out_file_io = await embed_metadata_async(images[0], expanded_original, neg_prompt, seed, out_w, out_h)
+        await save_quadrant_images_async(new_gen_id, [final_image])
+
+        out_file_io = await embed_metadata_async(final_image, expanded_original, neg_prompt, seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         safe_ratio_name = str(target_ratio).replace(':', '_').replace('.', '_')
         file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{safe_ratio_name}", seed, "png", sref=sref_code))

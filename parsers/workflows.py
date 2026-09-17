@@ -864,38 +864,31 @@ def prepare_bertflow_workflow(
 
     set_workflow_filename_prefix(wf, chosen_prefix)
 
-    # 1. Native Directional Outpainting with ImagePadForOutpaint + VAEEncodeForInpaint
+    # 1. Native Directional Outpainting with Edge-Bleed Pre-filled Canvas + SetLatentNoiseMask
     if init_image and outpaint_pad:
-        left, top, right, bottom = outpaint_pad
         wf["900"] = {
             "inputs": {
                 "image": init_image,
                 "upload": "image"
             },
             "class_type": "LoadImage",
-            "_meta": {"title": "Load Original Image for Outpaint"}
+            "_meta": {"title": "Load Pre-filled Outpaint Canvas & Alpha Mask"}
         }
         wf["901"] = {
             "inputs": {
-                "image": ["900", 0],
-                "left": left,
-                "top": top,
-                "right": right,
-                "bottom": bottom,
-                "feathering": 72
+                "pixels": ["900", 0],
+                "vae": ["757", 0]
             },
-            "class_type": "ImagePadForOutpaint",
-            "_meta": {"title": "Pad Image for Outpainting"}
+            "class_type": "VAEEncode",
+            "_meta": {"title": "VAE Encode Pre-filled Canvas"}
         }
         wf["902"] = {
             "inputs": {
-                "pixels": ["901", 0],
-                "vae": ["757", 0],
-                "mask": ["901", 1],
-                "grow_mask_by": 6
+                "samples": ["901", 0],
+                "mask": ["900", 1]
             },
-            "class_type": "VAEEncodeForInpaint",
-            "_meta": {"title": "VAE Encode (for Inpainting)"}
+            "class_type": "SetLatentNoiseMask",
+            "_meta": {"title": "Set Latent Noise Mask"}
         }
         if "599" in wf and "inputs" in wf["599"]:
             wf["599"]["inputs"]["latent_image"] = ["902", 0]
