@@ -33,6 +33,15 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
     * [`parsers/workflows.py`](parsers/workflows.py): ComfyUI graph AST manipulation, dynamic LoRA injection, Face Detailer, IPAdapter, and Bertflow pipeline preparation.
     * [`parsers/__init__.py`](parsers/__init__.py): Central re-exporter and `__all__` registry preserving 100% backward compatibility for all existing imports and test assertions.
 
+* 🎛️ **Modular `views/` UI Package Segregation**:
+  * Decomposed the 2,074-line monolithic [`views.py`](views.py) into dedicated submodules under [`views/`](views/):
+    * [`views/grid_views.py`](views/grid_views.py): Generation lifecycle views (`GridButtons`, `IsolatedImageButtons`, `UpscaleButtons`, `CancelGenerationView`, `StasisControlsView`, `BertflowButtons`).
+    * [`views/blend_sdxl.py`](views/blend_sdxl.py): SDXL Blend Studio controls (`BlendButtons`, `build_blend_embed`, `build_blend_complete_embed`, `build_blended_image_embed`).
+    * [`views/blend_krea.py`](views/blend_krea.py): Krea 2 (Bertflow) Blend Studio controls (`BlendKreaButtons`, `build_blend_krea_embed`).
+    * [`views/pagination.py`](views/pagination.py): Style/prompt pagination menus and interrogation actions (`StylePaginationView`, `PromptPaginationView`, `DescribeButtons`, `StudyButtons`, `AdoptButtons`).
+    * [`views/modals.py`](views/modals.py): All popup modal dialogs (`RemixModal`, `CustomSrefModal`, `EditBlendPromptModal`, `EditBlendKreaModal`, `StudyImagineModal`, `EditStyleModal`, `EditPromptModal`, `EditAdoptPromptModal`, `SavedSrefSelectView`).
+    * [`views/__init__.py`](views/__init__.py): Central re-exporter and `__all__` registry maintaining 100% backward compatibility (103/103 tests and 4 architectural audits green).
+
 ### Fixed
 * 💧 **Blend Krea Skin Finish 3-Way Cycle**:
   * Fixed cache-staleness in `ActiveGenerationsProxy` where repeatedly clicking the `Skin:` button retrieved outdated generation state, trapping the button between Matte and Natural without looping back around.
