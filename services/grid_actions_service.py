@@ -96,6 +96,15 @@ def get_comfy_client():
     return _gcc()
 
 
+class _ComfyClientProxy:
+    def __getattr__(self, name):
+        client = get_comfy_client()
+        return getattr(client, name)
+
+
+comfy_client = _ComfyClientProxy()
+
+
 def get_generation(generation_id: str):
     from services.generation_service import get_generation as _gg
     return _gg(generation_id)
