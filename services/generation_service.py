@@ -896,7 +896,7 @@ async def execute_imagine(
                     prog_content = f"🎨 **Generating Images...**\n`[{bar}] {pct}%` (Image {img_num}/{total_wfs} • Step {val}/{max_val})\n*Model:* `{selected_model}`"
                     try:
                         if msg:
-                            await edit_message_fallback(interaction, msg.id, content=prog_content, allow_send_fallback=False)
+                            await edit_message_fallback(interaction, msg.id, content=prog_content, view=CancelGenerationView(generation_id), allow_send_fallback=False)
                     except Exception:
                         pass
             return on_grid_progress
@@ -980,8 +980,8 @@ async def execute_imagine(
         active_generations[generation_id] = gen_data
         save_generations()
 
-    except StasisInterruptException:
-        logger.info(f"Generation {generation_id} was paused and put into stasis.")
+    except (StasisInterruptException, asyncio.CancelledError):
+        logger.info(f"Generation {generation_id} was cancelled/paused.")
         return
     except Exception as e:
         elapsed_time = time.perf_counter() - start_time if 'start_time' in locals() else 0.0

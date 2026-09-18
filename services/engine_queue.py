@@ -154,6 +154,7 @@ class EngineAwareQueue:
 
         self._queue: List[QueueJob] = []
         self._active_job: Optional[QueueJob] = None
+        self._active_exec_task: Optional[asyncio.Task] = None
         self._current_engine: Optional[str] = None
         self._worker_task: Optional[asyncio.Task] = None
         self._queue_lock = asyncio.Lock()
@@ -308,12 +309,52 @@ class EngineAwareQueue:
             self._active_job.cancelled = True
             if not self._active_job.future.done():
                 self._active_job.future.cancel()
+            if getattr(self, "_active_exec_task", None) and not self._active_exec_task.done():
+                self._active_exec_task.cancel()
             self.stats["total_cancelled"] += 1
             logger.info(f"Cancelled active job {job_id}.")
             self._notify_change()
             return True
 
         return False
+
+    def cancel_by_generation(self, generation_id: str) -> int:
+        """
+        Cancels all pending and active jobs associated with a given generation_id.
+        Returns the total number of jobs cancelled.
+        """
+        if not generation_id:
+            return 0
+
+        cancelled_count = 0
+        to_remove = []
+        for job in self._queue:
+            if job.generation_id == generation_id:
+                job.cancelled = True
+                if not job.future.done():
+                    job.future.cancel()
+                to_remove.append(job)
+                cancelled_count += 1
+                logger.info(f"Cancelled pending job {job.job_id} for generation {generation_id}.")
+
+        for job in to_remove:
+            if job in self._queue:
+                self._queue.remove(job)
+
+        if self._active_job and self._active_job.generation_id == generation_id:
+            self._active_job.cancelled = True
+            if not self._active_job.future.done():
+                self._active_job.future.cancel()
+            if getattr(self, "_active_exec_task", None) and not self._active_exec_task.done():
+                self._active_exec_task.cancel()
+            cancelled_count += 1
+            logger.info(f"Cancelled active job {self._active_job.job_id} for generation {generation_id}.")
+
+        if cancelled_count > 0:
+            self.stats["total_cancelled"] += cancelled_count
+            self._notify_change()
+
+        return cancelled_count
 
     def _select_next_job(self) -> Optional[QueueJob]:
         """
@@ -396,7 +437,7 @@ class EngineAwareQueue:
                 if self.comfy_client:
                     # Invoke raw direct execution on ComfyClient
                     exec_func = getattr(self.comfy_client, "_execute_direct", None) or self.comfy_client.generate
-                    outputs = await exec_func(
+                    coro = exec_func(
                         workflow=job.workflow,
                         timeout=job.timeout,
                         retries=job.retries,
@@ -409,6 +450,12 @@ class EngineAwareQueue:
                         metadata=job.metadata,
                         use_queue=False  # Avoid recursive re-queueing
                     )
+                    self._active_exec_task = asyncio.create_task(coro)
+                    try:
+                        outputs = await self._active_exec_task
+                    finally:
+                        self._active_exec_task = None
+
                     if not job.future.done():
                         job.future.set_result(outputs)
                 else:
@@ -427,6 +474,7 @@ class EngineAwareQueue:
                 if not job.future.done():
                     job.future.set_exception(e)
             finally:
+                self._active_exec_task = None
                 self._active_job = None
                 self._notify_change()
 

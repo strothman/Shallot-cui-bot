@@ -580,31 +580,42 @@ class ComfyClient:
         raise last_exception
 
     async def pause_generation(self, generation_id):
-        """Pause a generation by cancelling its pending prompts in ComfyUI and raising StasisInterruptException on its futures."""
+        """Pause a generation by cancelling its pending prompts in ComfyUI and EngineAwareQueue and raising StasisInterruptException on its futures."""
         gen_data = db.get_generation(generation_id)
         if not gen_data:
             return False
-        
+
+        # 0. Cancel any pending or active jobs in EngineAwareQueue
+        queue_cancelled = 0
+        try:
+            from services.engine_queue import get_engine_queue
+            eq = get_engine_queue()
+            queue_cancelled = eq.cancel_by_generation(generation_id)
+        except Exception as q_err:
+            logger.debug(f"Queue cancellation check error: {q_err}")
+
         prompt_ids = gen_data.get("prompt_ids", [])
-        if not prompt_ids:
+        current_status = gen_data.get("status", "")
+        if not prompt_ids and queue_cancelled == 0 and current_status not in ["pending", "queued", "generating"]:
             return False
-        
+
         # 1. Fetch ComfyUI Queue
         queue_data = None
-        try:
-            if not self.session:
-                await self.start()
-            url = f"http://{self.server_address}/queue"
-            async with self.session.get(url) as resp:
-                if resp.status == 200:
-                    queue_data = await resp.json()
-        except Exception as e:
-            logger.error(f"Failed to fetch queue for pause: {e}")
-        
+        if prompt_ids:
+            try:
+                if not self.session:
+                    await self.start()
+                url = f"http://{self.server_address}/queue"
+                async with self.session.get(url) as resp:
+                    if resp.status == 200:
+                        queue_data = await resp.json()
+            except Exception as e:
+                logger.error(f"Failed to fetch queue for pause: {e}")
+
         running_ids = []
         if queue_data:
             running_ids = [job[1] for job in queue_data.get("queue_running", [])]
-        
+
         # 2. Cancel/delete them in ComfyUI
         for p_id in prompt_ids:
             if p_id in running_ids:
@@ -622,7 +633,7 @@ class ComfyClient:
                         pass
                 except Exception as e:
                     logger.error(f"Failed to delete pending prompt {p_id}: {e}")
-        
+
         # 3. Raise StasisInterruptException on the futures
         for p_id in prompt_ids:
             future = self.futures.get(p_id)
@@ -630,7 +641,7 @@ class ComfyClient:
                 future.set_exception(StasisInterruptException("Generation paused and put in stasis."))
                 self.futures.pop(p_id, None)
                 self.results.pop(p_id, None)
-        
+
         # 4. Update the DB status
         gen_data["status"] = "stasis"
         db.save_generation(generation_id, gen_data)

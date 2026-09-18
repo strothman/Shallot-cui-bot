@@ -909,6 +909,44 @@ class TestParsers(unittest.TestCase):
         self.assertIn("blonde hair", cleaned_che)
         self.assertIn(("cheri_epoch_6.safetensors", 0.85), loras_che)
 
+    def test_vision_interrogate_gif_converted_to_static_png(self):
+        """Verify run_vision_interrogate flattens animated GIF inputs into static PNG with .png extension."""
+        from services.vision_service import run_vision_interrogate
+        from PIL import Image
+        import io
+        from unittest.mock import AsyncMock, patch
+
+        # Create multi-frame GIF in memory
+        frames = [
+            Image.new("RGB", (64, 64), (255, 0, 0)),
+            Image.new("RGB", (64, 64), (0, 255, 0)),
+            Image.new("RGB", (64, 64), (0, 0, 255)),
+        ]
+        gif_buf = io.BytesIO()
+        frames[0].save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=100, loop=0)
+        gif_bytes = gif_buf.getvalue()
+
+        mock_client = AsyncMock()
+        mock_client.upload_image = AsyncMock(return_value={"name": "test_animation.png"})
+        mock_client.generate = AsyncMock(return_value={"4": {"text": ["a test caption"]}})
+        mock_client.free_memory = AsyncMock()
+
+        with patch("services.vision_service.os.path.exists", return_value=True), \
+             patch("builtins.open", unittest.mock.mock_open(read_data='{"1": {"inputs": {"image": ""}}}')):
+            res = asyncio.run(run_vision_interrogate(
+                image_bytes=gif_bytes,
+                filename="test_animation.gif",
+                engine="florence2",
+                client=mock_client
+            ))
+
+        # Check that upload_image was called with .png extension and valid static PNG bytes
+        mock_client.upload_image.assert_called_once()
+        uploaded_bytes, uploaded_filename = mock_client.upload_image.call_args[0]
+        self.assertTrue(uploaded_filename.endswith(".png"))
+        with Image.open(io.BytesIO(uploaded_bytes)) as uploaded_img:
+            self.assertEqual(uploaded_img.format, "PNG")
+            self.assertFalse(getattr(uploaded_img, "is_animated", False))
 
 
 if __name__ == '__main__':

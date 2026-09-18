@@ -18,7 +18,7 @@ import discord
 from PIL import Image
 
 import db
-from comfy_client import ComfyClient
+from comfy_client import ComfyClient, StasisInterruptException
 from core_helpers import (
     safe_defer, 
     send_error_fallback, 
@@ -50,6 +50,7 @@ from image_utils import (
 from views import (
     BlendButtons, 
     GridButtons, 
+    CancelGenerationView,
     build_blend_embed, 
     build_blend_complete_embed, 
     build_blended_image_embed,
@@ -681,7 +682,11 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
     start_time = time.time()
     status_msg = None
     try:
-        status_msg = await send_followup_fallback(interaction, content=f"Job submitted (Seed: {seed}) — Queuing blend...")
+        status_msg = await send_followup_fallback(
+            interaction, 
+            content=f"Job submitted (Seed: {seed}) — Queuing blend...",
+            view=CancelGenerationView(generation_id)
+        )
 
         if "5" in workflow:
             workflow["5"]["inputs"]["batch_size"] = 1
@@ -699,7 +704,7 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
             expanded_prompts.append(q_prompt)
             wf_copy["3"]["inputs"]["seed"] = q_seed
             wf_copy["6"]["inputs"]["text"] = q_prompt
-            tasks.append(comfy_client.generate(wf_copy))
+            tasks.append(comfy_client.generate(wf_copy, generation_id=generation_id))
             
         results = await asyncio.gather(*tasks)
         images = [r[0] for r in results]
@@ -757,6 +762,9 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
             if file:
                 file.fp.seek(0)
             await send_followup_fallback(interaction, content=content, embed=embed, file=file, view=view)
+    except (StasisInterruptException, asyncio.CancelledError):
+        logger.info(f"[/blend] Blend generation {generation_id} was cancelled/paused.")
+        return
     except Exception as e:
         error_handler.log_error(
             e,

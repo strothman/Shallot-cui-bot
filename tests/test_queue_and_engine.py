@@ -397,7 +397,69 @@ class TestQueueAndEngine(unittest.TestCase):
             self.assertIn("Blend Portrait #1", field_values["📋 Pending (2)"])
             self.assertIn("Blend Portrait #2", field_values["📋 Pending (2)"])
 
+    def test_engine_queue_cancel_by_generation(self):
+        """Verify cancel_by_generation cancels all matching pending and active jobs."""
+        from services.engine_queue import EngineAwareQueue, JobPriority, QueueJob
+
+        queue = EngineAwareQueue()
+        loop = asyncio.new_event_loop()
+        try:
+            f1 = loop.create_future()
+            f2 = loop.create_future()
+            f3 = loop.create_future()
+            f_active = loop.create_future()
+
+            job1 = QueueJob("job_1", {}, "sdxl", JobPriority.NORMAL, f1, generation_id="gen_cancel_target")
+            job2 = QueueJob("job_2", {}, "sdxl", JobPriority.NORMAL, f2, generation_id="gen_cancel_target")
+            job3 = QueueJob("job_3", {}, "krea2", JobPriority.NORMAL, f3, generation_id="gen_other")
+            job_act = QueueJob("job_act", {}, "sdxl", JobPriority.NORMAL, f_active, generation_id="gen_cancel_target")
+
+            queue._queue = [job1, job2, job3]
+            queue._active_job = job_act
+
+            # Cancel matching generation_id
+            cancelled_count = queue.cancel_by_generation("gen_cancel_target")
+            self.assertEqual(cancelled_count, 3)
+            self.assertTrue(f1.cancelled())
+            self.assertTrue(f2.cancelled())
+            self.assertTrue(f_active.cancelled())
+            self.assertFalse(f3.cancelled())
+
+            # Only job3 should remain in queue
+            self.assertEqual(len(queue._queue), 1)
+            self.assertEqual(queue._queue[0].job_id, "job_3")
+            self.assertEqual(queue.stats["total_cancelled"], 3)
+        finally:
+            loop.close()
+
+    def test_comfy_client_pause_generation_cancels_queue(self):
+        """Verify comfy_client.pause_generation succeeds even if prompt_ids is empty by cancelling queued jobs."""
+        import db
+        from comfy_client import ComfyClient
+        from services.engine_queue import get_engine_queue, JobPriority, QueueJob
+
+        gen_id = "test_gen_queue_only_cancel"
+        db.save_generation(gen_id, {
+            "status": "pending",
+            "prompt_ids": []
+        })
+
+        eq = get_engine_queue()
+        loop = asyncio.new_event_loop()
+        try:
+            f = loop.create_future()
+            job = QueueJob("job_q1", {}, "sdxl", JobPriority.NORMAL, f, generation_id=gen_id)
+            eq._queue.append(job)
+
+            client = ComfyClient()
+            success = loop.run_until_complete(client.pause_generation(gen_id))
+            self.assertTrue(success)
+            self.assertTrue(f.cancelled())
+            self.assertEqual(db.get_generation(gen_id)["status"], "stasis")
+        finally:
+            loop.close()
 
 
 if __name__ == '__main__':
     unittest.main()
+

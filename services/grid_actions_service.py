@@ -1021,13 +1021,41 @@ async def handle_favorite_prompt(interaction: discord.Interaction, generation_id
 
 
 async def handle_cancel_generation(interaction: discord.Interaction, generation_id: str):
-    """Cancels/interrupts an active generation in ComfyUI and updates the status message."""
+    """Cancels/interrupts an active generation in ComfyUI and EngineAwareQueue and updates the status message."""
     try:
-        success = await comfy_client.pause_generation(generation_id)
-        if success:
-            await edit_original_fallback(interaction, content="🛑 **Generation cancelled by user.**", view=None)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+        except Exception as def_err:
+            logger.debug(f"Interaction deferral note in cancel: {def_err}")
+
+        queue_cancelled = 0
+        try:
+            from services.engine_queue import get_engine_queue
+            eq = get_engine_queue()
+            queue_cancelled = eq.cancel_by_generation(generation_id)
+        except Exception as q_err:
+            logger.debug(f"Direct queue cancel note: {q_err}")
+
+        pause_success = await comfy_client.pause_generation(generation_id)
+
+        if pause_success or queue_cancelled > 0:
+            cancelled_text = "🛑 **Generation cancelled by user.**"
+            edited = False
+            if interaction.message:
+                try:
+                    await interaction.message.edit(content=cancelled_text, embed=None, view=None)
+                    edited = True
+                except Exception as msg_edit_err:
+                    logger.debug(f"Message edit fallback in cancel: {msg_edit_err}")
+
+            if not edited:
+                await edit_original_fallback(interaction, content=cancelled_text, view=None)
         else:
-            await interaction.response.send_message("⚠️ Job is no longer active or already completed.", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ Job is no longer active or already completed.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ Job is no longer active or already completed.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error handling cancel generation {generation_id}: {e}")
         await send_error_fallback(interaction, f"Failed to cancel generation: {e}")
