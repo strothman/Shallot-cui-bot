@@ -4,25 +4,45 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
-## [2026-09-18]
-
-### Fixed
-* **Generation Cancel Button Fix**: Fixed an issue where clicking `🛑 Cancel` on queued or active generations failed to cancel execution.
-  * Added `cancel_by_generation()` to `EngineAwareQueue` to purge all pending and in-flight tasks belonging to a generation.
-  * Synchronized `ComfyClient.pause_generation()` with `EngineAwareQueue` to handle cancellations when jobs have not yet been assigned ComfyUI prompt IDs.
-  * Preserved `CancelGenerationView` across generation progress bar updates in `generation_service.py`.
-  * Added cancel button support and clean cancellation handling to `blend_generation_service.py`.
-  * Fixed unacknowledged Discord interaction handling and message editing in `handle_cancel_generation()`.
+## [2026-09-20]
 
 ### Maintenance
+* Component polish: Core slash commands, buttons, and Discord event handlers
+* Component polish: Updated `imagine_cog.py`
 * Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Updated `__init__.py`
+* Component polish: Updated `prompts.py`
 * Component polish: Updated `blend_generation_service.py`
-* Component polish: Updated `engine_queue.py`
 * Component polish: Updated `generation_service.py`
 * Component polish: Updated `grid_actions_service.py`
-* Component polish: Updated `vision_service.py` (flatten animated GIFs to static PNGs for vision interrogate)
-* Component polish: Updated `test_parsers.py`
-* Component polish: Updated `test_queue_and_engine.py`
+* Component polish: Updated `interaction_dispatcher.py`
+* Component polish: Updated `krea_service.py`
+* Component polish: Updated `upscale_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `gamble_cog.py`
+* Component polish: Updated `poetic.py`
+* Component polish: Updated `gamble_service.py`
+* Component polish: Updated `test_button_audit.py`
+* Component polish: Updated `test_poetic_gamble.py`
+* Component polish: Updated `gamble_views.py`
+
+---
+## [2026-09-18]
+
+### Changed
+* **Fix generation Cancel button functionality across EngineAwareQueue and ComfyUI**
+
+### Maintenance
+* Component polish: Updated `imagine_cog.py`
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Updated `blend_generation_service.py`
+* Component polish: Updated `grid_actions_service.py`
+* Component polish: Updated `interaction_dispatcher.py`
+* Component polish: Updated `upscale_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `test_button_audit.py`
 
 ---
 ## [2026-09-17]

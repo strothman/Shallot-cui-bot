@@ -203,6 +203,7 @@ from services.upscale_service import (
 from cogs.system_cog import SystemCog
 from cogs.upscale_cog import UpscaleCog
 from cogs.imagine_cog import ImagineCog
+from cogs.gamble_cog import GambleCog
 from services.interaction_dispatcher import dispatch_interaction
 
 _vision_cog = VisionCog(bot)
@@ -210,8 +211,9 @@ _krea_cog = KreaCog(bot)
 _system_cog = SystemCog(bot)
 _upscale_cog = UpscaleCog(bot)
 _imagine_cog = ImagineCog(bot)
+_gamble_cog = GambleCog(bot)
 
-ALL_COGS = [_vision_cog, _krea_cog, _system_cog, _upscale_cog, _imagine_cog]
+ALL_COGS = [_vision_cog, _krea_cog, _system_cog, _upscale_cog, _imagine_cog, _gamble_cog]
 
 async def setup_hook():
     """Asynchronously registers all modular cogs and persistent dynamic UI items on startup."""

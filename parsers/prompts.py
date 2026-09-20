@@ -21,6 +21,7 @@ RE_CW = re.compile(r'[-\u2014\u2013]{1,2}(?:cw|cref[-_]?weight)(?:\s+|\.)?([0-9\
 RE_CREF = re.compile(r'[-\u2014\u2013]{1,2}cref\s+(\S+)', re.IGNORECASE)
 RE_WHITESPACE = re.compile(r'\s+')
 RE_WILDCARD_BLOCKS = re.compile(r'\{([^{}]+)\}')
+RE_GAMBLE = re.compile(r'[-\u2014\u2013]{1,2}(?:gamble|poetic)\b', re.IGNORECASE)
 
 RE_FLORENCE_BOILERPLATE = re.compile(
     r"^(the image shows|the image depicts|the photo shows|the photo depicts|this is an image of|this image features|the image features|in this image,|in this photo,|a photo of|an image of|a picture of|this picture shows|this picture depicts|close-up photo of|close-up shot of)\s*",
@@ -291,6 +292,22 @@ def parse_freeu_prompt(prompt: str):
         is_no_freeu = True
         prompt = RE_FREEU.sub('', prompt).strip()
     return prompt, is_no_freeu
+
+
+def parse_gamble_prompt(prompt: str, engine: str = "sdxl", rng_seed: int = None):
+    """
+    Parses --gamble or --poetic flag from prompt string.
+    If present, extracts the seed text and synthesizes a cohesive poetic visual allegory.
+    Returns (expanded_prompt, is_gamble_enabled, poetic_result_or_None).
+    """
+    is_gamble = False
+    if RE_GAMBLE.search(prompt):
+        is_gamble = True
+        cleaned = RE_GAMBLE.sub('', prompt).strip()
+        from parsers.poetic import synthesize_poetic_prompt
+        poetic_res = synthesize_poetic_prompt(seed=cleaned, engine=engine, rng_seed=rng_seed)
+        return poetic_res.prompt, True, poetic_res
+    return prompt, False, None
 
 
 def apply_smart_magic_and_sref(prompt: str, is_flux: bool = False):

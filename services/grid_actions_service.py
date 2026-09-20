@@ -198,8 +198,9 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
 
     if q_bytes:
         try:
-            upload_result = await comfy_client.upload_image(q_bytes, f"upscale_input_{generation_id}_{index}.png")
-            q_filename = upload_result.get("name")
+            upload_result = await comfy_client.upload_image(q_bytes, f"upscale_input_{generation_id}_{index}.png", subfolder="_bot_temp")
+            sub = upload_result.get("subfolder")
+            q_filename = f"{sub}/{upload_result['name']}" if sub else upload_result.get("name")
             logger.info(f"Uploaded quadrant {index} for detailed upscale: {q_filename}")
         except Exception as e:
             logger.error(f"Failed to upload quadrant image to ComfyUI for detail upscale: {e}")
@@ -294,13 +295,18 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
             is_blend = gen_data.get("is_blend", False) or "caption" in gen_data or "uploaded_image_name" in gen_data
             is_flux = gen_data.get("is_flux", False)
 
-            if is_blend:
+            if gen_data.get("gamble_info"):
+                subfolder = "gamble"
+                prefix_tag = "GambleHighRes"
+            elif is_blend:
                 subfolder = "blend"
+                prefix_tag = "BlendHighRes"
             elif is_flux:
                 subfolder = "flux"
+                prefix_tag = "DetailHighRes"
             else:
                 subfolder = "imagine"
-            prefix_tag = "BlendHighRes" if is_blend else "DetailHighRes"
+                prefix_tag = "DetailHighRes"
 
             seed_suffix = f"_seed{target_seed}"
             if q_filename and "30" in workflow:
@@ -343,7 +349,9 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
         highres_file_io = await embed_metadata_async(images[0], expanded_prompt, neg_prompt, target_seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         ckpt_abbrev = get_checkpoint_abbrev(checkpoint)
-        if is_blend:
+        if gen_data.get("gamble_info"):
+            upscale_prefix = f"gamble_{ckpt_abbrev}_upscale_{index}"
+        elif is_blend:
             upscale_prefix = f"blend_{ckpt_abbrev}_upscale_{index}"
         elif is_flux:
             upscale_prefix = f"flux_{ckpt_abbrev}_upscale_{index}"
@@ -425,7 +433,7 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
     """Instantly extracts the cached quadrant image (1.0x scale) using Pillow and posts it to Discord."""
     await safe_defer(interaction)
 
-    clicked_custom_id = f"upscale:{generation_id}:{index}"
+    clicked_custom_id = interaction.data.get("custom_id", f"upscale:{generation_id}:{index}") if (interaction and hasattr(interaction, "data") and interaction.data) else f"upscale:{generation_id}:{index}"
     await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.primary, disabled=True)
 
     gen_data = get_generation(generation_id)
@@ -463,7 +471,9 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
             dd = now.strftime("%d")
             time_str = now.strftime("%Y%m%d_%H%M%S")
             is_blend = gen_data.get("is_blend", False) or "caption" in gen_data or "uploaded_image_name" in gen_data
-            if is_blend:
+            if gen_data.get("gamble_info"):
+                sub = "gamble"
+            elif is_blend:
                 sub = "blend"
             elif gen_data.get("is_flux") or "flux" in str(gen_data.get("checkpoint", "")).lower():
                 sub = "flux"
@@ -476,7 +486,9 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
             sref_suffix = f"_sref{sref_code}" if sref_code else ""
             ckpt_abbrev = get_checkpoint_abbrev(checkpoint)
 
-            if is_blend:
+            if gen_data.get("gamble_info"):
+                filename = f"gamble_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
+            elif is_blend:
                 filename = f"blend_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
             elif gen_data.get('is_flux') or "flux" in str(checkpoint).lower():
                 filename = f"flux_{ckpt_abbrev}_{index}_seed{target_seed}{sref_suffix}_{time_str}.png"
@@ -492,7 +504,9 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
 
         metadata_io.seek(0)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        if is_blend:
+        if gen_data.get("gamble_info"):
+            iso_prefix = f"gamble_{ckpt_abbrev}_{index}"
+        elif is_blend:
             iso_prefix = f"blend_{ckpt_abbrev}_{index}"
         elif gen_data.get('is_flux') or "flux" in str(checkpoint).lower():
             iso_prefix = f"flux_{ckpt_abbrev}_{index}"
@@ -527,7 +541,12 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
             is_blend=is_blend
         )
 
-        content_txt = f"✨ **Blended Image {index}:** {truncate_prompt(original_prompt, 100)}" if is_blend else f"**Isolated Image {index}:** {truncate_prompt(original_prompt, 100)}"
+        if gen_data.get("gamble_info"):
+            content_txt = f"🎲 **Gamble Image {index}:** {truncate_prompt(original_prompt, 100)}"
+        elif is_blend:
+            content_txt = f"✨ **Blended Image {index}:** {truncate_prompt(original_prompt, 100)}"
+        else:
+            content_txt = f"**Isolated Image {index}:** {truncate_prompt(original_prompt, 100)}"
 
         has_sref = sref_info is not None and "code" in sref_info
         view = IsolatedImageButtons(generation_id, index, has_sref=has_sref, is_blend=is_blend)
@@ -579,8 +598,9 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
 
     if q_bytes:
         try:
-            upload_res = await comfy_client.upload_image(q_bytes, f"var_input_{generation_id}_{index}.png")
-            q_filename = upload_res.get("name")
+            upload_res = await comfy_client.upload_image(q_bytes, f"var_input_{generation_id}_{index}.png", subfolder="_bot_temp")
+            sub = upload_res.get("subfolder")
+            q_filename = f"{sub}/{upload_res['name']}" if sub else upload_res.get("name")
             logger.info(f"Uploaded quadrant {index} for img2img variation: {q_filename}")
         except Exception as e:
             logger.error(f"Failed to upload quadrant image to ComfyUI: {e}")
@@ -1193,8 +1213,9 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         upload_bytes = input_img_bytes
 
     try:
-        up_res = await comfy_client.upload_image(upload_bytes, f"outpaint_input_{generation_id}_{index}.png")
-        img_filename = up_res.get("name")
+        up_res = await comfy_client.upload_image(upload_bytes, f"outpaint_input_{generation_id}_{index}.png", subfolder="_bot_temp")
+        sub = up_res.get("subfolder")
+        img_filename = f"{sub}/{up_res['name']}" if sub else up_res.get("name")
     except Exception as e:
         logger.error(f"Error uploading image to ComfyUI: {e}")
         await _update_button_state(interaction, clicked_custom_id, discord.ButtonStyle.secondary, disabled=False)

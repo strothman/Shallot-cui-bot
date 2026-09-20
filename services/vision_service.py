@@ -643,6 +643,8 @@ async def handle_generate_described(interaction: discord.Interaction, generation
     imagine_func = getattr(bot_module, "execute_imagine", None)
     if not imagine_func and hasattr(interaction, "client"):
         imagine_func = getattr(interaction.client, "execute_imagine", None)
+    if not imagine_func:
+        from services.generation_service import execute_imagine as imagine_func
     if imagine_func:
         await imagine_func(interaction, prompt=full_prompt, checkpoint=selected_model)
     else:

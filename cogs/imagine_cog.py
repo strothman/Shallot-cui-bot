@@ -289,35 +289,39 @@ class ImagineCog(commands.Cog):
             await send_followup_fallback(interaction, content=f"⚠️ Failed to parse message: {e}", ephemeral=True)
 
     async def handle_submit_edit_adopt_prompt(self, interaction: discord.Interaction, adopt_id: str, new_prompt: str):
-        """Updates the prompt of an adopted post and edits the embed description in place."""
-        data = db.get_generation(adopt_id)
-        if not data:
-            await interaction.response.send_message("⚠️ Adopted post session expired.", ephemeral=True)
-            return
+        await handle_submit_edit_adopt_prompt(interaction, adopt_id, new_prompt)
 
-        data["prompt"] = new_prompt
-        db.save_generation(adopt_id, data)
 
-        author_str = data.get("author_str", "@Midjourney Bot")
-        jump_url = data.get("jump_url", "")
-        image_url = data.get("image_url")
-        oga_on = data.get("ogarla", False)
-        cw = data.get("cref_weight", 0.20)
-        sr_w = float(data.get("semi_realism_weight", 0.85 if data.get("semi_realism") else 0.0))
-        rnd_on = data.get("random_sref", False)
+async def handle_submit_edit_adopt_prompt(interaction: discord.Interaction, adopt_id: str, new_prompt: str):
+    """Updates the prompt of an adopted post and edits the embed description in place."""
+    data = db.get_generation(adopt_id)
+    if not data:
+        await interaction.response.send_message("⚠️ Adopted post session expired.", ephemeral=True)
+        return
 
-        embed = discord.Embed(
-            title="⛵ Adopted Midjourney Post (Edited)",
-            description=f"```\n{new_prompt}\n```\n"
-                        f"**Original Author:** {author_str}\n"
-                        f"**Source Message:** [Jump to Message]({jump_url})",
-            color=discord.Color.from_rgb(0, 168, 252)
-        )
-        if image_url:
-            embed.set_image(url=image_url)
-            embed.set_footer(text="Prompt updated! Use controls below to customize or generate.")
-        else:
-            embed.set_footer(text="Prompt updated! Use controls below to customize or generate.")
+    data["prompt"] = new_prompt
+    db.save_generation(adopt_id, data)
 
-        view = AdoptButtons(adopt_id=adopt_id, ogarla_on=oga_on, cref_weight=cw, semi_realism_weight=sr_w, random_sref_on=rnd_on)
-        await interaction.response.edit_message(embed=embed, view=view)
+    author_str = data.get("author_str", "@Midjourney Bot")
+    jump_url = data.get("jump_url", "")
+    image_url = data.get("image_url")
+    oga_on = data.get("ogarla", False)
+    cw = data.get("cref_weight", 0.20)
+    sr_w = float(data.get("semi_realism_weight", 0.85 if data.get("semi_realism") else 0.0))
+    rnd_on = data.get("random_sref", False)
+
+    embed = discord.Embed(
+        title="⛵ Adopted Midjourney Post (Edited)",
+        description=f"```\n{new_prompt}\n```\n"
+                    f"**Original Author:** {author_str}\n"
+                    f"**Source Message:** [Jump to Message]({jump_url})",
+        color=discord.Color.from_rgb(0, 168, 252)
+    )
+    if image_url:
+        embed.set_image(url=image_url)
+        embed.set_footer(text="Prompt updated! Use controls below to customize or generate.")
+    else:
+        embed.set_footer(text="Prompt updated! Use controls below to customize or generate.")
+
+    view = AdoptButtons(adopt_id=adopt_id, ogarla_on=oga_on, cref_weight=cw, semi_realism_weight=sr_w, random_sref_on=rnd_on)
+    await interaction.response.edit_message(embed=embed, view=view)

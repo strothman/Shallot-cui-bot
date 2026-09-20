@@ -1148,6 +1148,129 @@ class TestUiAndViews(unittest.TestCase):
             p_90 = mock_exec.call_args.kwargs.get("prompt") or mock_exec.call_args.args[1]
             self.assertIn("--sr.90", p_90)
 
+        # 5. Test blend image button end-to-end dispatch and native execute_blend_generation (unmocked)
+        from services.interaction_dispatcher import dispatch_interaction
+        from services.blend_generation_service import comfy_client
+
+        if hasattr(bot, "execute_blend_generation"):
+            delattr(bot, "execute_blend_generation")
+
+        btn_inter = MagicMock()
+        btn_inter.type = discord.InteractionType.component
+        btn_inter.data = {"custom_id": "blend_desc:gen_blend_exec_test:blend"}
+        btn_inter.response.is_done.return_value = False
+        btn_inter.response.defer = AsyncMock()
+        btn_inter.followup.send = AsyncMock(return_value=MagicMock(id=111))
+        btn_inter.user.id = 12345
+        btn_inter.user.name = "testuser"
+        btn_inter.user.display_name = "testuser"
+        btn_inter.user.mention = "<@12345>"
+
+        with patch.object(comfy_client, "generate", new=AsyncMock(return_value=[b"fake_image_bytes"])), \
+             patch.object(comfy_client, "upload_image", new=AsyncMock(return_value={"name": "cropped.png"})), \
+             patch("services.blend_generation_service.save_quadrant_images_async", new=AsyncMock()), \
+             patch("services.blend_generation_service.create_grid_async", new=AsyncMock(return_value=io.BytesIO(b"fake_grid"))), \
+             patch("services.blend_generation_service.edit_message_fallback", new=AsyncMock()), \
+             patch("aiohttp.ClientSession.get") as mock_http_get:
+            
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_resp.read = AsyncMock(return_value=b"fake_raw_img")
+            mock_http_get.return_value.__aenter__.return_value = mock_resp
+
+            dispatched = asyncio.run(dispatch_interaction(btn_inter))
+            self.assertTrue(dispatched)
+            btn_inter.followup.send.assert_called()
+
+    def test_blend_crop_deduplication_and_overwrite(self):
+        """Verify upload_image includes overwrite='true', uses deterministic crop naming, and reuses cached crops."""
+        import asyncio
+        from unittest.mock import MagicMock, AsyncMock, patch
+        from comfy_client import ComfyClient
+        from services.blend_generation_service import execute_blend_generation
+
+        # 1. Test ComfyClient.upload_image sends overwrite=true
+        client = ComfyClient("127.0.0.1:8188")
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={"name": "test_output.png"})
+        mock_session = MagicMock()
+        mock_session.post.return_value.__aenter__.return_value = mock_resp
+        client.session = mock_session
+
+        asyncio.run(client.upload_image(b"fake_bytes", "test.png", overwrite=True))
+        self.assertTrue(mock_session.post.called)
+        call_kwargs = mock_session.post.call_args[1]
+        form_data = call_kwargs.get("data")
+        # Ensure 'overwrite' field with 'true' was added to FormData
+        has_overwrite = any(h.get("name") == "overwrite" and v == "true" for h, p, v in form_data._fields)
+        self.assertTrue(has_overwrite)
+
+        # 2. Test execute_blend_generation reuses existing cropped image if status == 200
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = 123
+        mock_interaction.user.name = "tester"
+        mock_interaction.followup.send = AsyncMock(return_value=MagicMock(id=999))
+
+        # First test: existing crop found in ComfyUI (status == 200) -> NO upload_image called
+        with patch("services.blend_generation_service.comfy_client.upload_image", new=AsyncMock()) as mock_up, \
+             patch("services.blend_generation_service.crop_to_aspect_ratio_async", new=AsyncMock()) as mock_crop, \
+             patch("services.blend_generation_service.comfy_client.generate", new=AsyncMock(return_value=[b"img"])), \
+             patch("services.blend_generation_service.save_quadrant_images_async", new=AsyncMock()), \
+             patch("services.blend_generation_service.create_grid_async", new=AsyncMock(return_value=io.BytesIO(b"grid"))), \
+             patch("services.blend_generation_service.send_followup_fallback", new=AsyncMock(return_value=MagicMock(id=999))), \
+             patch("services.blend_generation_service.edit_message_fallback", new=AsyncMock()), \
+             patch("aiohttp.ClientSession.get") as mock_get:
+
+            resp_200 = AsyncMock()
+            resp_200.status = 200
+            mock_get.return_value.__aenter__.return_value = resp_200
+
+            asyncio.run(execute_blend_generation(
+                mock_interaction,
+                uploaded_image_name="my_source_image.png",
+                prompt="a beautiful landscape --ar 9:16",
+                comp_strength="low"
+            ))
+
+            # Cropped image already exists, so it should not crop or re-upload
+            mock_crop.assert_not_called()
+            mock_up.assert_not_called()
+
+        # Second test: crop does not exist (status == 404) -> downloads original, crops, uploads with deterministic name & overwrite=True
+        with patch("services.blend_generation_service.comfy_client.upload_image", new=AsyncMock(return_value={"name": "blend_crop_my_source_image_768_1344.png"})) as mock_up, \
+             patch("services.blend_generation_service.crop_to_aspect_ratio_async", new=AsyncMock(return_value=b"cropped_bytes")) as mock_crop, \
+             patch("services.blend_generation_service.comfy_client.generate", new=AsyncMock(return_value=[b"img"])), \
+             patch("services.blend_generation_service.save_quadrant_images_async", new=AsyncMock()), \
+             patch("services.blend_generation_service.create_grid_async", new=AsyncMock(return_value=io.BytesIO(b"grid"))), \
+             patch("services.blend_generation_service.send_followup_fallback", new=AsyncMock(return_value=MagicMock(id=999))), \
+             patch("services.blend_generation_service.edit_message_fallback", new=AsyncMock()), \
+             patch("aiohttp.ClientSession.get") as mock_get:
+
+            resp_404 = AsyncMock()
+            resp_404.status = 404
+
+            resp_orig = AsyncMock()
+            resp_orig.status = 200
+            resp_orig.read = AsyncMock(return_value=b"orig_bytes")
+
+            # First get is check (404), second get is download orig (200)
+            mock_get.return_value.__aenter__.side_effect = [resp_404, resp_orig]
+
+            asyncio.run(execute_blend_generation(
+                mock_interaction,
+                uploaded_image_name="my_source_image.png",
+                prompt="a beautiful landscape --ar 9:16",
+                comp_strength="low"
+            ))
+
+            mock_crop.assert_called_once()
+            mock_up.assert_called_once()
+            upload_args, upload_kwargs = mock_up.call_args
+            # Verify deterministic filename
+            self.assertEqual(upload_args[1], "blend_crop_my_source_image_768_1344.png")
+            self.assertTrue(upload_kwargs.get("overwrite"))
+
     def test_module73_krea_cog_modular_architecture(self):
         """Verify KreaCog and KreaService modular separation, registration, and backward compatibility."""
         import asyncio

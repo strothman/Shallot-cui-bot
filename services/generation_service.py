@@ -65,6 +65,7 @@ from parsers import (
     parse_smart_prompt,
     parse_powerhouse_prompt,
     parse_freeu_prompt,
+    parse_gamble_prompt,
     expand_dynamic_prompt,
     apply_magic_enhancement,
     apply_smart_magic_and_sref,
@@ -77,6 +78,8 @@ from parsers import (
 from characters import get_character, mask_character_in_prompt
 from views import (
     GridButtons,
+    GambleButtons,
+    build_gamble_embed,
     UpscaleButtons,
     IsolatedImageButtons,
     RemixModal,
@@ -234,7 +237,9 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
     grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, seed, width, height)
     is_flux = gen_data.get("is_flux", False)
     ckpt_abbrev = get_checkpoint_abbrev(selected_model)
-    if is_flux:
+    if gen_data.get("gamble_info"):
+        grid_prefix = f"gamble_{ckpt_abbrev}_grid"
+    elif is_flux:
         grid_prefix = f"flux_{ckpt_abbrev}_grid"
     else:
         grid_prefix = f"grid_{ckpt_abbrev}"
@@ -271,12 +276,27 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
 
     title_txt = "Flux Grid Complete" if gen_data.get("is_flux") else "Image Generation Complete"
     has_sref = sref_info is not None and "code" in sref_info
-    view = GridButtons(generation_id, has_sref=has_sref)
+    gamble_info = gen_data.get("gamble_info")
 
-    embed = discord.Embed(
-        title=title_txt, 
-        description="\n".join(desc_parts)
-    )
+    if gamble_info:
+        view = GambleButtons(generation_id, engine="sdxl", mood=gamble_info.get("mood", "wild"))
+        embed = build_gamble_embed(
+            gamble_info=gamble_info,
+            seed=seed,
+            width=width,
+            height=height,
+            model_name=selected_model,
+            user_name=user_name,
+            user_id=user_id,
+            timing_data=timing_data,
+            engine="sdxl"
+        )
+    else:
+        view = GridButtons(generation_id, has_sref=has_sref)
+        embed = discord.Embed(
+            title=title_txt, 
+            description="\n".join(desc_parts)
+        )
     
     timing_text = ""
     if timing_data:
@@ -339,7 +359,8 @@ async def execute_imagine(
     cref_image_name_override: str = None, 
     is_face_detailer: bool = False, 
     character: str = None, 
-    model: str = None
+    model: str = None,
+    gamble_info: dict = None
 ):
     if model and not checkpoint:
         checkpoint = model
@@ -424,6 +445,19 @@ async def execute_imagine(
     cleaned_prompt, no_freeu_flag = parse_freeu_prompt(cleaned_prompt)
     if no_freeu_flag:
         freeu = False
+
+    cleaned_prompt, is_gamble, poetic_result = parse_gamble_prompt(cleaned_prompt, engine="flux" if is_flux else "sdxl")
+    if is_gamble and poetic_result and not gamble_info:
+        gamble_info = {
+            "seed_word": poetic_result.seed_word,
+            "mood": poetic_result.mood,
+            "stanza": poetic_result.stanza,
+            "engine": "flux" if is_flux else "sdxl",
+            "metaphor": poetic_result.metaphor,
+            "setting": poetic_result.setting,
+            "color_palette": poetic_result.color_palette,
+            "aspect_ratio": aspect_ratio or "1:1",
+        }
 
     cleaned_prompt, user_seed = parse_seed(cleaned_prompt)
     seed = user_seed if user_seed is not None else random.randint(1, 1125899906842624)
@@ -854,7 +888,8 @@ async def execute_imagine(
         "guidance": guidance,
         "freeu": freeu,
         "jump_url": original_post_url,
-        "is_face_detailer": is_face_detailer
+        "is_face_detailer": is_face_detailer,
+        "gamble_info": gamble_info
     }
     save_generations()
 

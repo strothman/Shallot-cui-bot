@@ -666,13 +666,17 @@ class ComfyClient:
             return False
 
 
-    async def upload_image(self, image_bytes, filename):
+    async def upload_image(self, image_bytes, filename, overwrite: bool = True, subfolder: str = ""):
         """Upload an image to ComfyUI server."""
         if not self.session:
             await self.start()
         url = f"http://{self.server_address}/upload/image"
         data = aiohttp.FormData()
         data.add_field('image', image_bytes, filename=filename, content_type='image/png')
+        if overwrite:
+            data.add_field('overwrite', 'true')
+        if subfolder:
+            data.add_field('subfolder', subfolder)
         async with self.session.post(url, data=data) as resp:
             if resp.status == 200:
                 res = await resp.json()

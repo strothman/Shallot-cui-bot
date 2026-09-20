@@ -307,8 +307,12 @@ async def execute_upscale_core(
     
     # 2. Upload input image to ComfyUI
     clean_upload_name = f"upscale_input_{random.randint(10000, 99999)}_{filename}"
-    upload_result = await active_client.upload_image(image_bytes, clean_upload_name)
-    uploaded_name = upload_result.get("name") if upload_result else clean_upload_name
+    upload_result = await active_client.upload_image(image_bytes, clean_upload_name, subfolder="_bot_temp")
+    if upload_result:
+        sub = upload_result.get("subfolder")
+        uploaded_name = f"{sub}/{upload_result['name']}" if sub else upload_result.get("name")
+    else:
+        uploaded_name = clean_upload_name
 
     # 3. Pick upscale model
     chosen_model = MODEL_PRESETS.get(style.lower(), DEFAULT_UPSCALE_MODEL)

@@ -24,12 +24,15 @@ from parsers import (
     prepare_bertflow_workflow,
     expand_dynamic_prompt,
     fuse_krea2_blend_prompt,
+    parse_gamble_prompt,
 )
 from characters import get_character_display_badge
 from celebrities import get_celebrity_display_badge
 from views import (
     CancelGenerationView,
     BertflowButtons,
+    GambleButtons,
+    build_gamble_embed,
     RemixModal,
     build_blend_krea_embed,
     BlendKreaButtons,
@@ -70,6 +73,7 @@ async def execute_bertflow(
     character: str = None,
     celebrity: str = None,
     client: ComfyClient = None,
+    gamble_info: dict = None,
 ):
     """Executes Bert's photorealistic Krea 2 workflow with optional direct compositional reference, character LoRA, and favorite celebrity prompt injection."""
     active_client = client or _comfy_client
@@ -81,6 +85,20 @@ async def execute_bertflow(
     set_active_architecture(target_arch)
 
     cleaned_prompt, width, height = resolve_bertflow_dimensions(prompt, aspect_ratio)
+
+    cleaned_prompt, is_gamble, poetic_result = parse_gamble_prompt(cleaned_prompt, engine="krea2")
+    if is_gamble and poetic_result and not gamble_info:
+        gamble_info = {
+            "seed_word": poetic_result.seed_word,
+            "mood": poetic_result.mood,
+            "stanza": poetic_result.stanza,
+            "engine": "krea2",
+            "metaphor": poetic_result.metaphor,
+            "setting": poetic_result.setting,
+            "color_palette": poetic_result.color_palette,
+            "aspect_ratio": aspect_ratio or "1:1",
+        }
+
     actual_seed = seed if seed is not None else random.randint(1, 1125899906842624)
     # Expand dynamic wildcards {a|b|c} using actual_seed
     cleaned_prompt = expand_dynamic_prompt(cleaned_prompt, random.Random(actual_seed))
@@ -110,7 +128,10 @@ async def execute_bertflow(
         await send_error_fallback(interaction, f"Failed to prepare Bertflow workflow: {e}")
         return
 
-    generation_id = f"bert_{int(time.time())}_{actual_seed}"
+    if gamble_info:
+        generation_id = f"gamble_krea_{int(time.time())}_{actual_seed}"
+    else:
+        generation_id = f"bert_{int(time.time())}_{actual_seed}"
     status_msg = status_msg_ref if status_msg_ref else [None]
     last_update_time = [0.0]
 
@@ -218,7 +239,8 @@ async def execute_bertflow(
             "wetness": wetness_strength,
             "character": character,
             "celebrity": celebrity,
-            "user_id": interaction.user.id if getattr(interaction, "user", None) else None
+            "user_id": interaction.user.id if getattr(interaction, "user", None) else None,
+            "gamble_info": gamble_info
         }
         db.save_generation(generation_id, bert_record)
         try:
@@ -236,32 +258,52 @@ async def execute_bertflow(
         except Exception as err:
             logger.warning(f"Failed to cache Bertflow image: {err}")
 
-        complete_embed = discord.Embed(
-            title="📸 Bertflow Realism",
-            description=f"**Prompt:** {cleaned_prompt}",
-            color=discord.Color.from_rgb(235, 140, 52)
-        )
-        complete_embed.add_field(name="📐 Specs", value=f"`{width}x{height}`\n`{aspect_ratio or '1:1'}`", inline=True)
-        complete_embed.add_field(name="⚡ Engine", value=f"Krea 2 Turbo\n`{active_unet.split('.')[0]}`", inline=True)
-        if character and str(character).lower() not in ["none", "nochar", "off"]:
-            char_badge = get_character_display_badge(character, architecture="krea2")
-            complete_embed.add_field(name="🎭 Character", value=char_badge, inline=True)
-        if celebrity and str(celebrity).lower() not in ["none", "noceleb", "off"]:
-            complete_embed.add_field(name="🌟 Celebrity", value=get_celebrity_display_badge(celebrity), inline=True)
-        t_str = f"{elapsed_time:.1f}s"
-        sample_sec = t_breakdown.get("sampling_duration", 0.0) or t_breakdown.get("sample", 0.0)
-        init_sec = t_breakdown.get("init_duration", 0.0) or t_breakdown.get("init", 0.0)
-        if sample_sec > 0:
-            t_str += f" (Init {init_sec:.1f}s | Gen {sample_sec:.1f}s)"
-        complete_embed.add_field(name="⏱️ Render", value=f"{t_str}\nSeed: `{actual_seed}`", inline=True)
-        complete_embed.set_image(url=f"attachment://{generation_id}.png")
-        complete_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Flow-Matching", icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
-
         file = discord.File(io.BytesIO(image_bytes), filename=f"{generation_id}.png")
-        view = BertflowButtons(
-            generation_id=generation_id,
-            character=character
-        )
+
+        if gamble_info:
+            complete_embed = build_gamble_embed(
+                gamble_info=gamble_info,
+                seed=actual_seed,
+                width=width,
+                height=height,
+                model_name=active_unet,
+                user_name=interaction.user.display_name if getattr(interaction, "user", None) else "User",
+                user_id=interaction.user.id if getattr(interaction, "user", None) else 0,
+                timing_data={"elapsed_time": elapsed_time},
+                engine="krea2"
+            )
+            complete_embed.set_image(url=f"attachment://{generation_id}.png")
+            view = GambleButtons(
+                generation_id=generation_id,
+                engine="krea2",
+                mood=gamble_info.get("mood", "wild")
+            )
+        else:
+            complete_embed = discord.Embed(
+                title="📸 Bertflow Realism",
+                description=f"**Prompt:** {cleaned_prompt}",
+                color=discord.Color.from_rgb(235, 140, 52)
+            )
+            complete_embed.add_field(name="📐 Specs", value=f"`{width}x{height}`\n`{aspect_ratio or '1:1'}`", inline=True)
+            complete_embed.add_field(name="⚡ Engine", value=f"Krea 2 Turbo\n`{active_unet.split('.')[0]}`", inline=True)
+            if character and str(character).lower() not in ["none", "nochar", "off"]:
+                char_badge = get_character_display_badge(character, architecture="krea2")
+                complete_embed.add_field(name="🎭 Character", value=char_badge, inline=True)
+            if celebrity and str(celebrity).lower() not in ["none", "noceleb", "off"]:
+                complete_embed.add_field(name="🌟 Celebrity", value=get_celebrity_display_badge(celebrity), inline=True)
+            t_str = f"{elapsed_time:.1f}s"
+            sample_sec = t_breakdown.get("sampling_duration", 0.0) or t_breakdown.get("sample", 0.0)
+            init_sec = t_breakdown.get("init_duration", 0.0) or t_breakdown.get("init", 0.0)
+            if sample_sec > 0:
+                t_str += f" (Init {init_sec:.1f}s | Gen {sample_sec:.1f}s)"
+            complete_embed.add_field(name="⏱️ Render", value=f"{t_str}\nSeed: `{actual_seed}`", inline=True)
+            complete_embed.set_image(url=f"attachment://{generation_id}.png")
+            complete_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Flow-Matching", icon_url=interaction.user.display_avatar.url if interaction.user.display_avatar else None)
+
+            view = BertflowButtons(
+                generation_id=generation_id,
+                character=character
+            )
 
         try:
             if status_msg[0] is not None:

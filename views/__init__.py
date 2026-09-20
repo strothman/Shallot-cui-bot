@@ -42,6 +42,12 @@ from views.blend_krea import (
     BlendKreaButtons,
 )
 
+# Poetic Gamble Studio
+from views.gamble_views import (
+    GambleButtons,
+    build_gamble_embed,
+)
+
 # Pagination, Browsing, and Utility Views
 from views.pagination import (
     DescribeButtons,
@@ -91,6 +97,10 @@ __all__ = [
     # Blend Krea
     "build_blend_krea_embed",
     "BlendKreaButtons",
+    
+    # Poetic Gamble
+    "GambleButtons",
+    "build_gamble_embed",
     
     # Pagination & Utility Views
     "DescribeButtons",

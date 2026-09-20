@@ -54,6 +54,8 @@ from parsers.prompts import (
     parse_smart_prompt,
     parse_powerhouse_prompt,
     parse_freeu_prompt,
+    RE_GAMBLE,
+    parse_gamble_prompt,
     apply_smart_magic_and_sref,
     apply_magic_enhancement,
     _clean_extracted_prompt,
@@ -86,6 +88,13 @@ from parsers.workflows import (
     apply_ipadapter_to_workflow,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,
+)
+
+from parsers.poetic import (
+    PoeticMood,
+    MOOD_DISPLAY_NAMES,
+    PoeticPromptResult,
+    synthesize_poetic_prompt,
 )
 
 __all__ = [
@@ -165,4 +174,11 @@ __all__ = [
     "apply_ipadapter_to_workflow",
     "get_bertflow_unet_model",
     "prepare_bertflow_workflow",
+    # poetic
+    "RE_GAMBLE",
+    "parse_gamble_prompt",
+    "PoeticMood",
+    "MOOD_DISPLAY_NAMES",
+    "PoeticPromptResult",
+    "synthesize_poetic_prompt",
 ]

@@ -24,28 +24,43 @@ from core_helpers import (
     send_error_fallback, 
     send_followup_fallback, 
     edit_message_fallback, 
-    download_image
+    download_image,
+    get_active_bot
 )
 from error_handler import error_handler, ErrorCategory, ErrorSeverity
 from config import (
     CHECKPOINT_CONFIGS, 
     DEFAULT_NEGATIVE_PROMPT, 
     SDXL_CHECKPOINT_CHOICES,
-    COMFYUI_CHECKPOINT
+    COMFYUI_CHECKPOINT,
+    COMFYUI_ADDRESS,
+    PipelineDefaults
 )
 from parsers import (
     parse_aspect_ratio, 
     parse_loras, 
     apply_loras_to_workflow, 
     parse_sref,
+    parse_cref,
+    parse_seed,
+    parse_stylize,
+    parse_magic_prompt,
+    expand_dynamic_prompt,
+    apply_magic_enhancement,
+    deduplicate_intro_quality_tags,
+    truncate_prompt,
     apply_ipadapter_to_workflow,
     LOCKED_STYLE_PRESETS
 )
 from characters import get_character, mask_character_in_prompt
 from image_utils import (
+    create_grid,
     create_grid_async, 
+    crop_to_aspect_ratio_async,
+    save_quadrant_images_async,
     boost_image_vibrancy_and_contrast_async, 
-    get_quadrant_bytes_async
+    get_quadrant_bytes_async,
+    format_image_filename
 )
 from views import (
     BlendButtons, 
@@ -57,6 +72,7 @@ from views import (
     EditBlendPromptModal
 )
 from services.system_service import settings
+from services.generation_service import comfy_client, active_generations
 
 logger = logging.getLogger("DiscordBot.BlendGenerationService")
 
@@ -603,17 +619,32 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
         denoise_val = PipelineDefaults.VARIATION_DENOISE_MAP.get(comp_strength, PipelineDefaults.VARIATION_DENOISE_MED_CHANGE)
         
         try:
-            view_url = f"http://{COMFYUI_ADDRESS}/view?filename={uploaded_image_name}&type=input"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(view_url) as resp:
-                    if resp.status != 200:
-                        raise Exception(f"ComfyUI view returned status {resp.status}")
-                    orig_image_bytes = await resp.read()
-            
-            cropped_bytes = await crop_to_aspect_ratio_async(orig_image_bytes, width, height)
-            target_filename = f"blend_crop_{generation_id}_{width}_{height}.png"
-            upload_res = await comfy_client.upload_image(cropped_bytes, target_filename)
-            final_image_name = upload_res.get("name", uploaded_image_name)
+            # Deterministic naming based on source image and target dimensions to prevent duplicate files
+            clean_src = os.path.splitext(os.path.basename(uploaded_image_name))[0]
+            clean_src = re.sub(r"^blend_crop_", "", clean_src)
+            target_filename = f"blend_crop_{clean_src}_{width}_{height}.png"
+
+            if uploaded_image_name == target_filename:
+                final_image_name = uploaded_image_name
+            else:
+                async with aiohttp.ClientSession() as session:
+                    # 1. Check if the cropped file already exists in ComfyUI's input directory
+                    check_url = f"http://{COMFYUI_ADDRESS}/view?filename={target_filename}&type=input"
+                    async with session.get(check_url) as chk_resp:
+                        if chk_resp.status == 200:
+                            final_image_name = target_filename
+                            logger.info(f"Reusing existing cropped blend image in ComfyUI: {target_filename}")
+                        else:
+                            # 2. Download original, crop to aspect ratio, and upload with overwrite=True
+                            view_url = f"http://{COMFYUI_ADDRESS}/view?filename={uploaded_image_name}&type=input"
+                            async with session.get(view_url) as resp:
+                                if resp.status != 200:
+                                    raise Exception(f"ComfyUI view returned status {resp.status}")
+                                orig_image_bytes = await resp.read()
+                            
+                            cropped_bytes = await crop_to_aspect_ratio_async(orig_image_bytes, width, height)
+                            upload_res = await comfy_client.upload_image(cropped_bytes, target_filename, overwrite=True)
+                            final_image_name = upload_res.get("name", target_filename)
         except Exception as crop_err:
             logger.error(f"Failed to crop/resize input image for blend aspect ratio: {crop_err}")
             final_image_name = uploaded_image_name
@@ -715,7 +746,7 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
 
         await save_quadrant_images_async(generation_id, images)
 
-        grid_file_io = await asyncio.to_thread(create_grid, images, cleaned_prompt, neg_prompt, seed, width, height)
+        grid_file_io = await create_grid_async(images, cleaned_prompt, neg_prompt, seed, width, height)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         file = discord.File(fp=grid_file_io, filename=format_image_filename("blend_grid", seed, "jpg", sref=sref_code))
         

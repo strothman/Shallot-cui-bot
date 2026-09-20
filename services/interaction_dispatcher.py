@@ -9,7 +9,7 @@ import logging
 import discord
 
 import db
-from core_helpers import safe_defer
+from core_helpers import safe_defer, send_error_fallback
 from views import (
     SavedSrefSelectView,
     CustomSrefModal,
@@ -53,6 +53,11 @@ from services.krea_service import (
 from services.vision_service import (
     handle_generate_described,
     handle_update_describe_view,
+)
+from services.gamble_service import (
+    handle_gamble_reroll,
+    handle_gamble_switch_engine,
+    handle_gamble_shift_mood,
 )
 
 logger = logging.getLogger("DiscordBot.InteractionDispatcher")
@@ -126,8 +131,29 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
                 await handler(interaction, parts[1])
                 return True
 
+        # 2b. Poetic Gamble Controls
+        elif custom_id.startswith("gamble_reroll:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                handler = _resolve_handler("handle_gamble_reroll", handle_gamble_reroll)
+                await handler(interaction, parts[1])
+                return True
+        elif custom_id.startswith("gamble_switch:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 3:
+                target_eng = parts[2]
+                handler = _resolve_handler("handle_gamble_switch_engine", handle_gamble_switch_engine)
+                await handler(interaction, parts[1], target_eng)
+                return True
+        elif custom_id.startswith("gamble_mood:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                handler = _resolve_handler("handle_gamble_shift_mood", handle_gamble_shift_mood)
+                await handler(interaction, parts[1])
+                return True
+
         # 3. Quadrant Isolation (U1-U4)
-        elif custom_id.startswith("upscale:"):
+        elif custom_id.startswith("upscale:") or custom_id.startswith("isolate:"):
             parts = custom_id.split(":")
             if len(parts) >= 3:
                 gen_id = parts[1]
@@ -845,11 +871,10 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
 
     except Exception as e:
         logger.error(f"Error dispatching interaction '{custom_id}': {e}", exc_info=e)
-        if not interaction.response.is_done():
-            try:
-                await interaction.response.send_message("❌ An error occurred while processing this action.", ephemeral=True)
-            except Exception:
-                pass
+        try:
+            await send_error_fallback(interaction, "❌ An error occurred while processing this action.")
+        except Exception:
+            pass
         return True
 
     return False
