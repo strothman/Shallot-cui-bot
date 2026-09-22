@@ -1,0 +1,57 @@
+---
+job: extension
+config:
+  name: "loveless_krea2"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "/workspace/ai-toolkit/output"
+      device: cuda:0
+      trigger_word: "loveless84"
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+      save:
+        dtype: bf16
+        save_every: 250
+        max_step_saves_to_keep: 3
+      datasets:
+        - folder_path: "/workspace/dataset/loveless_krea2"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          resolution: [ 512, 768, 1024 ]
+      train:
+        batch_size: 1
+        steps: 1500
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        optimizer: "adamw8bit"
+        lr: 1e-4
+        dtype: bf16
+      model:
+        name_or_path: "unsloth/Krea-2-Raw"
+        arch: "krea2"
+        quantize: true
+        low_vram: true
+      sample:
+        sampler: "flowmatch"
+        sample_every: 250
+        sample_start_step: 250
+        width: 1024
+        height: 1024
+        prompts:
+          - "close-up beauty portrait of [trigger], short wavy brown hair, delicate collarbone, natural morning light, 35mm photograph"
+          - "full-body editorial shot of [trigger], backless pink silk wrap dress, high leg slit, exposed back, golden hour sunlight"
+          - "rear view of [trigger], completely exposed smooth bare back, pink silk wrap dress tied at hip, graceful contour of waist and leg, ocean balcony"
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 4.0
+        sample_steps: 25
+meta:
+  name: "[name]"
+  version: '1.0'

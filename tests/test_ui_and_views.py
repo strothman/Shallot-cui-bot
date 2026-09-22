@@ -857,6 +857,16 @@ class TestUiAndViews(unittest.TestCase):
         self.assertEqual(wf_oga["822"]["inputs"]["lora_2"]["strength"], 0.85)
         self.assertEqual(wf_oga["627"]["inputs"]["text"], "ogarla, fashion runway photo")
 
+        # Test Loveless Krea 2 Character LoRA injection and trigger word
+        wf_love = prepare_bertflow_workflow(
+            prompt="fashion runway photo --loveless.85",
+            character="loveless"
+        )
+        self.assertTrue(wf_love["822"]["inputs"]["lora_2"]["on"])
+        self.assertEqual(wf_love["822"]["inputs"]["lora_2"]["lora"], "Krea2\\loveless_krea2.safetensors")
+        self.assertEqual(wf_love["822"]["inputs"]["lora_2"]["strength"], 0.85)
+        self.assertEqual(wf_love["627"]["inputs"]["text"], "loveless84, fashion runway photo")
+
         # Valerie is SDXL-only and must not inject into Krea 2
         wf_val = prepare_bertflow_workflow(
             prompt="fashion runway photo --valerie.90",
@@ -874,6 +884,10 @@ class TestUiAndViews(unittest.TestCase):
         self.assertEqual(
             resolve_lora_for_architecture("ogarla", Architecture.KREA2),
             "Krea2\\ogarla_krea2.safetensors"
+        )
+        self.assertEqual(
+            resolve_lora_for_architecture("loveless", Architecture.KREA2),
+            "Krea2\\loveless_krea2.safetensors"
         )
         self.assertEqual(
             resolve_lora_for_architecture("valerie", Architecture.SDXL),
@@ -896,17 +910,28 @@ class TestUiAndViews(unittest.TestCase):
         self.assertNotIn("valerie.90", char_values)
         self.assertNotIn("valerie.70", char_values)
         self.assertIn("ogarla.85", char_values)
+        self.assertIn("loveless.85", char_values)
+        self.assertIn("loveless.70", char_values)
 
         # Test BertflowButtons with character
         from views import BertflowButtons
         view_oga = BertflowButtons(generation_id="bert_test_789", character="ogarla.85")
         self.assertEqual(view_oga.toggle_char_btn.label, "🌿 Ogarla: ON")
+        view_love = BertflowButtons(generation_id="bert_test_789", character="loveless.85")
+        self.assertEqual(view_love.toggle_char_btn.label, "⚡ Loveless: ON")
+
+        # Test get_character_display_badge
+        from characters import get_character_display_badge
+        self.assertEqual(get_character_display_badge("loveless.85", architecture="krea2"), "⚡ Loveless (.85 - Default)")
+        self.assertEqual(get_character_display_badge("loveless.70", architecture="krea2"), "⚡ Loveless (.70 - Light)")
 
         # Test CHARACTER_CHOICES_KREA2 for slash commands
         from bot import CHARACTER_CHOICES_KREA2
         choice_vals = [c.value for c in CHARACTER_CHOICES_KREA2]
         self.assertIn("ogarla.85", choice_vals)
         self.assertIn("ogarla.70", choice_vals)
+        self.assertIn("loveless.85", choice_vals)
+        self.assertIn("loveless.70", choice_vals)
         self.assertNotIn("valerie.90", choice_vals)
         self.assertNotIn("valerie.70", choice_vals)
 

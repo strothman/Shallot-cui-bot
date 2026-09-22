@@ -235,6 +235,9 @@ LORA_FAMILY_VARIANTS = {
     "valerie": {
         Architecture.SDXL: "jen_epoch_5.safetensors",
     },
+    "loveless": {
+        Architecture.KREA2: "Krea2\\loveless_krea2.safetensors",
+    },
     "semi-realism": {
         Architecture.SDXL: "Semi-realism_illustrious.safetensors",
         f"{Architecture.SDXL}:{SubType.ILLUSTRIOUS}": "Semi-realism_illustrious.safetensors",
@@ -264,6 +267,11 @@ def resolve_lora_for_architecture(lora_name: str, target_arch: str, target_subty
         if target_arch == Architecture.SDXL:
             return "jen_epoch_5.safetensors"
 
+    # Check Loveless family
+    if "loveless" in clean or "love" == clean.split(".")[0]:
+        if target_arch == Architecture.KREA2 or "krea" in str(target_arch).lower():
+            return "Krea2\\loveless_krea2.safetensors"
+
     # Check Semi-realism family
     if "semi-realism" in clean or "sr" == clean.split(".")[0]:
         if target_arch == Architecture.SDXL:
@@ -285,7 +293,7 @@ def validate_architecture_compatibility(
     _, lora_arch, lora_subtype = detect_model_architecture(lora_name)
 
     # 1. Direct Base Architecture Match
-    if ckpt_arch == lora_arch and ckpt_arch != Architecture.UNKNOWN:
+    if (ckpt_arch == lora_arch or {ckpt_arch, lora_arch} == {Architecture.KREA2, Architecture.LUMINA2}) and ckpt_arch != Architecture.UNKNOWN:
         # Check sub-type soft warnings
         if ckpt_arch == Architecture.SDXL:
             if ckpt_subtype == SubType.PONY and lora_subtype == SubType.ILLUSTRIOUS:

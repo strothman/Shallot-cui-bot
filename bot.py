@@ -53,6 +53,8 @@ CHARACTER_CHOICES_SDXL = [
 CHARACTER_CHOICES_KREA2 = [
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.85 - Default)", value="ogarla.85"),
     app_commands.Choice(name="🌿 Ogarla Krea 2 (.70 - Light)", value="ogarla.70"),
+    app_commands.Choice(name="⚡ Loveless Krea 2 (.85 - Default)", value="loveless.85"),
+    app_commands.Choice(name="⚡ Loveless Krea 2 (.70 - Light)", value="loveless.70"),
 ]
 import db
 import model_architecture

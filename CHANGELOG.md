@@ -4,6 +4,27 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-22]
+
+### Maintenance
+* Component polish: Core slash commands, buttons, and Discord event handlers
+* Component polish: Character system & presets (Valerie, Sully, Ogarla) with privacy protection
+* Component polish: Updated `krea_cog.py`
+* Component polish: Updated `model_architecture.py`
+* Component polish: Updated `workflows.py`
+* Component polish: Updated `audit_loras.py`
+* Component polish: Updated `krea_service.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `blend_krea.py`
+* Component polish: Updated `grid_views.py`
+* Component polish: Updated `runpod_loveless_training_guide.md`
+* Component polish: Updated ``
+* Component polish: Updated `batch_krea_blend_dataset.py`
+* Component polish: Updated `generate_loveless_dataset.py`
+* Component polish: Updated `generate_loveless_delicate_dataset.py`
+* Component polish: Updated `generate_loveless_synthetics.py`
+
+---
 ## [2026-09-20]
 
 ### Maintenance

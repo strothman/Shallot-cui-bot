@@ -354,6 +354,8 @@ class BertflowButtons(discord.ui.View):
             char_label = "🌿 Ogarla: OFF"
         elif "ogarla" in str(character).lower() or "oga" in str(character).lower():
             char_label = "🌿 Ogarla: ON"
+        elif "loveless" in str(character).lower() or "love" in str(character).lower():
+            char_label = "⚡ Loveless: ON"
         else:
             char_label = f"🎭 {character}: ON"
         char_style = discord.ButtonStyle.success if has_char else discord.ButtonStyle.secondary

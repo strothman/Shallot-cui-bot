@@ -51,6 +51,19 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         base_prompt_traits="brown hair, dark brown eyes, realistic skin texture",
         is_private=True
     ),
+    "loveless": CharacterProfile(
+        id="loveless",
+        display_name="Loveless",
+        trained_trigger="loveless84",
+        lora_sdxl=None,
+        lora_flux=None,
+        lora_krea2="Krea2\\loveless_krea2.safetensors",
+        default_weight=0.85,
+        shorthands=["loveless", "love"],
+        description="Loveless character - delicate backless dress aesthetic (Krea 2)",
+        base_prompt_traits="short wavy brown hair, side-swept bangs, backless pink silk wrap dress, high leg slit, bare back, bare legs, delicate and elegant",
+        is_private=False
+    ),
     "sully": CharacterProfile(
         id="sully",
         display_name="Sully",
@@ -233,6 +246,7 @@ def scan_krea2_loras(lora_dir: Optional[str] = None) -> List[str]:
 CHARACTER_EMOJIS: Dict[str, str] = {
     "ogarla": "🌿",
     "valerie": "✨",
+    "loveless": "⚡",
     "sully": "👓",
     "cheri": "🌸",
     "cheri_e4": "🌸",
@@ -272,6 +286,8 @@ def get_character_display_badge(
                 key = "mageill"
             elif "--ogarla" in p_lower or "--oga" in p_lower or "ogarla" in p_lower:
                 key = "ogarla"
+            elif "--loveless" in p_lower or "--love" in p_lower or "loveless" in p_lower:
+                key = "loveless"
             else:
                 return "None"
         else:
@@ -285,6 +301,10 @@ def get_character_display_badge(
             return "🌿 Ogarla (.85 - Default)"
         elif k in ["ogarla.70", "ogarla_light"]:
             return "🌿 Ogarla (.70 - Light)"
+        elif k in ["loveless.85", "loveless", "love"]:
+            return "⚡ Loveless (.85 - Default)"
+        elif k in ["loveless.70", "loveless_light"]:
+            return "⚡ Loveless (.70 - Light)"
         elif k in ["valerie.90", "valerie", "val"]:
             return "✨ Valerie (.90 - Default)"
         elif k in ["valerie.70", "valerie_light"]:
@@ -295,6 +315,9 @@ def get_character_display_badge(
         "ogarla": "🌿 Ogarla (--ogarla.70)",
         "ogarla.70": "🌿 Ogarla (--ogarla.70)",
         "ogarla.85": "🌿 Ogarla (--ogarla.85)",
+        "loveless": "⚡ Loveless (--loveless.85)",
+        "loveless.85": "⚡ Loveless (--loveless.85)",
+        "loveless.70": "⚡ Loveless (--loveless.70)",
         "valerie": "👩 Valerie (--valerie.85)",
         "valerie.85": "👩 Valerie (--valerie.85)",
         "valerie.70": "👩 Valerie (--valerie.70)",

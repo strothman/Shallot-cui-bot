@@ -33,9 +33,9 @@ class KreaCog(commands.Cog):
         description="📸 Generate ultra-photorealistic images using Bert's Krea 2 workflow!"
     )
     @app_commands.describe(
-        prompt="Scene/subject description (supports natural language, --ar, --ogarla, --valerie)",
+        prompt="Scene/subject description (supports natural language, --ar, --ogarla, --loveless)",
         aspect_ratio="Image aspect ratio (1:1, 16:9, 9:16, 21:9, 3:4, etc.)",
-        character="Optional character LoRA preset (Ogarla / Valerie Krea 2)",
+        character="Optional character LoRA preset (Ogarla / Loveless Krea 2)",
         celebrity="Optional favorite celebrity to inject into prompt (Audrey Hepburn, Zendaya, etc.)",
         favorite_prompt="Apply one of your saved favorite prompts",
         model="Select Krea 2 UNET Checkpoint (Auto-detects available model)",

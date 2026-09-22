@@ -169,9 +169,23 @@ class BlendKreaButtons(discord.ui.View):
                 description="Trained Krea 2 Character LoRA (Heavy)",
                 default=(self.character == "ogarla.85")
             ),
+            discord.SelectOption(
+                label="Loveless (Krea 2 - 0.85)",
+                value="loveless.85",
+                emoji="⚡",
+                description="Trained Krea 2 Character LoRA (Default)",
+                default=(self.character in ["loveless", "loveless.85", "love"])
+            ),
+            discord.SelectOption(
+                label="Loveless (Krea 2 Light - 0.70)",
+                value="loveless.70",
+                emoji="⚡",
+                description="Subtle Krea 2 Character LoRA (Light)",
+                default=(self.character in ["loveless.70", "loveless_light"])
+            ),
         ]
         self.add_item(discord.ui.Select(
-            placeholder="🎭 Select Character LoRA (Ogarla)...",
+            placeholder="🎭 Select Character LoRA (Ogarla / Loveless)...",
             options=char_options,
             min_values=1,
             max_values=1,

@@ -182,7 +182,7 @@ def audit_characters():
             meta, arch, status = inspect_safetensors(full_p)
             if status == "FILE_NOT_FOUND":
                 issues.append(f"[Character '{cid}'] Krea2 LoRA '{prof.lora_krea2}' NOT FOUND")
-            elif arch != "KREA2":
+            elif arch not in ("KREA2", "LUMINA2"):
                 issues.append(f"[Character '{cid}'] Krea2 LoRA '{prof.lora_krea2}' has architecture {arch} (expected KREA2)")
             else:
                 print(f"  [PASS] Character '{cid}' Krea2 LoRA: {prof.lora_krea2} [{arch}]")
@@ -219,6 +219,7 @@ def audit_parsers_and_presets():
         ("ogarla", Architecture.SDXL, "SDXL"),
         ("ogarla", Architecture.FLUX, "FLUX"),
         ("ogarla", Architecture.KREA2, "KREA2"),
+        ("loveless", Architecture.KREA2, "KREA2"),
         ("valerie", Architecture.SDXL, "SDXL"),
         ("semi-realism", Architecture.SDXL, "SDXL"),
     ]
@@ -226,9 +227,10 @@ def audit_parsers_and_presets():
         resolved = resolve_lora_for_architecture(name, target_arch)
         full_p = os.path.join(LORAS_DIR, resolved)
         meta, arch, status = inspect_safetensors(full_p)
+        is_match = (arch in ("KREA2", "LUMINA2")) if expected == "KREA2" else (arch == expected)
         if status == "FILE_NOT_FOUND":
             issues.append(f"[Resolver: {name} -> {target_arch}] Resolved file '{resolved}' NOT FOUND")
-        elif arch != expected:
+        elif not is_match:
             issues.append(f"[Resolver: {name} -> {target_arch}] Resolved file '{resolved}' is {arch} (expected {expected})")
         else:
             print(f"  [PASS] Resolver {name:15} -> {target_arch:8}: {resolved:35} [{arch}]")

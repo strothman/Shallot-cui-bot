@@ -460,7 +460,7 @@ async def handle_bertflow_upscale(interaction: discord.Interaction, generation_i
         )
         upscale_embed.add_field(name="📐 Resolution", value=f"`{w}x{h}` ➔ `{new_w}x{new_h}`", inline=True)
         if gen_data and gen_data.get("character") and str(gen_data.get("character")).lower() not in ["none", "nochar", "off"]:
-            upscale_embed.add_field(name="🎭 Character", value="🌿 Ogarla (Krea 2)", inline=True)
+            upscale_embed.add_field(name="🎭 Character", value=get_character_display_badge(gen_data.get("character"), architecture="krea2"), inline=True)
         upscale_embed.set_footer(text=f"Requested by {interaction.user.display_name} • Krea 2 Photorealism")
         upscale_embed.set_image(url=f"attachment://upscale_{generation_id}.png")
 

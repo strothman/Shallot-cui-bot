@@ -749,16 +749,20 @@ def prepare_bertflow_workflow(
             wetness_strength = -0.5
             prompt = re.sub(r'--dewy\b', '', prompt, flags=re.IGNORECASE).strip()
 
-    # Parse character flag from prompt if present (e.g. --ogarla.85, --oga)
+    # Parse character flag from prompt if present (e.g. --ogarla.85, --oga, --loveless.85, --love)
     active_char = character
     char_weight = character_strength
     if prompt:
-        oga_match = re.search(r'--(ogarla|oga)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
-        if oga_match:
-            active_char = "ogarla"
-            if char_weight is None and oga_match.group(2):
-                char_weight = float(oga_match.group(2)) / 100.0 if len(oga_match.group(2)) == 2 else float(f"0.{oga_match.group(2)}")
-            prompt = re.sub(r'--(ogarla|oga)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
+        char_match = re.search(r'--(ogarla|oga|loveless|love)(?:\.(\d+))?\b', prompt, re.IGNORECASE)
+        if char_match:
+            matched_name = char_match.group(1).lower()
+            if matched_name in ["ogarla", "oga"]:
+                active_char = "ogarla"
+            elif matched_name in ["loveless", "love"]:
+                active_char = "loveless"
+            if char_weight is None and char_match.group(2):
+                char_weight = float(char_match.group(2)) / 100.0 if len(char_match.group(2)) == 2 else float(f"0.{char_match.group(2)}")
+            prompt = re.sub(r'--(ogarla|oga|loveless|love)(?:\.\d+)?\b', '', prompt, flags=re.IGNORECASE).strip()
 
     # Parse celebrity flag from prompt if present (e.g. --audrey, --zendaya, --celeb margot)
     active_celeb = celebrity
@@ -785,16 +789,37 @@ def prepare_bertflow_workflow(
     char_trigger = None
     if active_char and str(active_char).lower() not in ["none", "nochar", "off", "false"]:
         c_str = str(active_char).lower()
-        if "ogarla" in c_str or "oga" in c_str:
+        dot_match = re.search(r'\.(\d+)', c_str)
+        extracted_weight = None
+        if dot_match:
+            val = dot_match.group(1)
+            extracted_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
+            char_id_clean = c_str[:dot_match.start()]
+        else:
+            char_id_clean = c_str
+
+        try:
+            from characters import get_character, scan_krea2_loras
+            scan_krea2_loras()
+            char_prof = get_character(char_id_clean) or get_character(c_str)
+        except Exception:
+            char_prof = None
+
+        if char_prof and char_prof.lora_krea2:
+            char_lora_file = char_prof.lora_krea2
+            char_trigger = char_prof.trained_trigger
+            if char_weight is None:
+                char_weight = extracted_weight if extracted_weight is not None else char_prof.default_weight
+        elif "ogarla" in c_str or "oga" in c_str:
             char_lora_file = "Krea2\\ogarla_krea2.safetensors"
             char_trigger = "ogarla"
             if char_weight is None:
-                dot_match = re.search(r'\.(\d+)', c_str)
-                if dot_match:
-                    val = dot_match.group(1)
-                    char_weight = float(val) / 100.0 if len(val) == 2 else float(f"0.{val}")
-                else:
-                    char_weight = 0.70
+                char_weight = extracted_weight if extracted_weight is not None else 0.70
+        elif "loveless" in c_str or "love" in c_str:
+            char_lora_file = "Krea2\\loveless_krea2.safetensors"
+            char_trigger = "loveless84"
+            if char_weight is None:
+                char_weight = extracted_weight if extracted_weight is not None else 0.85
 
     # Inject trigger word into prompt if needed
     cleaned_prompt = prompt or ""
