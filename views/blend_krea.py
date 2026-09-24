@@ -15,7 +15,9 @@ def build_blend_krea_embed(gen_data: dict, author_str: str = "User", image_url: 
     vision_prompt = gen_data.get("krea2_prompt") or gen_data.get("detailed_caption", "No description")
     user_prompt = gen_data.get("user_prompt", "").strip()
     fused_prompt = gen_data.get("fused_prompt") or vision_prompt
-    ar = gen_data.get("ar", "16:9")
+    raw_ar = str(gen_data.get("ar", "16:9")).strip()
+    trunc_map = {"16": "16:9", "21": "21:9", "9": "9:16", "3": "3:4", "4": "4:3", "1": "1:1"}
+    ar = trunc_map.get(raw_ar, raw_ar)
     steps = int(gen_data.get("steps", 8))
     model_choice = gen_data.get("model_choice", "muse")
     wetness = float(gen_data.get("wetness", -2.0))
@@ -86,7 +88,9 @@ class BlendKreaButtons(discord.ui.View):
     def __init__(self, generation_id: str, ar: str = "16:9", model_choice: str = "muse", wetness: float = -2.0, composition: str = "off", character: str = "none", celebrity: str = "none", steps: int = 8):
         super().__init__(timeout=None)
         self.generation_id = generation_id
-        self.ar = ar
+        raw_ar = str(ar or "16:9").strip()
+        trunc_map = {"16": "16:9", "21": "21:9", "9": "9:16", "3": "3:4", "4": "4:3", "1": "1:1"}
+        self.ar = trunc_map.get(raw_ar, raw_ar)
         self.model_choice = model_choice
         self.wetness = wetness
         self.composition = composition or "off"

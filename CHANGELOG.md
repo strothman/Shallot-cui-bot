@@ -4,25 +4,50 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
-## [2026-09-22]
+## [2026-09-24]
+
+### Fixed
+* 📐 **`/blend-krea` Aspect Ratio Execution & Selection**:
+  * Fixed custom ID parsing in `services/interaction_dispatcher.py` under `set_blend_krea_ar:`, where splitting on colons truncated aspect ratio strings (e.g. `21:9` became `21`), causing dimension resolution to fail and silently fall back to `1:1` (1224x1224).
+  * Added backward-compatible truncated aspect ratio normalization (`"16"` -> `16:9`, `"21"` -> `21:9`, `"9"` -> `9:16`, `"3"` -> `3:4`, `"4"` -> `4:3`, `"1"` -> `1:1`) in `parsers/dimensions.py`, `views/blend_krea.py`, and `services/krea_service.py` to safeguard existing active sessions.
+  * Added `--ar` prompt extraction support in `execute_blend_krea_core` and `handle_submit_edit_blend_krea_prompt` so typing `--ar <ratio>` in slash command prompts or the "Edit Prompt" modal immediately applies the ratio to the studio view and output generation.
+
+### Added
+* 📐 **`/blend-krea` Aspect Ratio Parameter**:
+  * Added optional `aspect_ratio` parameter to the `/blend-krea` slash command in [`cogs/krea_cog.py`](cogs/krea_cog.py) with options for `Auto` (source image detection), `1:1`, `16:9`, `9:16`, `21:9`, `3:4`, `4:3`, and `16:9.3`, allowing direct aspect ratio selection upon invocation.
 
 ### Maintenance
-* Component polish: Core slash commands, buttons, and Discord event handlers
-* Component polish: Character system & presets (Valerie, Sully, Ogarla) with privacy protection
-* Component polish: Updated `krea_cog.py`
-* Component polish: Updated `model_architecture.py`
-* Component polish: Updated `workflows.py`
-* Component polish: Updated `audit_loras.py`
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Updated `core_helpers.py`
+* Component polish: Updated `blend_generation_service.py`
 * Component polish: Updated `krea_service.py`
+* Component polish: Updated `vision_service.py`
 * Component polish: Updated `test_ui_and_views.py`
-* Component polish: Updated `blend_krea.py`
-* Component polish: Updated `grid_views.py`
-* Component polish: Updated `runpod_loveless_training_guide.md`
-* Component polish: Updated ``
-* Component polish: Updated `batch_krea_blend_dataset.py`
-* Component polish: Updated `generate_loveless_dataset.py`
-* Component polish: Updated `generate_loveless_delicate_dataset.py`
-* Component polish: Updated `generate_loveless_synthetics.py`
+
+---
+## [2026-09-23]
+
+### Maintenance
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Updated `core_helpers.py`
+* Component polish: Updated `blend_generation_service.py`
+* Component polish: Updated `krea_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_ui_and_views.py`
+
+---
+## [2026-09-22]
+
+### Added
+* **Add native Loveless Krea 2 character LoRA, workflows, and training tools**
+
+### Maintenance
+* Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
+* Component polish: Updated `core_helpers.py`
+* Component polish: Updated `blend_generation_service.py`
+* Component polish: Updated `krea_service.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_ui_and_views.py`
 
 ---
 ## [2026-09-20]

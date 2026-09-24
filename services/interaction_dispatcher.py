@@ -384,7 +384,7 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
             parts = custom_id.split(":")
             if len(parts) >= 3:
                 gen_id = parts[1]
-                val = parts[2]
+                val = ":".join(parts[2:])
                 handler = _resolve_handler("handle_update_blend_krea_view", handle_update_blend_krea_view)
                 await handler(interaction, gen_id, new_ar=val)
                 return True

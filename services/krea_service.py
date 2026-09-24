@@ -25,6 +25,8 @@ from parsers import (
     expand_dynamic_prompt,
     fuse_krea2_blend_prompt,
     parse_gamble_prompt,
+    RE_ASPECT_RATIO,
+    TRUNCATED_BERTFLOW_AR_MAP,
 )
 from characters import get_character_display_badge
 from celebrities import get_celebrity_display_badge
@@ -134,6 +136,7 @@ async def execute_bertflow(
         generation_id = f"bert_{int(time.time())}_{actual_seed}"
     status_msg = status_msg_ref if status_msg_ref else [None]
     last_update_time = [0.0]
+    last_presence_time = [0.0]
 
     init_bar = create_progress_bar(0, steps)
     comp_line = f" | **Comp:** `{comp_strength.title()}`" if init_image_name and comp_strength != "off" else ""
@@ -164,7 +167,10 @@ async def execute_bertflow(
     async def on_bertflow_progress(val, max_val):
         percent = min(100, int((val / max_val) * 100)) if max_val > 0 else 0
         presence_str = f"📸 Bertflow: {percent}% (Step {val}/{max_val})"
-        asyncio.create_task(update_bot_presence(presence_str))
+        now = time.time()
+        if now - last_presence_time[0] >= 15.0 or val >= max_val:
+            last_presence_time[0] = now
+            asyncio.create_task(update_bot_presence(presence_str))
 
         now = time.time()
         if now - last_update_time[0] >= 1.5 or val >= max_val:
@@ -483,13 +489,20 @@ async def handle_update_blend_krea_view(
     new_celeb: str = None
 ):
     """Updates interactive buttons and embed for a /blend-krea session."""
+    # Immediately acknowledge interaction to beat Discord's 3-second hard deadline
+    await safe_defer(interaction, thinking=False, ephemeral=False)
+
     gen_data = db.get_generation(generation_id)
     if not gen_data:
-        await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
+        if interaction.response.is_done():
+            await send_followup_fallback(interaction, "⚠️ Blend session data expired.", ephemeral=True)
+        else:
+            await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
         return
 
     if new_ar:
-        gen_data["ar"] = new_ar
+        clean_ar = str(new_ar).strip()
+        gen_data["ar"] = TRUNCATED_BERTFLOW_AR_MAP.get(clean_ar, clean_ar)
     if new_steps is not None:
         gen_data["steps"] = int(new_steps)
     if new_model:
@@ -522,7 +535,10 @@ async def handle_update_blend_krea_view(
         steps=int(gen_data.get("steps", 8))
     )
     try:
-        await interaction.response.edit_message(embed=embed, view=view)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            await interaction.response.edit_message(embed=embed, view=view)
     except (discord.NotFound, discord.HTTPException) as e:
         logger.debug(f"Ignored update error: {e}")
 
@@ -534,8 +550,19 @@ async def handle_submit_edit_blend_krea_prompt(interaction: discord.Interaction,
         await interaction.response.send_message("⚠️ Blend session data expired.", ephemeral=True)
         return
 
-    gen_data["fused_prompt"] = new_prompt
-    gen_data["user_prompt"] = new_prompt
+    # Check if the user entered an aspect ratio flag in the prompt editor (e.g. --ar 21:9 or --16:9)
+    cleaned_input = new_prompt or ""
+    m_ar = list(RE_ASPECT_RATIO.finditer(cleaned_input))
+    if m_ar:
+        last_m = m_ar[-1]
+        x_str = last_m.group(1)
+        y_str = last_m.group(2)
+        candidate_ar = f"{x_str}:{y_str}" if y_str else f"{x_str}:1"
+        gen_data["ar"] = TRUNCATED_BERTFLOW_AR_MAP.get(candidate_ar, candidate_ar)
+        cleaned_input = RE_ASPECT_RATIO.sub('', cleaned_input).strip()
+
+    gen_data["fused_prompt"] = cleaned_input
+    gen_data["user_prompt"] = cleaned_input
     db.save_generation(generation_id, gen_data)
 
     embed = build_blend_krea_embed(gen_data, author_str=gen_data.get("author_str", "User"), image_url=gen_data.get("image_url"))
@@ -561,7 +588,8 @@ async def handle_generate_blend_krea(interaction: discord.Interaction, generatio
         return
 
     fused_prompt = gen_data.get("fused_prompt") or gen_data.get("krea2_prompt")
-    ar = gen_data.get("ar", "16:9")
+    raw_ar = str(gen_data.get("ar", "16:9")).strip()
+    ar = TRUNCATED_BERTFLOW_AR_MAP.get(raw_ar, raw_ar)
     steps = int(gen_data.get("steps", 8))
     model_choice = gen_data.get("model_choice", "muse")
     wetness = float(gen_data.get("wetness", -2.0))
@@ -623,6 +651,15 @@ async def execute_blend_krea_core(
         detailed_caption = vision_res.get("detailed_caption") or raw_krea2_prompt
 
         resolved_ar = aspect_ratio
+        if (not resolved_ar or str(resolved_ar).lower() == "auto") and prompt:
+            m_ar = list(RE_ASPECT_RATIO.finditer(prompt))
+            if m_ar:
+                last_m = m_ar[-1]
+                x_str = last_m.group(1)
+                y_str = last_m.group(2)
+                resolved_ar = f"{x_str}:{y_str}" if y_str else f"{x_str}:1"
+                prompt = RE_ASPECT_RATIO.sub('', prompt).strip()
+
         if not resolved_ar or str(resolved_ar).lower() == "auto":
             try:
                 with Image.open(io.BytesIO(image_bytes)) as pil_img:
@@ -631,6 +668,9 @@ async def execute_blend_krea_core(
             except Exception as e:
                 logger.debug(f"Could not auto-detect AR: {e}")
                 resolved_ar = "16:9"
+
+        clean_resolved_ar = str(resolved_ar).strip()
+        resolved_ar = TRUNCATED_BERTFLOW_AR_MAP.get(clean_resolved_ar, clean_resolved_ar)
 
         fused_prompt = fuse_krea2_blend_prompt(raw_krea2_prompt, prompt)
 

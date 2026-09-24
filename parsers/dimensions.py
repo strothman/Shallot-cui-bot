@@ -81,25 +81,62 @@ def calculate_wan_dimensions(orig_w: int, orig_h: int, target_area: int = 399360
     return w, h
 
 
+TRUNCATED_BERTFLOW_AR_MAP = {
+    "16": "16:9",
+    "21": "21:9",
+    "9": "9:16",
+    "3": "3:4",
+    "4": "4:3",
+    "1": "1:1",
+}
+
+
 def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tuple[str, int, int]:
     """
     Resolves dimensions for Bertflow (Krea 2 Turbo).
     Target base resolution is ~1.5M pixels (1224x1224).
     Returns (cleaned_prompt, width, height).
     """
-    clean_p = prompt
-    if aspect_ratio_str and aspect_ratio_str in BERTFLOW_ASPECT_RATIOS:
-        w, h = BERTFLOW_ASPECT_RATIOS[aspect_ratio_str]
-        return clean_p, w, h
+    clean_p = prompt or ""
+    effective_ar = aspect_ratio_str
+    if effective_ar:
+        clean_ar = str(effective_ar).strip()
+        if clean_ar in TRUNCATED_BERTFLOW_AR_MAP:
+            clean_ar = TRUNCATED_BERTFLOW_AR_MAP[clean_ar]
+        if clean_ar in BERTFLOW_ASPECT_RATIOS:
+            w, h = BERTFLOW_ASPECT_RATIOS[clean_ar]
+            clean_p = RE_ASPECT_RATIO.sub('', clean_p)
+            clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
+            return clean_p, w, h
 
-    matches = list(RE_ASPECT_RATIO.finditer(prompt))
+        m = re.match(r'^(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$', clean_ar)
+        if m:
+            try:
+                x = float(m.group(1))
+                y = float(m.group(2))
+                if x > 0 and y > 0:
+                    ratio = x / y
+                    base_area = 1498176  # 1224 * 1224
+                    target_h = math.sqrt(base_area / ratio)
+                    target_w = ratio * target_h
+                    w = int(round(target_w / 8) * 8)
+                    h = int(round(target_h / 8) * 8)
+                    w = max(512, min(w, 2048))
+                    h = max(512, min(h, 2048))
+                    clean_p = RE_ASPECT_RATIO.sub('', clean_p)
+                    clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
+                    return clean_p, w, h
+            except Exception as e:
+                logger.error(f"Error parsing custom Bertflow aspect ratio string '{clean_ar}': {e}")
+
+    matches = list(RE_ASPECT_RATIO.finditer(clean_p))
     if matches:
         ar_match = matches[-1]
         try:
             x = float(ar_match.group(1))
             y_val = ar_match.group(2)
             y = float(y_val) if y_val else 1.0
-            clean_p = RE_ASPECT_RATIO.sub('', prompt)
+            clean_p = RE_ASPECT_RATIO.sub('', clean_p)
             clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
             if x > 0 and y > 0:
                 ratio = x / y
@@ -112,6 +149,6 @@ def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tu
                 h = max(512, min(h, 2048))
                 return clean_p, w, h
         except Exception as e:
-            logger.error(f"Error parsing Bertflow aspect ratio: {e}")
+            logger.error(f"Error parsing Bertflow aspect ratio from prompt: {e}")
 
     return clean_p, 1224, 1224

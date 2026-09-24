@@ -250,6 +250,9 @@ def build_blend_workflow(
 
 async def handle_update_blend_view(interaction: discord.Interaction, generation_id: str, new_ar: str = None, new_sr = None, new_oga: bool = None, new_model: str = None, new_comp: str = None, new_sref = None, new_char: str = None, tab: str = None):
     """Updates the interactive buttons and settings on the /blend result embed."""
+    # Immediately acknowledge interaction to beat Discord's 3-second hard deadline
+    await safe_defer(interaction, thinking=False, ephemeral=False)
+
     gen_data = get_generation(generation_id) or {}
     if new_ar is not None:
         gen_data["ar"] = new_ar
@@ -293,7 +296,10 @@ async def handle_update_blend_view(interaction: discord.Interaction, generation_
         user_favorites=user_favs
     )
     try:
-        await interaction.response.edit_message(embed=embed, view=view)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            await interaction.response.edit_message(embed=embed, view=view)
     except (discord.NotFound, discord.HTTPException) as e:
         logger.debug(f"Ignored expected interaction update error: {e}")
 

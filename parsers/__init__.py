@@ -7,6 +7,7 @@ Re-exports all public APIs for 100% backward compatibility.
 from parsers.dimensions import (
     RE_ASPECT_RATIO,
     BERTFLOW_ASPECT_RATIOS,
+    TRUNCATED_BERTFLOW_AR_MAP,
     parse_aspect_ratio,
     calculate_wan_dimensions,
     resolve_bertflow_dimensions,
@@ -101,6 +102,7 @@ __all__ = [
     # dimensions
     "RE_ASPECT_RATIO",
     "BERTFLOW_ASPECT_RATIOS",
+    "TRUNCATED_BERTFLOW_AR_MAP",
     "parse_aspect_ratio",
     "calculate_wan_dimensions",
     "resolve_bertflow_dimensions",

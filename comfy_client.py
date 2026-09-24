@@ -179,7 +179,7 @@ class ComfyClient:
             max_val = msg_data.get("max")
             node_id = msg_data.get("node")
             if val is not None and max_val is not None:
-                db.set_live_status(step=val, max_steps=max_val, node_id=node_id, prompt_id=prompt_id)
+                asyncio.create_task(asyncio.to_thread(db.set_live_status, val, max_val, node_id, None, prompt_id))
             if prompt_id in self.timings:
                 now = time.monotonic()
                 if self.timings[prompt_id]["first_step"] is None:
@@ -197,7 +197,7 @@ class ComfyClient:
 
         elif msg_type == "executing" and msg_data.get("node") is None:
             # Execution finished (this event sends node=None when finished)
-            db.clear_live_status()
+            asyncio.create_task(asyncio.to_thread(db.clear_live_status))
             now = time.monotonic()
             if prompt_id in self.timings:
                 t = self.timings.pop(prompt_id)
@@ -224,7 +224,7 @@ class ComfyClient:
                 self.results[prompt_id][node_id] = node_output
 
         elif msg_type == "execution_error":
-            db.clear_live_status()
+            asyncio.create_task(asyncio.to_thread(db.clear_live_status))
             node_id = msg_data.get("node_id")
             node_type = msg_data.get("node_type")
             err_msg = msg_data.get("exception_message", "Unknown error")
@@ -244,7 +244,7 @@ class ComfyClient:
                 self.futures.pop(prompt_id, None)
 
         elif msg_type == "execution_interrupted":
-            db.clear_live_status()
+            asyncio.create_task(asyncio.to_thread(db.clear_live_status))
             err_obj = Exception("ComfyUI execution was interrupted.")
             error_handler.log_error(
                 err_obj,

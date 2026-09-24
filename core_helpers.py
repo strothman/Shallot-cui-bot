@@ -11,6 +11,7 @@ import subprocess
 import aiohttp
 import discord
 import datetime
+import time
 from config import (
     COMFYUI_ADDRESS,
     COMFYUI_BATCH_PATH,
@@ -65,7 +66,9 @@ async def safe_defer(interaction: discord.Interaction, thinking: bool = False, e
     for attempt in range(3):
         if not interaction.response.is_done():
             try:
-                await interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
+                res = interaction.response.defer(thinking=thinking, ephemeral=ephemeral)
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    await res
                 return
             except (discord.NotFound, discord.HTTPException) as e:
                 if attempt < 2:
@@ -345,12 +348,27 @@ def update_console_title(status_text: str = None):
         pass
 
 
-async def update_bot_presence(status_text: str = None):
-    """Updates bot activity presence in the server user sidebar and console window title."""
+_last_presence_update_ts: float = 0.0
+PRESENCE_THROTTLE_SECONDS: float = 15.0
+
+
+async def update_bot_presence(status_text: str = None, force: bool = False):
+    """Updates bot activity presence in the server user sidebar and console window title.
+    Enforces a 15s throttle on Discord Gateway change_presence calls to prevent connection drops,
+    while immediately updating the Windows console title bar.
+    """
+    global _last_presence_update_ts
     update_console_title(status_text)
     bot = get_active_bot()
     if not bot or not bot.is_ready():
         return
+
+    now = time.time()
+    # Always allow reset to idle/None, or forced updates, otherwise enforce rate-limit
+    if status_text is not None and not force and (now - _last_presence_update_ts < PRESENCE_THROTTLE_SECONDS):
+        return
+
+    _last_presence_update_ts = now
     try:
         if status_text:
             activity = discord.Activity(type=discord.ActivityType.custom, name="Custom Status", state=status_text)

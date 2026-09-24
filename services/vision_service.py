@@ -653,9 +653,14 @@ async def handle_generate_described(interaction: discord.Interaction, generation
 
 async def handle_update_describe_view(interaction: discord.Interaction, generation_id: str, new_ar: str, new_sr = True, new_oga: bool = False, new_model: str = "hyphoria"):
     """Updates the interactive buttons on the /describe result embed when AR, SR, Ogarla, or Model toggle is clicked."""
+    # Immediately acknowledge interaction to beat Discord's 3-second hard deadline
+    await safe_defer(interaction, thinking=False, ephemeral=False)
     view = DescribeButtons(generation_id, ar=new_ar, sr=new_sr, oga=new_oga, model_choice=new_model)
     try:
-        await interaction.response.edit_message(view=view)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(view=view)
+        else:
+            await interaction.response.edit_message(view=view)
     except (discord.NotFound, discord.HTTPException) as e:
         logger.debug(f"Ignored expected interaction update error: {e}")
 

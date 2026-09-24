@@ -127,11 +127,22 @@ class KreaCog(commands.Cog):
     )
     @app_commands.describe(
         image="The image file you want to analyze and blend with Krea 2",
+        aspect_ratio="Image aspect ratio (Auto-detects from image, or choose 1:1, 16:9, 21:9, etc.)",
         steps="Sampling steps (8 for Turbo, 10-16 for macro/close-up details)",
         prompt="Optional extra instructions or details to blend into vision prompt",
         vision_model="Vision model for analysis (Qwen2.5-VL fast default, JoyCaption for uncensored NSFW)"
     )
     @app_commands.choices(
+        aspect_ratio=[
+            app_commands.Choice(name="📐 Auto (Detect from source image)", value="auto"),
+            app_commands.Choice(name="1:1 (Square - 1224x1224 Native)", value="1:1"),
+            app_commands.Choice(name="16:9 (Landscape - 1632x920)", value="16:9"),
+            app_commands.Choice(name="9:16 (Portrait - 920x1632)", value="9:16"),
+            app_commands.Choice(name="21:9 (Cinematic Ultrawide - 1872x800)", value="21:9"),
+            app_commands.Choice(name="3:4 (Classic Portrait - 1056x1408)", value="3:4"),
+            app_commands.Choice(name="4:3 (Classic Landscape - 1408x1056)", value="4:3"),
+            app_commands.Choice(name="16:9.3 (Taskbar Fit - 1632x880)", value="16:9.3"),
+        ],
         vision_model=[
             app_commands.Choice(name="📸 Qwen2.5-VL (Fast Photorealism - Default)", value="qwen2.5-vl"),
             app_commands.Choice(name="🧠 JoyCaption (Best for NSFW / Uncensored Erotica)", value="joycaption"),
@@ -142,6 +153,7 @@ class KreaCog(commands.Cog):
         self,
         interaction: discord.Interaction,
         image: discord.Attachment,
+        aspect_ratio: str = None,
         steps: int = 8,
         prompt: str = None,
         vision_model: app_commands.Choice[str] = None
@@ -170,6 +182,7 @@ class KreaCog(commands.Cog):
                 image_url=image.url,
                 prompt=prompt,
                 steps=steps,
+                aspect_ratio=aspect_ratio,
                 vision_engine=chosen_engine,
                 client=client
             )

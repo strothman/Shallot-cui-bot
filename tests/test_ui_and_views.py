@@ -1921,6 +1921,139 @@ class TestUiAndViews(unittest.TestCase):
             asyncio.run(on_interaction(mock_nondynamic_inter))
             mock_dispatch.assert_called_once_with(mock_nondynamic_inter)
 
+    def test_blend_krea_view_safe_defer(self):
+        """Verify handle_update_blend_krea_view defers immediately and edits original response."""
+        from services.krea_service import handle_update_blend_krea_view
+        gen_id = "test_krea_defer_verify"
+        db.save_generation(gen_id, {
+            "ar": "16:9",
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "composition": "off",
+            "char_choice": "none",
+            "celeb_choice": "none",
+            "steps": 8
+        })
+
+        mock_inter = MagicMock()
+        mock_inter.response.is_done.return_value = False
+        mock_inter.response.defer = AsyncMock()
+        mock_inter.edit_original_response = AsyncMock()
+        mock_inter.response.edit_message = AsyncMock()
+
+        # Simulate defer making is_done True
+        def make_done(*args, **kwargs):
+            mock_inter.response.is_done.return_value = True
+        mock_inter.response.defer.side_effect = make_done
+
+        asyncio.run(handle_update_blend_krea_view(mock_inter, gen_id, new_comp="subtle"))
+        mock_inter.response.defer.assert_called_once_with(thinking=False, ephemeral=False)
+        mock_inter.edit_original_response.assert_called_once()
+        self.assertEqual(db.get_generation(gen_id)["composition"], "subtle")
+
+    def test_update_bot_presence_throttling(self):
+        """Verify update_bot_presence enforces 15s throttle on Discord gateway change_presence."""
+        from core_helpers import update_bot_presence, PRESENCE_THROTTLE_SECONDS, set_active_bot
+        import core_helpers
+
+        mock_bot = MagicMock()
+        mock_bot.is_ready.return_value = True
+        mock_bot.change_presence = AsyncMock()
+        set_active_bot(mock_bot)
+
+        # Reset throttle tracker
+        core_helpers._last_presence_update_ts = 0.0
+
+        # First call should fire
+        asyncio.run(update_bot_presence("📸 Step 1/10"))
+        self.assertEqual(mock_bot.change_presence.call_count, 1)
+
+        # Second call immediately after should be throttled (call count stays 1)
+        asyncio.run(update_bot_presence("📸 Step 2/10"))
+        self.assertEqual(mock_bot.change_presence.call_count, 1)
+
+        # Force call or None (idle reset) should bypass throttle
+        asyncio.run(update_bot_presence(None))
+        self.assertEqual(mock_bot.change_presence.call_count, 2)
+
+    def test_blend_krea_aspect_ratio_button_dispatch_and_execution(self):
+        """Verify clicking AR buttons in /blend-krea preserves full ratio (e.g. 21:9) and generates non-1:1."""
+        from services.interaction_dispatcher import dispatch_interaction
+        from services.krea_service import handle_generate_blend_krea
+        from parsers import resolve_bertflow_dimensions
+        import discord
+        import db
+
+        gen_id = "test_krea_ar_dispatch"
+        db.save_generation(gen_id, {
+            "ar": "1:1",
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "composition": "off",
+            "char_choice": "none",
+            "celeb_choice": "none",
+            "steps": 8,
+            "fused_prompt": "Cinematic portrait of an astronaut",
+            "uploaded_image_name": "test_upload.png"
+        })
+
+        # 1. Dispatch set_blend_krea_ar for 21:9
+        mock_inter = MagicMock()
+        mock_inter.type = discord.InteractionType.component
+        mock_inter.data = {"custom_id": f"set_blend_krea_ar:{gen_id}:21:9"}
+        mock_inter.response.is_done.return_value = True
+        mock_inter.edit_original_response = AsyncMock()
+
+        dispatched = asyncio.run(dispatch_interaction(mock_inter))
+        self.assertTrue(dispatched)
+
+        # Verify DB updated to "21:9", NOT "21"
+        saved = db.get_generation(gen_id)
+        self.assertEqual(saved["ar"], "21:9")
+
+        # 2. Test dimensions resolution for 21:9
+        p_clean, w, h = resolve_bertflow_dimensions(saved["fused_prompt"], saved["ar"])
+        self.assertEqual((w, h), (1872, 800))
+        self.assertNotEqual((w, h), (1224, 1224))
+
+        # 3. Test truncated legacy fallback ("21" -> 21:9, "16" -> 16:9)
+        self.assertEqual(resolve_bertflow_dimensions("test", "21")[1:], (1872, 800))
+        self.assertEqual(resolve_bertflow_dimensions("test", "16")[1:], (1632, 920))
+        self.assertEqual(resolve_bertflow_dimensions("test", "9")[1:], (920, 1632))
+        self.assertEqual(resolve_bertflow_dimensions("test", "3")[1:], (1056, 1408))
+
+        # 4. Verify handle_generate_blend_krea forwards the 21:9 aspect ratio to execute_bertflow
+        with patch("services.krea_service.execute_bertflow", new=AsyncMock()) as mock_exec:
+            asyncio.run(handle_generate_blend_krea(mock_inter, gen_id))
+            mock_exec.assert_called_once()
+            call_kwargs = mock_exec.call_args.kwargs
+            self.assertEqual(call_kwargs["aspect_ratio"], "21:9")
+
+    def test_blend_krea_prompt_ar_extraction(self):
+        """Verify editing prompt or providing prompt with --ar extracts AR and updates session."""
+        from services.krea_service import handle_submit_edit_blend_krea_prompt
+        import db
+
+        gen_id = "test_krea_prompt_ar"
+        db.save_generation(gen_id, {
+            "ar": "1:1",
+            "model_choice": "muse",
+            "wetness": -2.0,
+            "composition": "off",
+            "char_choice": "none",
+            "celeb_choice": "none",
+            "steps": 8,
+            "fused_prompt": "Initial prompt"
+        })
+
+        mock_inter = MagicMock()
+        mock_inter.response.edit_message = AsyncMock()
+
+        asyncio.run(handle_submit_edit_blend_krea_prompt(mock_inter, gen_id, "A neon cyber city --ar 16:9"))
+        saved = db.get_generation(gen_id)
+        self.assertEqual(saved["ar"], "16:9")
+        self.assertEqual(saved["fused_prompt"], "A neon cyber city")
+
 
 if __name__ == '__main__':
     unittest.main()
