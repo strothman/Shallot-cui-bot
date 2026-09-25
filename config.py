@@ -126,31 +126,31 @@ CHECKPOINT_CONFIGS = {
         "display_name": "Hyphoria Real Illu v0.9",
         "architecture": "sdxl",
         "sub_type": "illustrious",
-        "sampler_name": "euler_ancestral",
-        "scheduler": "normal",
-        "steps": 28,
-        "cfg": 6.0,
-        "negative_addon": "bad quality, blurry, cgi, illustration",
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "steps": 35,
+        "cfg": 4.0,
+        "negative_addon": "worst quality, low quality, blurry, bad anatomy, bad hands, deformed, lowres",
     },
     "hyphoriaIlluNAI_v001.safetensors": {
         "display_name": "Hyphoria NAI",
         "architecture": "sdxl",
         "sub_type": "illustrious",
-        "sampler_name": "euler_ancestral",
-        "scheduler": "normal",
-        "steps": 28,
-        "cfg": 6.0,
-        "negative_addon": "bad quality, blurry, cgi, illustration",
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "steps": 35,
+        "cfg": 4.0,
+        "negative_addon": "worst quality, low quality, blurry, bad anatomy, bad hands, deformed, lowres",
     },
     "illustriousRealismBy_v10VAE.safetensors": {
         "display_name": "Illustrious Realism v1.0",
         "architecture": "sdxl",
         "sub_type": "illustrious",
-        "sampler_name": "dpmpp_2m_sde",
+        "sampler_name": "dpmpp_2m",
         "scheduler": "karras",
-        "steps": 30,
-        "cfg": 5.0,
-        "negative_addon": "anime, drawing, cartoon, cgi, lowres",
+        "steps": 35,
+        "cfg": 4.0,
+        "negative_addon": "worst quality, low quality, blurry, bad anatomy, bad hands, deformed, lowres",
     },
     "ponyDiffusionV6XL_v6StartWithThisOne.safetensors": {
         "display_name": "Pony Diffusion V6 XL",
@@ -176,11 +176,21 @@ CHECKPOINT_CONFIGS = {
         "display_name": "Wai Illustrious SDXL v1.70",
         "architecture": "sdxl",
         "sub_type": "illustrious",
-        "sampler_name": "dpmpp_2m_sde",
+        "sampler_name": "dpmpp_2m",
         "scheduler": "karras",
-        "steps": 30,
-        "cfg": 5.0,
-        "negative_addon": "anime, anime girl, manga, comic, cartoon, cel shaded, lineart, drawing, illustration, 2d, 3d cgi render, sketch, anime face, big eyes, flat shading, bad quality, blurry, distorted anatomy, bad hands, lowres",
+        "steps": 35,
+        "cfg": 3.5,
+        "negative_addon": "worst quality, low quality, blurry, distorted anatomy, bad hands, deformed, bad eyes, extra limbs, lowres",
+    },
+    "novaFurryXL_ilV180A.safetensors": {
+        "display_name": "Nova Furry XL v1.8",
+        "architecture": "sdxl",
+        "sub_type": "illustrious",
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "steps": 35,
+        "cfg": 4.0,
+        "negative_addon": "worst quality, low quality, blurry, bad anatomy, bad hands, extra limbs, deformed, lowres",
     }
 }
 
@@ -204,8 +214,8 @@ class PipelineDefaults:
     # Variation / Img2Img Denoise Profiles
     VARIATION_DENOISE_VERY_HIGH: float = 0.95
     VARIATION_DENOISE_HIGH_CHANGE: float = 0.85     # low similarity
-    VARIATION_DENOISE_MED_CHANGE: float = 0.70      # med similarity
-    VARIATION_DENOISE_SUBTLE_CHANGE: float = 0.55   # high similarity
+    VARIATION_DENOISE_MED_CHANGE: float = 0.60      # med similarity (calibrated with winning star board 0.60)
+    VARIATION_DENOISE_SUBTLE_CHANGE: float = 0.50   # high similarity
 
     VARIATION_DENOISE_MAP = {
         "low": VARIATION_DENOISE_HIGH_CHANGE,
@@ -214,9 +224,9 @@ class PipelineDefaults:
     }
 
     # Sampler Defaults
-    DEFAULT_STEPS_SDXL: int = 30
+    DEFAULT_STEPS_SDXL: int = 35
     DEFAULT_STEPS_FLUX: int = 20
-    DEFAULT_CFG_SDXL: float = 5.0
+    DEFAULT_CFG_SDXL: float = 4.0
     DEFAULT_CFG_FLUX: float = 1.0
 
 

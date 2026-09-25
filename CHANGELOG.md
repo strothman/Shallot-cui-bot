@@ -15,13 +15,28 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ### Added
 * 📐 **`/blend-krea` Aspect Ratio Parameter**:
   * Added optional `aspect_ratio` parameter to the `/blend-krea` slash command in [`cogs/krea_cog.py`](cogs/krea_cog.py) with options for `Auto` (source image detection), `1:1`, `16:9`, `9:16`, `21:9`, `3:4`, `4:3`, and `16:9.3`, allowing direct aspect ratio selection upon invocation.
+* 🎨 **Illustrative & 2D Art Style Support for Krea 2 / Bertflow**:
+  * Updated [`workflows/DESCRIBE_qwen_vl.json`](workflows/DESCRIBE_qwen_vl.json) vision interrogation prompt from forcing "photograph" and photographic prose to actively recognizing and preserving artistic mediums (2D digital illustration, anime/manga, painterly concept art, oil painting) and visual styles.
+  * Added `--illustrative`, `--anime`, `--painterly`, and `--nowet` prompt shorthand flags in [`parsers/workflows.py`](parsers/workflows.py) (`prepare_bertflow_workflow`) to automatically disable the photorealistic skin pore LoRA (`wetness_krea2_loraholic.safetensors`) and inject non-photorealistic stylized illustrative guidance tokens.
+* 🌟 **SDXL / Illustrious Alignment with Top-Voted Star Board Images**:
+  * **Checkpoint Settings Restored**: Aligned `waiIllustriousSDXL_v170.safetensors`, `hyphoriaIlluNAI_v001.safetensors`, `hyphoriaRealIllu_v09.safetensors`, and `novaFurryXL_ilV180A.safetensors` in [`config.py`](config.py) to use `dpmpp_2m` (deterministic Karras), 35 steps, and calibrated CFG 3.5–4.0, eliminating stochastic SDE haze and digital flatness.
+  * **Negative Prompt Sanitization**: Removed anti-illustration tokens (`anime`, `comic`, `cartoon`, `illustration`, `drawing`, `lineart`, `2d`) from Illustrious checkpoint negative addons, preventing models from self-sabotaging their own artistic stylization.
+  * **Decoupled IPAdapter Double-Stranglehold in `/blend-sdxl`**: In [`services/blend_generation_service.py`](services/blend_generation_service.py), `build_blend_workflow()` now cleanly decouples IPAdapter when img2img composition retention is selected (`comp_strength` in `low`, `med`, `high`), letting the latent image drive composition (calibrated at denoise 0.60 for `med`, matching the star board's `img2watercoal` workflow) while granting the model and LoRAs 100% freedom to render rich lighting and painterly brushwork.
+  * **Watercolor Style Integration**: Integrated `ILwatercolor.safetensors` into the bot ecosystem:
+    * Added `--watercolor`, `--water`, and `--wc` shorthand flags in [`parsers/workflows.py`](parsers/workflows.py) (e.g. `--watercolor.60`, `--wc.70`).
+    * Added "🌊 Watercolor + Realism (Star Board)" and "🎨 Pure Watercolor" options to the SDXL Blend Studio dropdown and embed builders in [`views/blend_sdxl.py`](views/blend_sdxl.py).
+    * Registered `ILwatercolor.safetensors` across [`model_architecture.py`](model_architecture.py), [`db.py`](db.py), and [`comfy_client.py`](comfy_client.py).
 
 ### Maintenance
+* 🧪 **Unit Test Scratch Cache Isolation**:
+  * Isolated `QUADRANT_CACHE_DIR` during test runs in [`suite_test.py`](suite_test.py) to a temporary directory to completely prevent unit test mock fixtures (64x64 solid red/blue squares) from leaking into the user's ComfyUI scratch folder.
+  * Added explicit mocks for `save_quadrant_images_async` in [`tests/test_button_audit.py`](tests/test_button_audit.py).
 * Component polish: ComfyUI communication, task queueing, and VRAM memory auto-purge
 * Component polish: Updated `core_helpers.py`
 * Component polish: Updated `blend_generation_service.py`
 * Component polish: Updated `krea_service.py`
 * Component polish: Updated `vision_service.py`
+* Component polish: Updated `parsers/workflows.py`
 * Component polish: Updated `test_ui_and_views.py`
 
 ---
@@ -315,7 +330,7 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 * 🕒 **Proactive Discord Interaction Expiration Protection (`bot.py`, `core_helpers.is_interaction_expired`)**:
   * Implemented proactive 14.5-minute timestamp checking against `interaction.created_at` to detect expired tokens before attempting doomed webhook calls.
   * Fast-routes expired generations directly to `channel.send` without logging noisy 50027 interaction token error traces.
-* 🎨 **Dedicated Valerie SDXL Photorealism Workflow (`workflows/valerie_sdxl_photorealism.json`)**: Created a production-ready ComfyUI workflow utilizing Valerie's trained SDXL LoRA (`jen_epoch_5.safetensors`) with `RealVisXL_V5.0_fp16.safetensors`, 832x1216 portrait resolution, and DPM++ 2M Karras sampling.
+* 🎨 **Dedicated Valerie SDXL Photorealism Workflow (`workflows/valerie_sdxl_photorealism.json`)**: Created a production-ready ComfyUI workflow utilizing Valerie's trained SDXL LoRA with `RealVisXL_V5.0_fp16.safetensors`, 832x1216 portrait resolution, and DPM++ 2M Karras sampling.
 * **Compact studio embed and add unified prompt editing modal**
 
 ### Fixed
@@ -333,8 +348,8 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ## [2026-09-10]
 
 ### Added
-* 🧬 **Dual-Engine Synthetic Dataset Builder (`tools/build_character_dataset.py`)**: Enhanced the dataset builder to seamlessly support both **Flux GGUF** and **SDXL LoRAs** with automatic engine detection (`--engine auto|flux|sdxl`). Characters with SDXL LoRAs (like Valerie's `jen_epoch_5.safetensors`) can now generate diverse 30-sample 1024x1024 training datasets without relying on IP-Adapter.
-* 🎭 **Smart Generation vs. Caption Triggering**: Separated the LoRA activation trigger (e.g. `jen`) from the training caption trigger (e.g. `valerie`), allowing new Krea 2 LoRAs to be cleanly captioned with user-facing trigger words.
+* 🧬 **Dual-Engine Synthetic Dataset Builder (`tools/build_character_dataset.py`)**: Enhanced the dataset builder to seamlessly support both **Flux GGUF** and **SDXL LoRAs** with automatic engine detection (`--engine auto|flux|sdxl`). Characters with SDXL LoRAs (like Valerie's SDXL LoRA) can now generate diverse 30-sample 1024x1024 training datasets without relying on IP-Adapter.
+* 🎭 **Smart Generation vs. Caption Triggering**: Separated the private LoRA activation trigger from the training caption trigger (e.g. `valerie`), allowing new Krea 2 LoRAs to be cleanly captioned with user-facing trigger words.
 * 📁 **Automated AI-Toolkit YAML & One-Click Runner (`generate_valerie_dataset.bat`)**: Automatically generates ready-to-train AI-Toolkit `.yaml` configurations pointing to the dataset path and includes a one-click batch launcher for generating Valerie's Krea 2 dataset.
 * 📦 **Valerie Krea 2 Dataset (`datasets/valerie_krea2`)**: Generated complete 30-image photorealistic modeling dataset with Florence-2 captions and created `datasets/valerie_krea2.zip` ready for RunPod training.
 * 🧬 **Character Dataset Generator from Reference Photos (`tools/create_character_dataset_from_photos.py`)**: Built an automated identity-expansion dataset generator allowing users to create full 30-image Krea 2 LoRA training datasets from just 1 to 12 reference photos using IP-Adapter identity projection, a balanced prompt matrix (full-body, medium, portrait), Florence-2 auto-captioning, and seamless resume/job continuation logic. Includes 1-click batch launcher `generate_dataset_from_photos.bat`.
@@ -423,8 +438,8 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 ### Added
 * 🎀 **Cheri Character Preset with Blonde Hair Trait (`--cheri`)**: Added character preset for Cheri. Defaults to Epoch 6 (`cheri_epoch_6.safetensors`) with automatic injection of her signature `"blonde hair"`, and supports choosing Epoch 4 via `--cheri4` or from the Discord `/imagine` dropdown.
 * 🔮 **Mageill Character Preset with Multi-Epoch Support (`--mageill`)**: Added original character preset for Mageill. Defaults to Epoch 5 (`mageill_epoch_5.safetensors`), and makes it easy to pick any training epoch via `--mageill3`, `--mageill4`, `--mageill5`, `--mageill6`, or directly from the Discord `/imagine` dropdown.
-* 👓 **Sully Character Preset (`--sully`)**: Added the "Sully" character model (`susa_epoch_6.safetensors`). When you type `--sully` or pick Sully in the dropdown, the bot automatically adds her signature black hair and thin-rim glasses while keeping private trigger names hidden from Discord.
-* ✨ **Valerie Character Preset (`--valerie`)**: Added the "Valerie" character model (`jen_epoch_5.safetensors`) with automatic trigger management and privacy protection.
+* 👓 **Sully Character Preset (`--sully`)**: Added the "Sully" character model. When you type `--sully` or pick Sully in the dropdown, the bot automatically adds her signature black hair and thin-rim glasses while keeping private trigger names hidden from Discord.
+* ✨ **Valerie Character Preset (`--valerie`)**: Added the "Valerie" character model with automatic trigger management and privacy protection.
 * 🛑 **Live Cancel Button**: Added a `🛑 Cancel` button on active generation messages so you can stop a job in ComfyUI at any time if you change your mind.
 * ✏️ **Grid Remix Modal (`✏️ Remix`)**: Added a Remix button under every 4-image grid that opens an easy popup window with your prompt and seed pre-filled so you can tweak words and re-roll.
 * 🧹 **Automatic Graphics Card (VRAM) Cleaning**: The bot now automatically frees up graphics card memory whenever you switch between different model types (like SDXL and Flux) to prevent slowdowns.

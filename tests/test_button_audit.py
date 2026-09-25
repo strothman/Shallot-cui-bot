@@ -90,6 +90,7 @@ class TestButtonAudit(unittest.TestCase):
 
         with patch.object(comfy_client, "pause_generation", new=AsyncMock(return_value=True)), \
              patch("services.grid_actions_service.send_followup_fallback", new=AsyncMock()), \
+             patch("services.grid_actions_service.save_quadrant_images_async", new=AsyncMock()), \
              patch("services.grid_actions_service.edit_message_fallback", new=AsyncMock()):
             
             # 1. Cancel
@@ -142,8 +143,10 @@ class TestButtonAudit(unittest.TestCase):
             patch("services.grid_actions_service.get_quadrant_bytes_async", new=AsyncMock(return_value=valid_png)),
             patch("services.grid_actions_service.embed_metadata_async", new=AsyncMock(return_value=io.BytesIO(valid_png))),
             patch("services.grid_actions_service.complete_grid_generation", new=AsyncMock()),
+            patch("services.grid_actions_service.save_quadrant_images_async", new=AsyncMock()),
             patch("services.grid_actions_service.edit_message_fallback", new=AsyncMock()),
             patch("services.grid_actions_service.send_followup_fallback", new=AsyncMock()),
+            patch("services.generation_service.save_quadrant_images_async", new=AsyncMock()),
             patch("services.blend_generation_service.save_quadrant_images_async", new=AsyncMock()),
             patch("services.blend_generation_service.create_grid_async", new=AsyncMock(return_value=io.BytesIO(valid_png))),
             patch("services.blend_generation_service.edit_message_fallback", new=AsyncMock()),
@@ -155,7 +158,7 @@ class TestButtonAudit(unittest.TestCase):
 
         with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
              patches[6], patches[7], patches[8], patches[9], patches[10], patches[11], \
-             patches[12], patches[13], patches[14] as mock_http_get:
+             patches[12], patches[13], patches[14], patches[15], patches[16] as mock_http_get:
 
             mock_resp = AsyncMock()
             mock_resp.status = 200

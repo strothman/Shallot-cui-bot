@@ -139,7 +139,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             val_parsed = True
             prompt = re.sub(r'[-—–]{1,2}(?:valerie|val)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
 
-            # Silently inject trained trigger 'jen'
+            # Silently inject trained trigger for Valerie
             if re.search(r'\b(?:valerie|val)\b', prompt, flags=re.IGNORECASE):
                 prompt = re.sub(r'\b(?:valerie|val)\b', 'jen', prompt, flags=re.IGNORECASE)
             elif "jen" not in prompt.lower():
@@ -147,7 +147,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
         except Exception as e:
             logger.error(f"Error parsing --valerie shorthand: {e}")
 
-    # 2.4 Keyword Fallback: Detect 'valerie' / 'jen' in prompt text even if user didn't write '--'
+    # 2.4 Keyword Fallback: Detect 'valerie' in prompt text even if user didn't write '--'
     if not val_parsed:
         if re.search(r'\bvalerie\b', prompt, flags=re.IGNORECASE):
             lora_name = resolve_lora_for_architecture("jen_epoch_5.safetensors", effective_arch)
@@ -182,7 +182,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
             sul_parsed = True
             prompt = re.sub(r'[-—–]{1,2}(?:sully|sul)(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
 
-            # Silently inject trained trigger 'susa' and target traits
+            # Silently inject trained trigger and target traits
             susa_traits = "black hair, thin rim glasses"
             if re.search(r'\b(?:sully|sul)\b', prompt, flags=re.IGNORECASE):
                 prompt = re.sub(r'\b(?:sully|sul)\b', f'susa, {susa_traits}', prompt, flags=re.IGNORECASE)
@@ -193,7 +193,7 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
         except Exception as e:
             logger.error(f"Error parsing --sully shorthand: {e}")
 
-    # 2.6 Keyword Fallback: Detect 'sully' / 'susa' in prompt text even if user didn't write '--'
+    # 2.6 Keyword Fallback: Detect 'sully' in prompt text even if user didn't write '--'
     if not sul_parsed:
         susa_traits = "black hair, thin rim glasses"
         if re.search(r'\bsully\b', prompt, flags=re.IGNORECASE):
@@ -294,6 +294,32 @@ def parse_loras(prompt: str, is_flux: bool = False, target_arch: str = None):
         if re.search(r'\b(?:semi[- ]realism|semirealism)\b', prompt, flags=re.IGNORECASE):
             loras.append(("Semi-realism_illustrious.safetensors", 0.70))
             sr_parsed = True
+
+    # 2.12 Parse --watercolor / --water / --wc shorthand (e.g. --watercolor.60, --wc.80, --water, --watercolor)
+    wc_match = re.search(r'[-—–]{1,2}(?:watercolor|watercolour|water|wc)(?![a-zA-Z0-9])(?:\s+|\.)?([0-9\.]+)?', prompt, flags=re.IGNORECASE)
+    wc_parsed = False
+    if wc_match and (wc_match.group(1) or wc_match.group(0).startswith('-') or wc_match.group(0).startswith('—') or wc_match.group(0).startswith('–')):
+        try:
+            val_str = wc_match.group(1)
+            if val_str:
+                if val_str.startswith('.'):
+                    weight = float(val_str)
+                elif val_str.isdigit():
+                    w_val = float(val_str)
+                    weight = w_val / 100.0 if w_val > 1.0 else w_val
+                else:
+                    weight = float(val_str)
+            else:
+                weight = 0.60
+
+            prompt = re.sub(r'[-—–]{1,2}(?:watercolor|watercolour|water|wc)(?![a-zA-Z0-9])(?:\s+|\.)?[0-9\.]*', '', prompt, flags=re.IGNORECASE).strip()
+            if not is_flux:
+                loras.append(("ILwatercolor.safetensors", weight))
+                wc_parsed = True
+                if not any(k in prompt.lower() for k in ["watercolor", "watercolour"]):
+                    prompt = f"watercolor, {prompt}".strip()
+        except Exception as e:
+            logger.error(f"Error parsing --watercolor shorthand: {e}")
 
     # 3. Parse standard <lora:name:weight> tags with architecture resolution
     pattern = r'<lora:([^>:]+)(?::([^>]+))?>'
@@ -748,6 +774,17 @@ def prepare_bertflow_workflow(
         elif re.search(r'--dewy\b', prompt, re.IGNORECASE):
             wetness_strength = -0.5
             prompt = re.sub(r'--dewy\b', '', prompt, flags=re.IGNORECASE).strip()
+        elif re.search(r'--(?:nowet|noskin)\b', prompt, re.IGNORECASE):
+            wetness_strength = 0.0
+            prompt = re.sub(r'--(?:nowet|noskin)\b', '', prompt, flags=re.IGNORECASE).strip()
+
+    # Parse illustrative / anime styling flags
+    is_illustrative = False
+    if prompt:
+        if re.search(r'--(?:illustrative|anime|painterly)\b', prompt, re.IGNORECASE):
+            is_illustrative = True
+            wetness_strength = 0.0
+            prompt = re.sub(r'--(?:illustrative|anime|painterly)\b', '', prompt, flags=re.IGNORECASE).strip()
 
     # Parse character flag from prompt if present (e.g. --ogarla.85, --oga, --loveless.85, --love)
     active_char = character
@@ -843,6 +880,11 @@ def prepare_bertflow_workflow(
         clean_anatomy_anchor = "smooth natural shaft, clean coronal sulcus, realistic anatomy, circumcised, smooth skin"
         if not any(k in cleaned_prompt.lower() for k in ["smooth natural shaft", "clean coronal sulcus"]):
             cleaned_prompt = f"{cleaned_prompt}, {clean_anatomy_anchor}"
+
+    if is_illustrative:
+        illustrative_anchor = "stylized 2D digital illustration, anime painterly aesthetic, flat cel shading, smooth porcelain features, clean line art, non-photorealistic"
+        if not any(k in cleaned_prompt.lower() for k in ["stylized 2d", "cel shading", "non-photorealistic"]):
+            cleaned_prompt = f"{illustrative_anchor}, {cleaned_prompt}"
 
     from services.workflow_adapter import (
         set_workflow_prompt,

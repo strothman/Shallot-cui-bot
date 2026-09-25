@@ -696,6 +696,7 @@ def seed_default_model_registry():
     # 2. Known LoRAs
     loras = [
         ("Semi-realism_illustrious.safetensors", "lora", "sdxl", "illustrious", "Semi-Realism Illustrious", "semi-realism", 0.70),
+        ("ILwatercolor.safetensors", "lora", "sdxl", "illustrious", "Illustrious Watercolor", "watercolor, watercolor painting, textured paper", 0.60),
         ("ogarla_epoch_5.safetensors", "lora", "sdxl", "standard", "Ogarla (SDXL Main)", "ogarla", 0.70),
         ("ogarla_epoch_6.safetensors", "lora", "sdxl", "standard", "Ogarla v6 (SDXL)", "ogarla", 0.70),
         ("ogarlapony_epoch_6.safetensors", "lora", "sdxl", "pony", "Ogarla Pony (SDXL)", "ogarlapony, score_9, score_8_up", 0.75),

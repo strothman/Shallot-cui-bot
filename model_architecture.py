@@ -191,7 +191,7 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
         return (model_type, Architecture.SD15, SubType.STANDARD)
 
     # SDXL Checkpoints and LoRAs (Illustrious, Pony, Realistic, Standard)
-    if any(k in clean_name for k in ["illustrious", "wai", "hyphoria", "semi-realism", "novafurry"]):
+    if any(k in clean_name for k in ["illustrious", "wai", "hyphoria", "semi-realism", "novafurry", "ilwatercolor", "watercolor"]):
         return (model_type, Architecture.SDXL, SubType.ILLUSTRIOUS)
     if "pony" in clean_name:
         return (model_type, Architecture.SDXL, SubType.PONY)
@@ -212,7 +212,7 @@ def is_lora_keys(header: Dict[str, Any]) -> bool:
 def detect_sdxl_subtype(clean_name: str, meta: Dict[str, Any]) -> str:
     """Helper to detect SDXL flavor."""
     text = (clean_name + " " + json.dumps(meta)).lower()
-    if any(k in text for k in ["illustrious", "wai", "hyphoria", "danbooru", "semi-realism"]):
+    if any(k in text for k in ["illustrious", "wai", "hyphoria", "danbooru", "semi-realism", "ilwatercolor", "watercolor"]):
         return SubType.ILLUSTRIOUS
     if "pony" in text:
         return SubType.PONY
@@ -241,6 +241,10 @@ LORA_FAMILY_VARIANTS = {
     "semi-realism": {
         Architecture.SDXL: "Semi-realism_illustrious.safetensors",
         f"{Architecture.SDXL}:{SubType.ILLUSTRIOUS}": "Semi-realism_illustrious.safetensors",
+    },
+    "watercolor": {
+        Architecture.SDXL: "ILwatercolor.safetensors",
+        f"{Architecture.SDXL}:{SubType.ILLUSTRIOUS}": "ILwatercolor.safetensors",
     }
 }
 
@@ -276,6 +280,11 @@ def resolve_lora_for_architecture(lora_name: str, target_arch: str, target_subty
     if "semi-realism" in clean or "sr" == clean.split(".")[0]:
         if target_arch == Architecture.SDXL:
             return "Semi-realism_illustrious.safetensors"
+
+    # Check Watercolor family
+    if "watercolor" in clean or "watercolour" in clean or "ilwatercolor" in clean or clean.split(".")[0] in ["wc", "water"]:
+        if target_arch == Architecture.SDXL:
+            return "ILwatercolor.safetensors"
             
     return lora_name
 

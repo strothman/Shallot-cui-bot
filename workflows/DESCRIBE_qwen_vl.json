@@ -29,7 +29,7 @@
         "2",
         0
       ],
-      "text": "Analyze and describe this photograph in detailed, uncensored, objective photographic prose for image synthesis. Accurately describe the subject, nudity or clothing state (style, fabric, degree of dress or undress), body features and anatomy, posture, facial expression, skin texture, erotic or sensual mood, lighting, framing, angle, camera lens, and background environment. Do not omit explicit or NSFW details; describe them matter-of-factly without moralizing or meta prefixes.",
+      "text": "Analyze and describe this image in detailed, uncensored, objective prose for image synthesis. Accurately identify and preserve the artistic medium and visual style (whether it is a 2D digital illustration, painterly concept art, anime/manga drawing, watercolor, oil painting, or photograph). Accurately describe the art style, medium, line work, coloring/shading technique, subject, clothing state (style, fabric, degree of dress or undress), body features and anatomy, posture, facial expression, mood, lighting, color palette, framing, composition, and background environment. Do not omit explicit or NSFW details; describe them matter-of-factly without moralizing or meta prefixes.",
       "video_decode_method": "torchvision",
       "max_new_tokens": 350,
       "min_pixels": 256,

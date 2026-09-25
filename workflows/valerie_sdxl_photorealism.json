@@ -24,7 +24,7 @@
     },
     "class_type": "LoraLoader",
     "_meta": {
-      "title": "Load LoRA: Valerie (jen_epoch_5)"
+      "title": "Load LoRA: Valerie"
     }
   },
   "3": {
@@ -48,7 +48,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "Positive Prompt (Valerie Trigger: jen)"
+      "title": "Positive Prompt (Valerie)"
     }
   },
   "5": {

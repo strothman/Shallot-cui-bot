@@ -847,6 +847,15 @@ class TestUiAndViews(unittest.TestCase):
         wf_custom_wet = prepare_bertflow_workflow("rainy street --wet 0.75")
         self.assertEqual(wf_custom_wet["822"]["inputs"]["lora_1"]["strength"], 0.75)
 
+        wf_nowet = prepare_bertflow_workflow("dark fantasy portrait --nowet")
+        self.assertEqual(wf_nowet["822"]["inputs"]["lora_1"]["strength"], 0.0)
+        self.assertFalse(wf_nowet["822"]["inputs"]["lora_1"]["on"])
+
+        wf_illustrative = prepare_bertflow_workflow("dark fantasy girl with bandages --illustrative")
+        self.assertEqual(wf_illustrative["822"]["inputs"]["lora_1"]["strength"], 0.0)
+        self.assertFalse(wf_illustrative["822"]["inputs"]["lora_1"]["on"])
+        self.assertIn("stylized 2D digital illustration", wf_illustrative["627"]["inputs"]["text"])
+
         # Test Ogarla Krea 2 Character LoRA injection and trigger word
         wf_oga = prepare_bertflow_workflow(
             prompt="fashion runway photo --ogarla.85",

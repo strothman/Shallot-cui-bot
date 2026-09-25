@@ -86,6 +86,10 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertEqual(wf_comp["blend_ip_0"]["inputs"]["end_at"], 0.75)
         self.assertEqual(wf_comp["blend_ip_0"]["inputs"]["weight_type"], "ease in-out")
 
+        # Test pure img2img composition retention (med comp decouples IPAdapter)
+        wf_pure_img2img = build_blend_workflow(["img1.png"], "blended image", "blurry", "v1-5", 512, 512, 999, 3.5, workflow_template=img2img_template, comp_strength="med")
+        self.assertNotIn("blend_ip_0", wf_pure_img2img, "Pure img2img composition mode should not strangle the latent with IPAdapter")
+
     def test_module5b_blend_style_calibration_and_checkpoint_configs(self):
         """Test Style Only IP-Adapter gentle weighting, checkpoint config enforcement, and negative prompt sanitization."""
         from parsers import parse_loras
@@ -111,10 +115,10 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertEqual(wf_style["blend_ip_0"]["inputs"]["weight_type"], "ease out", "Style Only should use ease out curve")
 
         # 3. Test that Wai Illustrious Checkpoint Configs are applied
-        self.assertEqual(wf_style["3"]["inputs"]["sampler_name"], "dpmpp_2m_sde", "Illustrious should use dpmpp_2m_sde sampler")
+        self.assertEqual(wf_style["3"]["inputs"]["sampler_name"], "dpmpp_2m", "Illustrious should use dpmpp_2m sampler")
         self.assertEqual(wf_style["3"]["inputs"]["scheduler"], "karras")
-        self.assertEqual(wf_style["3"]["inputs"]["steps"], 30, "Illustrious should use 30 steps")
-        self.assertEqual(wf_style["3"]["inputs"]["cfg"], 5.0, "Illustrious should use calibrated CFG 5.0")
+        self.assertEqual(wf_style["3"]["inputs"]["steps"], 35, "Illustrious should use 35 steps")
+        self.assertEqual(wf_style["3"]["inputs"]["cfg"], 3.5, "Illustrious should use calibrated CFG 3.5")
 
         # 4. Test negative prompt sanitization
         neg_text = wf_style["7"]["inputs"]["text"]
@@ -1148,8 +1152,8 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertEqual(PipelineDefaults.UPSCALE_DENOISE_FLUX_MODERATE, 0.35)
         self.assertEqual(PipelineDefaults.VARIATION_DENOISE_VERY_HIGH, 0.95)
         self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["low"], 0.85)
-        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["med"], 0.70)
-        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["high"], 0.55)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["med"], 0.60)
+        self.assertEqual(PipelineDefaults.VARIATION_DENOISE_MAP["high"], 0.50)
 
         # Check display name resolution
         self.assertEqual(get_checkpoint_display_name("waiIllustriousSDXL_v170.safetensors"), "Wai Illustrious SDXL v1.70")

@@ -814,6 +814,7 @@ class ComfyClient:
         # Default LoRAs used by the bot
         HARDCODED_LORAS = [
             "Semi-realism_illustrious.safetensors",
+            "ILwatercolor.safetensors",
             "ogarla_epoch_5.safetensors",
             "ogarlaflux_epoch_5.safetensors",
         ]

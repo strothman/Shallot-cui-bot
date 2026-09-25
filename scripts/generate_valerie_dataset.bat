@@ -3,7 +3,7 @@ cd /d "%~dp0\.."
 title Generate Valerie Krea 2 Dataset
 echo ===================================================
 echo   Generating Valerie Synthetic Dataset for Krea 2
-echo   Engine: SDXL (hyphoriaIlluNAI + jen_epoch_5 + Semi-Realism 0.90)
+echo   Engine: SDXL (hyphoriaIlluNAI + Valerie LoRA + Semi-Realism 0.90)
 echo   Target: 30 Diverse Modeling Samples with Florence-2
 echo ===================================================
 echo.

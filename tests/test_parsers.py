@@ -125,6 +125,11 @@ class TestParsers(unittest.TestCase):
         self.assertIn(("Semi-realism_illustrious.safetensors", 0.85), loras)
         self.assertIn(("my_lora", 0.7), loras)
 
+        # Watercolor shorthand
+        p_wc, wc_loras = parse_loras("landscape --watercolor.65")
+        self.assertIn(("ILwatercolor.safetensors", 0.65), wc_loras)
+        self.assertIn("watercolor", p_wc.lower())
+
         # Seed parsing
         p_seed, seed = parse_seed("cyberpunk motorcycle --seed 123456")
         self.assertEqual(p_seed, "cyberpunk motorcycle")

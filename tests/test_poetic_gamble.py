@@ -5,7 +5,7 @@ Tests prompt synthesis, dual-engine formatting (SDXL vs Krea 2), flag parsing, U
 
 import unittest
 import discord
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from parsers.poetic import (
     PoeticMood,
@@ -186,9 +186,17 @@ class TestGambleExecutionService(unittest.IsolatedAsyncioTestCase):
         status_msg_mock = AsyncMock()
         status_msg_ref = [status_msg_mock]
 
+        import io
+        import tempfile
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), color="blue").save(buf, format="PNG")
+        dummy_png = buf.getvalue()
+
         client_mock = AsyncMock()
         client_mock.free_memory = AsyncMock()
-        client_mock.generate = AsyncMock(return_value=[b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRtest"])
+        client_mock.generate = AsyncMock(return_value=[dummy_png])
         client_mock.get_execution_timing = MagicMock(return_value={"sampling_duration": 1.5, "init_duration": 0.5})
 
         gamble_info = {
@@ -198,14 +206,16 @@ class TestGambleExecutionService(unittest.IsolatedAsyncioTestCase):
             "color_palette": "charcoal & neon"
         }
 
-        # Should complete cleanly without raising NameError for 'file'
-        await execute_bertflow(
-            interaction=interaction_mock,
-            prompt="A poetic allegory of ember",
-            status_msg_ref=status_msg_ref,
-            client=client_mock,
-            gamble_info=gamble_info
-        )
+        # Should complete cleanly without raising NameError for 'file' and isolate cache writes
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("services.krea_service.QUADRANT_CACHE_DIR", tmp_dir):
+                await execute_bertflow(
+                    interaction=interaction_mock,
+                    prompt="A poetic allegory of ember",
+                    status_msg_ref=status_msg_ref,
+                    client=client_mock,
+                    gamble_info=gamble_info
+                )
 
         self.assertTrue(status_msg_mock.edit.await_count >= 1)
         call_kwargs = status_msg_mock.edit.call_args.kwargs

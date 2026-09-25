@@ -158,9 +158,8 @@ def get_all_characters() -> List[CharacterProfile]:
 
 def mask_character_in_prompt(prompt: str, character_id: Optional[str] = None) -> str:
     """
-    Replaces trained trigger words with user-facing display names for privacy.
-    e.g. 'jen, coffee shop' -> 'valerie, coffee shop'
-    e.g. 'susa, reading book' -> 'sully, reading book'
+    Replaces private trained trigger words with user-facing display aliases for privacy.
+    e.g. '<private_trigger>, coffee shop' -> 'valerie, coffee shop'
     """
     if character_id:
         char = get_character(character_id)
@@ -178,7 +177,7 @@ def mask_character_in_prompt(prompt: str, character_id: Optional[str] = None) ->
 def inject_trained_trigger_in_prompt(prompt: str, character_id: str) -> str:
     """
     Silently substitutes the character alias with the real trained trigger word and base traits for ComfyUI.
-    e.g. 'sully, sitting on a bench' -> 'susa, black hair, thin rim glasses, sitting on a bench'
+    e.g. 'sully, sitting on a bench' -> '<trained_trigger>, black hair, thin rim glasses, sitting on a bench'
     """
     char = get_character(character_id)
     if not char:

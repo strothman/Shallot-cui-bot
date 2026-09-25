@@ -54,6 +54,10 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
 
     if sr is False or sr == "nosr":
         sr_display = "OFF"
+    elif sr == "water_sr":
+        sr_display = "🌊 Watercolor + Realism"
+    elif sr == "water":
+        sr_display = "🎨 Pure Watercolor"
     elif isinstance(sr, str) and sr.startswith("sr"):
         val = sr[2:]
         sr_display = f"--sr.{val}" if val.isdigit() and len(val) == 2 else f"--{sr}"
@@ -170,7 +174,11 @@ def build_blend_complete_embed(
     char_display = get_character_display_badge(char_choice, architecture="sdxl", prompt=display_prompt)
 
     # Resolve semi-realism badge
-    if not sr_choice or sr_choice in ["nosr", False]:
+    if sr_choice == "water_sr":
+        sr_display = "🌊 Watercolor + Realism"
+    elif sr_choice == "water":
+        sr_display = "🎨 Pure Watercolor"
+    elif not sr_choice or sr_choice in ["nosr", False]:
         m = re.search(r'--sr\.?(\d+)', display_prompt)
         if m:
             sr_display = f"--sr.{m.group(1)}"
@@ -469,9 +477,11 @@ class BlendButtons(discord.ui.View):
         )
         self.add_item(ar_select)
 
-        # Row 3: Semi-Realism Strength Dropdown
+        # Row 3: Semi-Realism & Watercolor Strength Dropdown
         sr_options = [
-            discord.SelectOption(label="OFF (Disabled)", value="nosr", emoji="🚫", description="No semi-realism LoRA applied", default=(sr_val == "nosr")),
+            discord.SelectOption(label="OFF (Disabled)", value="nosr", emoji="🚫", description="No semi-realism or watercolor LoRA", default=(sr_val == "nosr")),
+            discord.SelectOption(label="Watercolor + Realism (Star Board)", value="water_sr", emoji="🌊", description="Signature watercolor & semi-realism stack (--sr.60 --wc.60)", default=(sr_val == "water_sr")),
+            discord.SelectOption(label="Pure Watercolor (--wc.70)", value="water", emoji="🎨", description="Lush watercolor & textured paper (--watercolor.70)", default=(sr_val == "water")),
             discord.SelectOption(label="Subtle (--sr.60)", value="sr60", emoji="✨", description="Gentle hint of realism (weight 0.60)", default=(sr_val == "sr60")),
             discord.SelectOption(label="Medium (--sr.70)", value="sr70", emoji="✨", description="Balanced anime realism (weight 0.70)", default=(sr_val == "sr70")),
             discord.SelectOption(label="Default (--sr.75)", value="sr75", emoji="✨", description="Signature blend realism (weight 0.75)", default=(sr_val in ["sr75", "sr"])),

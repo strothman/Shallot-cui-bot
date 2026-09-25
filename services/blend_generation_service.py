@@ -207,6 +207,16 @@ def build_blend_workflow(
     enhanced_neg = re.sub(r',\s*,+', ', ', enhanced_neg).strip(' ,')
     workflow["7"]["inputs"]["text"] = enhanced_neg
 
+    # For pure img2img composition retention (low, med, high), the latent image
+    # already establishes the composition, pose, and silhouette cleanly.
+    # Decoupling IPAdapter from the base image allows the model and LoRAs
+    # full freedom to render expressive lighting, brushwork, and watercolor textures
+    # without being locked in a double-constraint (matching the winning star board workflows).
+    if is_img2img and norm_comp in ["low", "med", "high"]:
+        workflow.pop("20", None)
+        workflow["3"]["inputs"]["model"] = current_model_source
+        return workflow
+
     prev_model_node = ["20", 0]
 
     for idx, img_name in enumerate(image_filenames):
@@ -438,12 +448,19 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
     is_anime = any(k in selected_model.lower() for k in ["illustrious", "wai", "hyphoria", "nai", "furry", "anime"])
     
     if use_sr and use_sr != "nosr":
-        if isinstance(use_sr, str) and use_sr.startswith("sr"):
+        if use_sr == "water_sr":
+            base_parts.append("Semi-realism, watercolor,")
+            sr_tag = "--sr.60 --watercolor.60"
+        elif use_sr == "water":
+            base_parts.append("watercolor,")
+            sr_tag = "--watercolor.70"
+        elif isinstance(use_sr, str) and use_sr.startswith("sr"):
             val = use_sr[2:]
             sr_tag = f"--sr.{val}" if (val.isdigit() and len(val) == 2) else f"--{use_sr}"
+            base_parts.append("Semi-realism,")
         else:
             sr_tag = "--sr.90" if is_anime else "--sr.75"
-        base_parts.append("Semi-realism,")
+            base_parts.append("Semi-realism,")
     else:
         sr_tag = None
 
