@@ -1009,3 +1009,67 @@ def prepare_bertflow_workflow(
             wf["599"]["inputs"]["return_with_leftover_noise"] = "disable"
 
     return wf
+
+
+def prepare_anima_workflow(
+    prompt: str,
+    aspect_ratio: str = "4:3",
+    seed: int = None,
+    steps: int = 35,
+    cfg: float = 5.0,
+    denoise_upscale: float = 0.3,
+    unet_model: str = "dasiwaAnima_luminousLabyrinthV1.safetensors",
+    negative_prompt: str = None,
+    filename_prefix: str = "Discord Bot/Anima"
+) -> dict:
+    """
+    Loads workflows/anima_2stage.json and configures prompt, dimensions, seed,
+    sampling steps, CFG, upscale model, and refiner denoise.
+    """
+    wf = load_workflow_template("workflows/anima_2stage.json")
+
+    from parsers.dimensions import resolve_anima_dimensions
+    cleaned_prompt, base_w, base_h, hires_w, hires_h = resolve_anima_dimensions(prompt, aspect_ratio)
+
+    final_seed = seed if seed is not None else random.randint(1, 1125899906842624)
+
+    # Set prompts
+    default_negative = negative_prompt or "blurry, low quality, distorted, bad anatomy"
+    from services.workflow_adapter import (
+        set_workflow_prompt,
+        set_workflow_seed,
+        set_workflow_filename_prefix,
+    )
+    set_workflow_prompt(wf, positive=cleaned_prompt, negative=default_negative)
+    set_workflow_seed(wf, final_seed)
+
+    # Configure Stage 1 base latent size (Node 7)
+    if "7" in wf and "inputs" in wf["7"]:
+        wf["7"]["inputs"]["width"] = base_w
+        wf["7"]["inputs"]["height"] = base_h
+
+    # Configure Stage 1 KSampler (Node 6)
+    if "6" in wf and "inputs" in wf["6"]:
+        wf["6"]["inputs"]["steps"] = steps
+        wf["6"]["inputs"]["cfg"] = cfg
+        wf["6"]["inputs"]["seed"] = final_seed
+
+    # Configure Stage 2 ImageScale (Node 14)
+    if "14" in wf and "inputs" in wf["14"]:
+        wf["14"]["inputs"]["width"] = hires_w
+        wf["14"]["inputs"]["height"] = hires_h
+
+    # Configure Stage 2 KSampler (Node 17)
+    if "17" in wf and "inputs" in wf["17"]:
+        wf["17"]["inputs"]["cfg"] = cfg
+        wf["17"]["inputs"]["denoise"] = denoise_upscale
+        wf["17"]["inputs"]["seed"] = final_seed
+
+    # Configure UNET loader (Node 27)
+    if "27" in wf and "inputs" in wf["27"] and unet_model:
+        wf["27"]["inputs"]["unet_name"] = unet_model
+
+    set_workflow_filename_prefix(wf, filename_prefix)
+
+    return wf
+

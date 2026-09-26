@@ -406,3 +406,36 @@ class BertflowButtons(discord.ui.View):
             custom_id=f"outpaint:{generation_id}:1:1.5x",
             row=1
         ))
+
+
+class AnimaButtons(discord.ui.View):
+    """Buttons attached to /anima generations.
+    Actions are handled persistently via custom_id routing.
+    """
+    def __init__(
+        self,
+        generation_id: str,
+        on_reroll_cb=None,
+        on_remix_cb=None
+    ):
+        super().__init__(timeout=None)
+        self.generation_id = generation_id
+        self.on_reroll_cb = on_reroll_cb
+        self.on_remix_cb = on_remix_cb
+
+        self.reroll_btn = discord.ui.Button(
+            label="🔄 Re-roll",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"anima_reroll:{generation_id}",
+            row=0
+        )
+        self.add_item(self.reroll_btn)
+
+        self.remix_btn = discord.ui.Button(
+            label="✏️ Remix",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"anima_remix:{generation_id}",
+            row=0
+        )
+        self.add_item(self.remix_btn)
+

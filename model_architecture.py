@@ -26,9 +26,10 @@ class Architecture:
     LTX = "ltx"
     HUNYUAN = "hunyuan"
     LUMINA2 = "lumina2"
+    ANIMA = "anima"
     UNKNOWN = "unknown"
 
-    ALL = [SDXL, FLUX, KREA2, SD15, SD35, WAN, LTX, HUNYUAN, LUMINA2, UNKNOWN]
+    ALL = [SDXL, FLUX, KREA2, SD15, SD35, WAN, LTX, HUNYUAN, LUMINA2, ANIMA, UNKNOWN]
 
 class SubType:
     STANDARD = "standard"
@@ -59,6 +60,7 @@ ARCH_BADGES = {
     Architecture.LTX: "🎥 [LTX]",
     Architecture.HUNYUAN: "🐉 [HUNYUAN]",
     Architecture.LUMINA2: "✨ [LUMINA2]",
+    Architecture.ANIMA: "🌸 [ANIMA]",
     Architecture.UNKNOWN: "❓ [MODEL]"
 }
 
@@ -130,6 +132,8 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.KREA2, SubType.STANDARD)
             if "lumina2" in ss_base or "lumina" in ss_base or "lumina" in modelspec_arch:
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.LUMINA2, SubType.STANDARD)
+            if "anima" in ss_base or "anima" in modelspec_arch:
+                return (ModelType.LORA if is_lora_keys(header) else ModelType.UNET, Architecture.ANIMA, SubType.STANDARD)
             if "sdxl" in ss_base or "sdxl" in modelspec_arch or "stable-diffusion-xl" in ss_base:
                 subtype = detect_sdxl_subtype(clean_name, meta)
                 return (ModelType.LORA if is_lora_keys(header) else ModelType.CHECKPOINT, Architecture.SDXL, subtype)
@@ -161,6 +165,10 @@ def detect_model_architecture(filename_or_path: str, file_path: Optional[str] = 
     # 2. Heuristic Pattern Detection based on Filename & Dialects
     is_lora_heuristic = any(k in clean_name for k in ["lora", "epoch", "semi-realism"]) or bool(re.search(r'(?:^|[-_.\s])sr(?:$|[-_.\s0-9])', clean_name))
     model_type = ModelType.LORA if is_lora_heuristic else ModelType.CHECKPOINT
+
+    # Anima
+    if "anima" in clean_name:
+        return (ModelType.LORA if is_lora_heuristic else ModelType.UNET, Architecture.ANIMA, SubType.STANDARD)
 
     # Krea 2 and Lumina 2
     if "krea2" in clean_name or "krea" in clean_name or "muse" in clean_name or "pornmaster" in clean_name:

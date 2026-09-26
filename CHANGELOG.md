@@ -4,6 +4,24 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-09-25]
+
+### Added
+* 🌸 **Anima 2B DiT 2-Stage Anime Pipeline (`/anima`)**:
+  * Integrated CircleStone Labs / Comfy Org's Anima architecture (`dasiwaAnima_luminousLabyrinthV1.safetensors`, Qwen3 0.6B text encoder `qwen_3_06b_base.safetensors`, `qwen_image_vae.safetensors`, and 2x NomosUni ESRGAN `2xNomosUni_esrgan_multijpg.pth`).
+  * Converted the user's graph workflow into clean ComfyUI API format [`workflows/anima_2stage.json`](workflows/anima_2stage.json).
+  * Created [`cogs/anima_cog.py`](cogs/anima_cog.py) implementing the `/anima` slash command with aspect ratio presets (`4:3`, `3:4`, `1:1`, `16:9`, `9:16`, `21:9`), steps, CFG, negative prompt, and favorite prompt expansion.
+  * Created [`services/anima_service.py`](services/anima_service.py) with full async ComfyUI generation, real-time Discord progress updates, VRAM cache flushing on model switch, and database caching.
+  * Added `AnimaButtons` in [`views/grid_views.py`](views/grid_views.py) with persistent `anima_reroll:` and `anima_remix:` routing in [`services/interaction_dispatcher.py`](services/interaction_dispatcher.py).
+  * Added dimension resolution in [`parsers/dimensions.py`](parsers/dimensions.py) (`resolve_anima_dimensions`) and AST template populator [`parsers/workflows.py`](parsers/workflows.py) (`prepare_anima_workflow`).
+  * Registered `Architecture.ANIMA` (`🌸 [ANIMA]`) in [`model_architecture.py`](model_architecture.py) with safetensors header and heuristic inspection.
+  * Added unit tests in [`tests/test_characters_and_workflows.py`](tests/test_characters_and_workflows.py) covering dimension resolution, workflow AST population, and cog registration (all 137 tests passing 100% green).
+
+### Maintenance
+* Component polish: Automated verification test suite
+* Component polish: Updated `test_button_audit.py`
+
+---
 ## [2026-09-24]
 
 ### Fixed

@@ -93,6 +93,8 @@ def audit_workflows():
             wf_arch = "FLUX"
         elif "bertflow" in wf_name.lower() or "krea" in wf_name.lower():
             wf_arch = "KREA2"
+        elif "anima" in wf_name.lower():
+            wf_arch = "ANIMA"
         elif "wan" in wf_name.lower():
             wf_arch = "WAN"
         elif "ltx" in wf_name.lower():
@@ -114,6 +116,8 @@ def audit_workflows():
                     unet = n.get("inputs", {}).get("unet_name", "")
                     if "muse" in unet.lower() or "krea" in unet.lower():
                         wf_arch = "KREA2"
+                    elif "anima" in unet.lower():
+                        wf_arch = "ANIMA"
                         
         # Check all LoRA nodes
         for nid, n in wf.items():

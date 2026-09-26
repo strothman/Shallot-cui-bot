@@ -15,9 +15,11 @@ import logging
 # Ensure project root is in python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Isolate test quadrant cache to temporary directory to protect user's ComfyUI scratch folder
+# Isolate test quadrant cache and comfy output to temporary directories to protect user's ComfyUI folders
 _test_scratch_dir = tempfile.mkdtemp(prefix="shallot_test_scratch_")
 os.environ["QUADRANT_CACHE_DIR"] = _test_scratch_dir
+_test_output_dir = tempfile.mkdtemp(prefix="shallot_test_output_")
+os.environ["COMFYUI_OUTPUT_PATH"] = _test_output_dir
 
 # Disable log output during test execution to keep console clean
 logging.disable(logging.CRITICAL)
@@ -35,6 +37,7 @@ def run_all_tests() -> bool:
         return result.wasSuccessful()
     finally:
         shutil.rmtree(_test_scratch_dir, ignore_errors=True)
+        shutil.rmtree(_test_output_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

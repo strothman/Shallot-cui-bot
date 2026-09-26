@@ -1,0 +1,297 @@
+{
+  "9": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "12": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "2xNomosUni_esrgan_multijpg.pth"
+    },
+    "_meta": {
+      "title": "Load Upscale Model"
+    }
+  },
+  "27": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "dasiwaAnima_luminousLabyrinthV1.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "28": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "26": {
+    "class_type": "CR LoRA Stack",
+    "inputs": {
+      "switch_1": "Off",
+      "lora_name_1": "None",
+      "model_weight_1": 1.0,
+      "clip_weight_1": 1.0,
+      "switch_2": "Off",
+      "lora_name_2": "None",
+      "model_weight_2": 1.0,
+      "clip_weight_2": 1.0,
+      "switch_3": "Off",
+      "lora_name_3": "None",
+      "model_weight_3": 1.0,
+      "clip_weight_3": 1.0
+    },
+    "_meta": {
+      "title": "CR LoRA Stack 1"
+    }
+  },
+  "24": {
+    "class_type": "CR LoRA Stack",
+    "inputs": {
+      "lora_stack": [
+        "26",
+        0
+      ],
+      "switch_1": "Off",
+      "lora_name_1": "None",
+      "model_weight_1": 1.0,
+      "clip_weight_1": 1.0,
+      "switch_2": "Off",
+      "lora_name_2": "None",
+      "model_weight_2": 1.0,
+      "clip_weight_2": 1.0,
+      "switch_3": "Off",
+      "lora_name_3": "None",
+      "model_weight_3": 1.0,
+      "clip_weight_3": 1.0
+    },
+    "_meta": {
+      "title": "CR LoRA Stack 2"
+    }
+  },
+  "25": {
+    "class_type": "CR Apply LoRA Stack",
+    "inputs": {
+      "model": [
+        "27",
+        0
+      ],
+      "clip": [
+        "28",
+        0
+      ],
+      "lora_stack": [
+        "24",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Apply LoRA Stack"
+    }
+  },
+  "29": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "25",
+        1
+      ],
+      "text": "masterpiece, best quality, anime aesthetic"
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "30": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "25",
+        1
+      ],
+      "text": "blurry, low quality, distorted, bad anatomy"
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "7": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1376,
+      "height": 1072,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "25",
+        0
+      ],
+      "positive": [
+        "29",
+        0
+      ],
+      "negative": [
+        "30",
+        0
+      ],
+      "latent_image": [
+        "7",
+        0
+      ],
+      "seed": 0,
+      "control_after_generate": "randomize",
+      "steps": 35,
+      "cfg": 5.0,
+      "sampler_name": "er_sde",
+      "scheduler": "linear_quadratic",
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "KSampler (Base)"
+    }
+  },
+  "11": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE Decode (Base)"
+    }
+  },
+  "13": {
+    "class_type": "ImageUpscaleWithModel",
+    "inputs": {
+      "upscale_model": [
+        "12",
+        0
+      ],
+      "image": [
+        "11",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Upscale Image with Model"
+    }
+  },
+  "14": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "13",
+        0
+      ],
+      "upscale_method": "nearest-exact",
+      "width": 1928,
+      "height": 1504,
+      "crop": "disabled"
+    },
+    "_meta": {
+      "title": "Scale Image"
+    }
+  },
+  "15": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "14",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE Encode (Upscaled)"
+    }
+  },
+  "17": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "25",
+        0
+      ],
+      "positive": [
+        "29",
+        0
+      ],
+      "negative": [
+        "30",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ],
+      "seed": 0,
+      "control_after_generate": "randomize",
+      "steps": 15,
+      "cfg": 5.0,
+      "sampler_name": "er_sde",
+      "scheduler": "linear_quadratic",
+      "denoise": 0.3
+    },
+    "_meta": {
+      "title": "KSampler (Hi-Res Refiner)"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "17",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE Decode (Final)"
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "Discord Bot/Anima",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

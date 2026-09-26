@@ -8,9 +8,11 @@ from parsers.dimensions import (
     RE_ASPECT_RATIO,
     BERTFLOW_ASPECT_RATIOS,
     TRUNCATED_BERTFLOW_AR_MAP,
+    ANIMA_ASPECT_RATIOS,
     parse_aspect_ratio,
     calculate_wan_dimensions,
     resolve_bertflow_dimensions,
+    resolve_anima_dimensions,
 )
 
 from parsers.styles import (
@@ -89,6 +91,7 @@ from parsers.workflows import (
     apply_ipadapter_to_workflow,
     get_bertflow_unet_model,
     prepare_bertflow_workflow,
+    prepare_anima_workflow,
 )
 
 from parsers.poetic import (
@@ -176,6 +179,9 @@ __all__ = [
     "apply_ipadapter_to_workflow",
     "get_bertflow_unet_model",
     "prepare_bertflow_workflow",
+    "prepare_anima_workflow",
+    "ANIMA_ASPECT_RATIOS",
+    "resolve_anima_dimensions",
     # poetic
     "RE_GAMBLE",
     "parse_gamble_prompt",

@@ -1163,7 +1163,95 @@ class TestCharactersAndWorkflows(unittest.TestCase):
         self.assertEqual(get_checkpoint_display_name(None), "Default Model")
         self.assertEqual(get_checkpoint_display_name("custom_model.safetensors"), "custom_model")
 
+    def test_anima_architecture_and_detection(self):
+        """Test Anima architecture registration, badge display, and model classification."""
+        from model_architecture import Architecture, SubType, ModelType, ARCH_BADGES, detect_model_architecture
+        self.assertEqual(Architecture.ANIMA, "anima")
+        self.assertIn(Architecture.ANIMA, Architecture.ALL)
+        self.assertEqual(ARCH_BADGES[Architecture.ANIMA], "🌸 [ANIMA]")
+
+        mtype, arch, subtype = detect_model_architecture("dasiwaAnima_luminousLabyrinthV1.safetensors")
+        self.assertEqual(arch, Architecture.ANIMA)
+        self.assertEqual(mtype, ModelType.UNET)
+        self.assertEqual(subtype, SubType.STANDARD)
+
+        # LoRA heuristic test
+        mtype_lora, arch_lora, _ = detect_model_architecture("anima_character_lora.safetensors")
+        self.assertEqual(arch_lora, Architecture.ANIMA)
+        self.assertEqual(mtype_lora, ModelType.LORA)
+
+    def test_anima_dimensions_and_workflow_preparation(self):
+        """Test Anima dimension resolution and AST workflow template population."""
+        from parsers import (
+            resolve_anima_dimensions,
+            prepare_anima_workflow,
+            ANIMA_ASPECT_RATIOS
+        )
+        self.assertIn("4:3", ANIMA_ASPECT_RATIOS)
+        self.assertIn("1:1", ANIMA_ASPECT_RATIOS)
+        self.assertIn("16:9", ANIMA_ASPECT_RATIOS)
+
+        clean_p, bw, bh, hw, hh = resolve_anima_dimensions("magical girl with staff --ar 16:9")
+        self.assertEqual(clean_p, "magical girl with staff")
+        self.assertEqual((bw, bh, hw, hh), (1600, 896, 2240, 1254))
+
+        clean_p2, bw2, bh2, hw2, hh2 = resolve_anima_dimensions("portrait illustration", "3:4")
+        self.assertEqual((bw2, bh2, hw2, hh2), (1072, 1376, 1504, 1928))
+
+        wf = prepare_anima_workflow(
+            prompt="cyberpunk anime hero",
+            aspect_ratio="4:3",
+            seed=987654,
+            steps=30,
+            cfg=4.5,
+            denoise_upscale=0.25,
+            negative_prompt="bad quality, deformed"
+        )
+        self.assertEqual(wf["29"]["inputs"]["text"], "cyberpunk anime hero")
+        self.assertEqual(wf["30"]["inputs"]["text"], "bad quality, deformed")
+        self.assertEqual(wf["7"]["inputs"]["width"], 1376)
+        self.assertEqual(wf["7"]["inputs"]["height"], 1072)
+        self.assertEqual(wf["6"]["inputs"]["steps"], 30)
+        self.assertEqual(wf["6"]["inputs"]["cfg"], 4.5)
+        self.assertEqual(wf["6"]["inputs"]["seed"], 987654)
+        self.assertEqual(wf["14"]["inputs"]["width"], 1928)
+        self.assertEqual(wf["14"]["inputs"]["height"], 1504)
+        self.assertEqual(wf["17"]["inputs"]["cfg"], 4.5)
+        self.assertEqual(wf["17"]["inputs"]["denoise"], 0.25)
+        self.assertEqual(wf["17"]["inputs"]["seed"], 987654)
+        self.assertEqual(wf["27"]["inputs"]["unet_name"], "dasiwaAnima_luminousLabyrinthV1.safetensors")
+        self.assertEqual(wf["28"]["inputs"]["clip_name"], "qwen_3_06b_base.safetensors")
+        self.assertEqual(wf["9"]["inputs"]["vae_name"], "qwen_image_vae.safetensors")
+        self.assertEqual(wf["12"]["inputs"]["model_name"], "2xNomosUni_esrgan_multijpg.pth")
+
+    def test_anima_views_and_cog_registration(self):
+        """Test AnimaButtons UI components and AnimaCog slash command registration."""
+        from views import AnimaButtons
+        view = AnimaButtons(generation_id="test_anima_123")
+        btn_ids = [getattr(b, "custom_id", None) for b in view.children]
+        self.assertIn("anima_reroll:test_anima_123", btn_ids)
+        self.assertIn("anima_remix:test_anima_123", btn_ids)
+
+        import bot
+        from cogs.anima_cog import AnimaCog
+        self.assertTrue(any(isinstance(c, AnimaCog) for c in bot.ALL_COGS))
+
+        # Check slash command exists on bot tree
+        tree_cmds = {c.name: c for c in bot.bot.tree.get_commands()}
+        # Or check AnimaCog commands directly
+        anima_cog = next(c for c in bot.ALL_COGS if isinstance(c, AnimaCog))
+        cog_cmds = anima_cog.get_app_commands()
+        self.assertTrue(any(c.name == "anima" for c in cog_cmds))
+        anima_cmd = next(c for c in cog_cmds if c.name == "anima")
+        param_names = [p.name for p in anima_cmd.parameters]
+        self.assertIn("prompt", param_names)
+        self.assertIn("aspect_ratio", param_names)
+        self.assertIn("steps", param_names)
+        self.assertIn("cfg", param_names)
+        self.assertIn("negative_prompt", param_names)
+        self.assertIn("seed", param_names)
 
 
 if __name__ == '__main__':
     unittest.main()
+

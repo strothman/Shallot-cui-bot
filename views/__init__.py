@@ -26,6 +26,7 @@ from views.grid_views import (
     StasisControlsView,
     StasisPausedView,
     BertflowButtons,
+    AnimaButtons,
 )
 
 # SDXL Blend Studio

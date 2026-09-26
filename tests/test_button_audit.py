@@ -4,6 +4,9 @@ Verifies that all 50+ interactive component button, dropdown, and modal triggers
 resolve their handlers without NameError, AttributeError, or unhandled exceptions.
 """
 
+import os
+import tempfile
+import shutil
 import unittest
 import asyncio
 import io
@@ -23,6 +26,20 @@ from views.dynamic_items import (
 
 
 class TestButtonAudit(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._temp_output_dir = tempfile.mkdtemp(prefix="shallot_test_audit_out_")
+        cls._orig_output_path = os.environ.get("COMFYUI_OUTPUT_PATH")
+        os.environ["COMFYUI_OUTPUT_PATH"] = cls._temp_output_dir
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._orig_output_path is not None:
+            os.environ["COMFYUI_OUTPUT_PATH"] = cls._orig_output_path
+        else:
+            os.environ.pop("COMFYUI_OUTPUT_PATH", None)
+        shutil.rmtree(cls._temp_output_dir, ignore_errors=True)
+
     def setUp(self):
         self.gen_id = "test_audit_gen_123"
         self.gen_data = {

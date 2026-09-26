@@ -59,6 +59,10 @@ from services.gamble_service import (
     handle_gamble_switch_engine,
     handle_gamble_shift_mood,
 )
+from services.anima_service import (
+    handle_anima_reroll,
+    handle_anima_remix,
+)
 
 logger = logging.getLogger("DiscordBot.InteractionDispatcher")
 
@@ -149,6 +153,20 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
             parts = custom_id.split(":")
             if len(parts) >= 2:
                 handler = _resolve_handler("handle_gamble_shift_mood", handle_gamble_shift_mood)
+                await handler(interaction, parts[1])
+                return True
+
+        # 2c. Anima Controls
+        elif custom_id.startswith("anima_reroll:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                handler = _resolve_handler("handle_anima_reroll", handle_anima_reroll)
+                await handler(interaction, parts[1])
+                return True
+        elif custom_id.startswith("anima_remix:"):
+            parts = custom_id.split(":")
+            if len(parts) >= 2:
+                handler = _resolve_handler("handle_anima_remix", handle_anima_remix)
                 await handler(interaction, parts[1])
                 return True
 

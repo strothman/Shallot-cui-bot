@@ -152,3 +152,59 @@ def resolve_bertflow_dimensions(prompt: str, aspect_ratio_str: str = None) -> tu
             logger.error(f"Error parsing Bertflow aspect ratio from prompt: {e}")
 
     return clean_p, 1224, 1224
+
+
+ANIMA_ASPECT_RATIOS = {
+    "1:1": (1216, 1216, 1704, 1704),
+    "4:3": (1376, 1072, 1928, 1504),
+    "3:4": (1072, 1376, 1504, 1928),
+    "16:9": (1600, 896, 2240, 1254),
+    "9:16": (896, 1600, 1254, 2240),
+    "21:9": (1824, 768, 2552, 1076),
+}
+
+
+def resolve_anima_dimensions(prompt: str, aspect_ratio_str: str = "4:3") -> tuple[str, int, int, int, int]:
+    """
+    Resolves base and hires dimensions for Anima 2-stage generation pipeline.
+    Returns (cleaned_prompt, base_w, base_h, hires_w, hires_h).
+    """
+    clean_p = prompt or ""
+    effective_ar = aspect_ratio_str or "4:3"
+    clean_ar = str(effective_ar).strip()
+    if clean_ar in TRUNCATED_BERTFLOW_AR_MAP:
+        clean_ar = TRUNCATED_BERTFLOW_AR_MAP[clean_ar]
+
+    # Check prompt flags first
+    matches = list(RE_ASPECT_RATIO.finditer(clean_p))
+    if matches:
+        ar_match = matches[-1]
+        try:
+            x = float(ar_match.group(1))
+            y_val = ar_match.group(2)
+            y = float(y_val) if y_val else 1.0
+            clean_p = RE_ASPECT_RATIO.sub('', clean_p)
+            clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
+            if x > 0 and y > 0:
+                ratio = x / y
+                best_diff = float("inf")
+                best_match = "4:3"
+                for ar_key, (bw, bh, _, _) in ANIMA_ASPECT_RATIOS.items():
+                    diff = abs(ratio - (bw / bh))
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_match = ar_key
+                bw, bh, hw, hh = ANIMA_ASPECT_RATIOS[best_match]
+                return clean_p, bw, bh, hw, hh
+        except Exception as e:
+            logger.error(f"Error parsing Anima aspect ratio from prompt: {e}")
+
+    if clean_ar in ANIMA_ASPECT_RATIOS:
+        bw, bh, hw, hh = ANIMA_ASPECT_RATIOS[clean_ar]
+        clean_p = RE_ASPECT_RATIO.sub('', clean_p)
+        clean_p = RE_WHITESPACE.sub(' ', clean_p).strip()
+        return clean_p, bw, bh, hw, hh
+
+    bw, bh, hw, hh = ANIMA_ASPECT_RATIOS["4:3"]
+    return clean_p, bw, bh, hw, hh
+
