@@ -127,9 +127,15 @@ def build_blend_embed(gen_data: dict, author_str: str = "User", image_url: str =
         value=f"**Model:** `{model_display}`\n**Realism:** `{sr_display}`",
         inline=True
     )
+    sw = gen_data.get("sref_weight")
+    if sref_display != "OFF" and sw is not None:
+        style_val_str = f"`{sref_display}` *(wt: {float(sw):.2f})*"
+    else:
+        style_val_str = f"`{sref_display}`"
+
     embed.add_field(
         name="🎭 Aesthetics",
-        value=f"**Char:** `{char_display}`\n**Style:** `{sref_display}`",
+        value=f"**Char:** `{char_display}`\n**Style:** {style_val_str}",
         inline=True
     )
 

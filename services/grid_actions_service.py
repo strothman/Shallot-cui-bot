@@ -45,7 +45,8 @@ from image_utils import (
     get_dated_save_prefix,
     embed_metadata_async,
     format_image_filename,
-    get_checkpoint_abbrev
+    get_checkpoint_abbrev,
+    create_grid_async
 )
 from parsers import (
     parse_aspect_ratio,
@@ -357,7 +358,9 @@ async def handle_upscale(interaction: discord.Interaction, generation_id: str, i
             upscale_prefix = f"flux_{ckpt_abbrev}_upscale_{index}"
         else:
             upscale_prefix = f"upscale_{ckpt_abbrev}_{index}"
-        file = discord.File(fp=highres_file_io, filename=format_image_filename(upscale_prefix, target_seed, "png", sref=sref_code))
+        upscale_denoise = denoise_val if is_flux else PipelineDefaults.UPSCALE_DENOISE_SDXL
+        effective_sw = sref_weight if sref_code else None
+        file = discord.File(fp=highres_file_io, filename=format_image_filename(upscale_prefix, target_seed, "png", sref=sref_code, denoise=upscale_denoise, sref_weight=effective_sw))
 
         sref_info = gen_data.get("sref_info")
         desc_lines = [
@@ -457,6 +460,7 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
     width = gen_data.get("width", 512)
     height = gen_data.get("height", 512)
     sref_info = gen_data.get("sref_info")
+    sref_weight = gen_data.get("sref_weight", 0.6)
 
     q_bytes, width, height = await upscale_isolated_image_async(q_bytes, target_w=width, target_h=height)
 
@@ -512,7 +516,9 @@ async def handle_isolate(interaction: discord.Interaction, generation_id: str, i
             iso_prefix = f"flux_{ckpt_abbrev}_{index}"
         else:
             iso_prefix = f"imagine_{ckpt_abbrev}_{index}"
-        file = discord.File(fp=metadata_io, filename=format_image_filename(iso_prefix, target_seed, "png", sref=sref_code))
+        effective_sw = sref_weight if sref_code else None
+        effective_denoise = gen_data.get("denoise", 1.0)
+        file = discord.File(fp=metadata_io, filename=format_image_filename(iso_prefix, target_seed, "png", sref=sref_code, denoise=effective_denoise, sref_weight=effective_sw))
 
         files_to_send = [file]
 
@@ -743,8 +749,9 @@ async def handle_variation(interaction: discord.Interaction, generation_id: str,
         await save_quadrant_images_async(new_gen_id, images)
 
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        grid_file_io = await asyncio.to_thread(create_grid, images, expanded_prompt, neg_prompt, new_base_seed, width, height)
-        file = discord.File(fp=grid_file_io, filename=format_image_filename("variation_grid", new_base_seed, "jpg", sref=sref_code))
+        grid_file_io = await create_grid_async(images, expanded_prompt, neg_prompt, new_base_seed, width, height)
+        effective_sw = sref_weight if sref_code else None
+        file = discord.File(fp=grid_file_io, filename=format_image_filename("variation_grid", new_base_seed, "jpg", sref=sref_code, denoise=denoise_val, sref_weight=effective_sw))
 
         if q_filename:
             if variation_type:
@@ -969,8 +976,10 @@ async def handle_reroll(interaction: discord.Interaction, generation_id: str):
         await save_quadrant_images_async(new_gen_id, images)
 
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, new_seed, width, height)
-        file = discord.File(fp=grid_file_io, filename=format_image_filename("reroll_grid", new_seed, "jpg", sref=sref_code))
+        grid_file_io = await create_grid_async(images, prompt, neg_prompt, new_seed, width, height)
+        effective_sw = sref_weight if sref_code else None
+        effective_denoise = gen_data.get("denoise", 1.0)
+        file = discord.File(fp=grid_file_io, filename=format_image_filename("reroll_grid", new_seed, "jpg", sref=sref_code, denoise=effective_denoise, sref_weight=effective_sw))
 
         desc_parts = [f"**Prompt:** {truncate_prompt(original_prompt, 250)}", f"**Model:** {checkpoint}", f"**Seed:** {new_seed}", f"**Size:** {width}x{height}"]
         if sref_info and "code" in sref_info:
@@ -1223,6 +1232,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         return
 
     sref_info = gen_data.get("sref_info")
+    sref_weight = gen_data.get("sref_weight", 0.6)
     cref_image = gen_data.get("cref_image")
     cref_weight = gen_data.get("cref_weight", 0.80)
 
@@ -1323,6 +1333,7 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
             "celebrity": gen_data.get("celebrity"),
             "variation_depth": 0,
             "sref_info": sref_info,
+            "sref_weight": sref_weight,
             "cref_image": cref_image,
             "cref_weight": cref_weight
         }
@@ -1346,7 +1357,8 @@ async def handle_outpaint(interaction: discord.Interaction, generation_id: str, 
         out_file_io = await embed_metadata_async(final_image, expanded_original, neg_prompt, seed, out_w, out_h)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
         safe_ratio_name = str(target_ratio).replace(':', '_').replace('.', '_')
-        file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{safe_ratio_name}", seed, "png", sref=sref_code))
+        effective_sw = sref_weight if sref_code else None
+        file = discord.File(fp=out_file_io, filename=format_image_filename(f"outpaint_{safe_ratio_name}", seed, "png", sref=sref_code, denoise=PipelineDefaults.VARIATION_DENOISE_VERY_HIGH, sref_weight=effective_sw))
 
         model_label = gen_data.get("unet_model") if is_bertflow else checkpoint
         desc_lines = [
@@ -1526,7 +1538,8 @@ async def handle_change_sref(interaction: discord.Interaction, generation_id: st
         metadata_io = await embed_metadata_async(images[0], new_full_prompt, neg_prompt, target_seed, width, height)
         file_code = str(sref_info['code']) if sref_info and "code" in sref_info else "custom"
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        file = discord.File(fp=metadata_io, filename=format_image_filename(f"isolated_sref_{file_code}", target_seed, "png", sref=sref_code))
+        effective_denoise = gen_data.get("denoise", 1.0)
+        file = discord.File(fp=metadata_io, filename=format_image_filename(f"isolated_sref_{file_code}", target_seed, "png", sref=sref_code, denoise=effective_denoise, sref_weight=sref_weight))
 
         desc_lines = [
             f"**Prompt:** {truncate_prompt(new_full_prompt, 250)}",

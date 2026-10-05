@@ -4,7 +4,7 @@
 [![Discord.py](https://img.shields.io/badge/discord.py-v2.3%2B-5865F2.svg)](https://github.com/Rapptz/discord.py)
 [![ComfyUI API](https://img.shields.io/badge/ComfyUI-REST%20%26%20WS-green.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI Tests](https://img.shields.io/badge/tests-101%20passed-success.svg)](suite_test.py)
+[![CI Tests](https://img.shields.io/badge/tests-137%20passed-success.svg)](suite_test.py)
 
 Welcome! **Shallot-CUI Bot** is your personal AI art and image creation studio built directly into Discord, powered by **ComfyUI**.
 
@@ -27,6 +27,20 @@ Whether you want to create beautiful pictures, explore photorealism with Krea 2 
 Type `/imagine` followed by what you want to see. The bot will create a 2x2 grid with 4 different picture ideas!
 * **Example:** `/imagine prompt: a cute ghost drinking boba tea in a neon city --ar 16:9`
 * **Art Styles (Checkpoints):** Pick the overall look you want (like Anime, Photorealistic, or Semi-Realism).
+* **🎯 Per-Checkpoint Preferred CFG**:
+  The bot automatically selects the optimal CFG scale tailored for your selected checkpoint so images look crisp without burning or over-saturation:
+  * `1.8` for Lightning & Fast models (`RealVisXL Lightning`, Turbo/Hyper)
+  * `3.5` for Anime / Illustrious models (`Wai Illustrious v1.70`, `Hyphoria`)
+  * `4.5` for `RealVisXL V4.0` (Photorealistic)
+  * `5.0` for `Juggernaut XL` & Balanced Realism
+  * `5.5` for `Copax Timeless XL` (Cinematic)
+  * `6.0` for `Pony Diffusion V6 XL`
+  * *Need manual control?* Use `--cfg <val>` or `--c <val>` to explicitly override the default anytime!
+* **Command Options:**
+  * `prompt`: What you want to see.
+  * `aspect_ratio`: Quick dropdown for 1:1, 16:9, 9:16, 21:9, etc.
+  * `checkpoint`: Select your SDXL model.
+  * `sref_weight`: Optional direct style reference weight (e.g. `1.48`).
 * **Optional Magic Enhancements:**
   * `Powerhouse 2-Stage Refiner` (`--refine`): Runs a second cleanup pass to give characters smooth skin textures and rich micro-details.
   * `Face Detailer` (`--face`): Automatic face-cleanup pass so character eyes and faces are always sharp and symmetrical.
@@ -38,7 +52,9 @@ Type `/imagine` followed by what you want to see. The bot will create a 2x2 grid
   * `--ar 16:9` $\rightarrow$ Widescreen wallpaper shape.
   * `--ar 9:16` $\rightarrow$ Phone screen portrait shape.
   * `--ar 1920:1032` $\rightarrow$ Taskbar Fit (fits perfectly on your monitor right above the Windows taskbar).
-  * `--sref <code|url>` $\rightarrow$ Style Reference: Copies the color palette and artistic vibe from an image or style code.
+  * `--sref <code|url>` $\rightarrow$ **Style Reference**: Copies the color palette and artistic vibe from an image or style code.
+  * `--sw <weight>` $\rightarrow$ **Style Weight**: Controls how strongly `--sref` influences the image (supports values like `0.85`, `1.48`, or Midjourney `148`, uncapped up to `5.0`).
+  * `--cfg <val>` or `--c <val>` $\rightarrow$ **CFG Override**: Manually set the prompt adherence strength (e.g. `--cfg 5.5` or `--c 3.2`).
   * `--cref <url>` $\rightarrow$ Character Reference: Copies a character's face/identity from an uploaded photo.
   * `--cheri` $\rightarrow$ **Cheri**: Character preset (Epoch 6 default). Automatically adds signature blonde hair! Supports `--cheri4` for Epoch 4.
   * `--mageill` $\rightarrow$ **Mageill**: Original character preset (Epoch 5 default). Specify any training epoch with `--mageill3`, `--mageill4`, `--mageill5`, or `--mageill6`!
@@ -68,6 +84,9 @@ Generate ultra-photorealistic portraits and character scenes using Bert's 11-nod
 * **`/describe` (AI Vision & Krea 2 Descriptor)**: Upload any image and Florence-2 will analyze it, write standard captions, detailed descriptions, and an optimized **Krea 2 natural language prompt**, plus 1-click buttons to remake it with Hyphoria NAI or immediately send to **`/bertflow` (Krea 2 Turbo)**!
 * **`/study` (Read Hidden Prompts)**: Upload any AI picture you found on the web. The bot inspects the hidden file data and extracts the exact prompt used to make it!
 * **`/blend-sdxl` / `/blend` (SDXL Blend Studio)**: Upload an image to mix it with new styles, SDXL checkpoints, and text ideas using instant Florence-2 vision analysis.
+  * **Interactive Studio Dashboard**: Real-time 3-column control panel for Canvas Ratio, Checkpoint, and Aesthetics.
+  * **SREF Weight Control**: Supply an optional `sref_weight` slash parameter, or click **✏️ Edit Prompts** to adjust the live **🎲 SREF Weight** field (`--sw 0.1 to 2.5+`) right from the Discord modal.
+  * **Intelligent CFG Calibration**: Automatically calibrates CFG to match your chosen checkpoint, with full support for manual `--cfg` overrides in your prompt.
 * **`/blend-krea` (Krea 2 Photorealism Blend)**: Upload an image to remix it with Florence-2 vision analysis and Bert's photorealistic Krea 2 Turbo flow-matching pipeline! Features an optional **Direct Composition** toggle (`Off`, `Medium 70%`, `Strong 50%`) to lock subject silhouettes and poses via VAE latent encoding.
 * **`/upscale` (1920px AI Upscaler)**: Upload any picture to make it sharp and high-resolution.
 * **`/free` (Purge VRAM & Memory)**: Unloads active models from ComfyUI and purges PyTorch GPU memory caches immediately to release 8GB VRAM for gaming or fresh generation tasks.
@@ -132,11 +151,21 @@ Whenever the bot generates a 4-image grid, you'll see these buttons below it:
 
 ---
 
-## 📂 Where Your Files Are Saved
+## 📂 Where Your Files Are Saved & Filename Conventions
 
 All high-resolution outputs are saved directly to your computer:
 * 🖼️ **High-Res Images:** `C:\ComfyUI\ComfyUI\output\Discord Bot\highres`
 * ✨ **Flux Images:** `C:\ComfyUI\ComfyUI\output\Discord Bot\flux`
+
+### 🏷️ Smart Filename Metadata
+Generated filenames embed key rendering parameters right into the filename so you can easily review your generation settings in Windows Explorer:
+```text
+{prefix}_{timestamp}_seed{seed}[_sw{sref_weight:.2f}][_d{denoise:.2f}].{ext}
+```
+* **Examples:**
+  * Grid with SREF & Denoise: `grid_2026-10-04_015713_seed123456_sw1.48_d0.60.jpg`
+  * Upscale with Style Weight: `upscale_1_2026-10-04_015713_seed555_sw0.85.png`
+  * Isolated Image with Denoise: `isolated_1_2026-10-04_015713_seed777_d1.00.png`
 
 ---
 
@@ -149,7 +178,7 @@ Shallot-CUI Bot is engineered for ultra-responsive Discord interactions and 24/7
 * **Semantic Workflow Adapter:** Decouples the bot from ComfyUI GUI node renumbering via semantic node role discovery and graph link tracing, eliminating runtime `KeyError` crashes.
 * **Gateway Heartbeat Protection:** Discord heartbeat ping intervals remain completely unblocked even when rendering multi-megapixel images or processing large file datasets.
 * **Modular Cog & Service Layers:** Features are partitioned into dedicated Discord UI cogs (`cogs/`) and decoupled execution services (`services/`).
-* **Strict Automated Testing:** Every feature, parser, and async helper is tested across 87 automated unit/integration checks in [`suite_test.py`](suite_test.py).
+* **Strict Automated Testing:** Every feature, parser, and async helper is tested across 137 automated unit/integration checks in [`suite_test.py`](suite_test.py).
 
 ---
 
@@ -158,7 +187,10 @@ Shallot-CUI Bot is engineered for ultra-responsive Discord interactions and 24/7
 | What I want to do | Command Example |
 | :--- | :--- |
 | Generate 4 ideas for a wallpaper | `/imagine prompt: cyberpunk city in the rain --smart --ar 16:9` |
+| Fine-tune style reference strength | `/imagine prompt: neon city --sref 837192 --sw 1.48` |
+| Manually override CFG scale | `/imagine prompt: futuristic landscape --cfg 5.5` |
 | Make an ultra-realistic picture | `/bertflow prompt: portrait of an astronaut on Mars --ar 16:9` |
+| Blend an image with custom style weight | `/blend-sdxl image: [upload] sref_weight: 1.48` |
 | Make an image with Cheri (Blonde hair - Epoch 6) | `/imagine prompt: enjoying the afternoon in Paris --cheri` |
 | Pick Cheri Epoch 4 | `/imagine prompt: enjoying the afternoon in Paris --cheri4` |
 | Make an image with Mageill (Default Epoch 5) | `/imagine prompt: casting a spell in a forest --mageill` |

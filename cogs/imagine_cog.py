@@ -60,7 +60,8 @@ class ImagineCog(commands.Cog):
         character="Select Character LoRA preset (Ogarla or Valerie)",
         favorite_style="Apply one of your saved favorite styles",
         favorite_prompt="Apply one of your saved favorite prompts",
-        style_reference="An image to use as style reference (--sref)"
+        style_reference="An image to use as style reference (--sref)",
+        sref_weight="Style reference weight / strength (e.g. 0.6, 1.0, 1.48) (--sw)"
     )
     @app_commands.choices(
         checkpoint=SDXL_CHECKPOINT_CHOICES,
@@ -91,7 +92,8 @@ class ImagineCog(commands.Cog):
         character: str = None,
         favorite_style: str = None,
         favorite_prompt: str = None,
-        style_reference: discord.Attachment = None
+        style_reference: discord.Attachment = None,
+        sref_weight: float = None
     ):
         if favorite_prompt:
             clean_fav = favorite_prompt.replace("📌", "").strip()
@@ -123,7 +125,8 @@ class ImagineCog(commands.Cog):
             await imagine_func(
                 interaction, prompt, None, checkpoint, style_reference, 
                 favorite_style=favorite_style, semi_realism=semi_realism, 
-                aspect_ratio=aspect_ratio, character=character, enhancements=enhancements
+                aspect_ratio=aspect_ratio, character=character, enhancements=enhancements,
+                sref_weight=sref_weight
             )
         else:
             await send_followup_fallback(interaction, content="❌ Generation service is unavailable.", ephemeral=True)

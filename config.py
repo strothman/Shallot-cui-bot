@@ -254,3 +254,56 @@ def get_checkpoint_display_name(checkpoint: Optional[str]) -> str:
         return CHECKPOINT_SHORTHAND_NAMES[str_ckpt]
     return str_ckpt.replace(".safetensors", "")
 
+
+def get_checkpoint_preferred_cfg(checkpoint: Optional[str]) -> float:
+    """
+    Resolves the optimal preferred CFG scale for a given checkpoint or shorthand alias.
+    Lookup hierarchy:
+    1. CHECKPOINT_CONFIGS explicit entry
+    2. Shorthand alias resolution in CHECKPOINT_CONFIGS
+    3. SQLite model_registry metadata / custom entry
+    4. Architecture / Filename heuristics (Lightning/Turbo -> 1.8, Pony -> 6.0, Illustrious -> 3.5-4.0, Realistic -> 5.0, Flux -> 1.0)
+    5. Default fallback: 4.0
+    """
+    if not checkpoint:
+        return 4.0
+    str_ckpt = str(checkpoint).strip()
+
+    # 1. Exact match in CHECKPOINT_CONFIGS
+    if str_ckpt in CHECKPOINT_CONFIGS and "cfg" in CHECKPOINT_CONFIGS[str_ckpt]:
+        return float(CHECKPOINT_CONFIGS[str_ckpt]["cfg"])
+
+    # 2. Substring or shorthand match in CHECKPOINT_CONFIGS
+    for ckpt_fn, cfg_data in CHECKPOINT_CONFIGS.items():
+        if (str_ckpt.lower() in ckpt_fn.lower() or ckpt_fn.lower().startswith(str_ckpt.lower())) and "cfg" in cfg_data:
+            return float(cfg_data["cfg"])
+
+    # 3. Check SQLite model registry if available
+    try:
+        import db
+        reg = db.get_model_registry_entry(str_ckpt)
+        if reg and reg.get("metadata") and isinstance(reg["metadata"], dict):
+            pref = reg["metadata"].get("preferred_cfg") or reg["metadata"].get("cfg")
+            if pref is not None:
+                return float(pref)
+    except Exception:
+        pass
+
+    # 4. Architecture / Filename heuristics
+    lower = str_ckpt.lower()
+    if any(k in lower for k in ["lightning", "turbo", "hyper", "fast"]):
+        return 1.8
+    if "pony" in lower:
+        return 6.0
+    if any(k in lower for k in ["copax", "timeless"]):
+        return 5.5
+    if any(k in lower for k in ["juggernaut", "realvis", "realistic", "photoreal", "ultra"]):
+        return 5.0
+    if any(k in lower for k in ["wai", "illustrious", "nai", "hyphoria", "anime"]):
+        return 3.5
+    if "flux" in lower:
+        return 1.0
+
+    return 4.0
+
+

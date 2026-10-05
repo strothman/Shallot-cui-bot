@@ -55,18 +55,27 @@ def get_checkpoint_abbrev(checkpoint: str) -> str:
     return clean[:10] if clean else "sdxl"
 
 
-def format_image_filename(prefix: str = "grid", seed: int = None, ext: str = "png", sref: str = None) -> str:
+def format_image_filename(
+    prefix: str = "grid", 
+    seed: int = None, 
+    ext: str = "png", 
+    sref: str = None,
+    denoise: float = None,
+    sref_weight: float = None
+) -> str:
     """
-    Generates a clean descriptive filename with YYYY-MM-DD date, seed, and sref code.
-    Example: grid_2026-08-14_175319_seed12345678_sref905471.jpg
-             isolated_1_2026-08-14_175319_seed12345678.png
+    Generates a clean descriptive filename with YYYY-MM-DD date, seed, sref code, sref weight, and denoise.
+    Example: grid_2026-08-14_175319_seed12345678_sref905471_sw1.48_d0.60.jpg
+             isolated_1_2026-08-14_175319_seed12345678_d1.00.png
     """
     date_str = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     seed_str = f"_seed{seed}" if seed is not None else ""
     sref_str = f"_sref{sref}" if sref else ""
+    sw_str = f"_sw{sref_weight:.2f}" if sref_weight is not None else ""
+    denoise_str = f"_d{denoise:.2f}" if denoise is not None else ""
     clean_ext = ext.lstrip(".")
     clean_prefix = prefix.replace("DiscordBot_", "").replace("DiscordBot", "").strip("_")
-    return f"{clean_prefix}_{date_str}{seed_str}{sref_str}.{clean_ext}"
+    return f"{clean_prefix}_{date_str}{seed_str}{sref_str}{sw_str}{denoise_str}.{clean_ext}"
 
 
 def get_dated_save_prefix(subfolder: str = "") -> str:

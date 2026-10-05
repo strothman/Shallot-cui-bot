@@ -118,6 +118,18 @@ class TestParsers(unittest.TestCase):
         self.assertTrue(fn2.startswith("isolated_1_"))
         self.assertTrue(fn2.endswith("_seed999.png"))
 
+        # Test format_image_filename with denoise and sref_weight
+        fn3 = format_image_filename("grid", 123456, "jpg", denoise=0.60, sref_weight=1.48)
+        self.assertIn("_seed123456_sw1.48_d0.60.jpg", fn3)
+
+        fn4 = format_image_filename("upscale_1", 555, "png", sref_weight=0.85)
+        self.assertIn("_seed555_sw0.85.png", fn4)
+        self.assertNotIn("_d", fn4)
+
+        fn5 = format_image_filename("isolated_1", 777, "png", denoise=1.0)
+        self.assertIn("_seed777_d1.00.png", fn5)
+        self.assertNotIn("_sw", fn5)
+
     def test_module2_prompt_parsers(self):
         """Test prompt flag parsing: loras, seed, stylize, sref, magic, wildcards."""
         # LoRA shorthand
@@ -144,10 +156,45 @@ class TestParsers(unittest.TestCase):
         self.assertFalse(quality_raw)
         self.assertEqual(cfg_raw, 3.0)
 
+        # Explicit CFG flag (--cfg / --c)
+        p_cfg1, cfg1, _ = parse_stylize("cyberpunk city --cfg 5.5")
+        self.assertEqual(p_cfg1, "cyberpunk city")
+        self.assertEqual(cfg1, 5.5)
+
+        p_cfg2, cfg2, _ = parse_stylize("cyberpunk city --c 3.2")
+        self.assertEqual(p_cfg2, "cyberpunk city")
+        self.assertEqual(cfg2, 3.2)
+
+        # Checkpoint preferred CFG fallback when --cfg is not specified
+        _, cfg_none, _ = parse_stylize("cyberpunk city", default_cfg=None)
+        self.assertIsNone(cfg_none)
+
+        _, cfg_custom, _ = parse_stylize("cyberpunk city", default_cfg=6.5)
+        self.assertEqual(cfg_custom, 6.5)
+
         # Sref parsing
         p_sref, url, weight, info = parse_sref("retro city --sw 0.85 --sref http://example.com/img.jpg")
         self.assertEqual(url, "http://example.com/img.jpg")
         self.assertEqual(weight, 0.85)
+
+        # Variable SREF weight (> 1.0, e.g. 1.48 as in ComfyUI SREF node)
+        p_sw_high, _, sw_high, info_high = parse_sref("retro city --sw 1.48 --sref 837192")
+        self.assertEqual(sw_high, 1.48)
+        self.assertIsNotNone(info_high)
+        self.assertIn(":1.48", p_sw_high)  # Formats weighted prompt ({preset_prompt}:1.48)
+
+        # Midjourney integer percentage SREF weight (--sw 148 -> 1.48)
+        _, _, sw_mj, _ = parse_sref("retro city --sw 148 --sref 837192")
+        self.assertEqual(sw_mj, 1.48)
+
+        # Preferred CFG helper from config.py
+        from config import get_checkpoint_preferred_cfg
+        self.assertEqual(get_checkpoint_preferred_cfg("RealVisXL_V4.0.safetensors"), 4.5)
+        self.assertEqual(get_checkpoint_preferred_cfg("RealVisXL_V5.0_Lightning.safetensors"), 1.8)
+        self.assertEqual(get_checkpoint_preferred_cfg("wai_illustrious_v170.safetensors"), 3.5)
+        self.assertEqual(get_checkpoint_preferred_cfg("wai"), 3.5)
+        self.assertEqual(get_checkpoint_preferred_cfg("ponyDiffusionV6XL.safetensors"), 6.0)
+        self.assertEqual(get_checkpoint_preferred_cfg("unknown_checkpoint.safetensors"), 4.0)
 
         p_rnd, url_rnd, weight_rnd, info_rnd = parse_sref("retro city --sref random")
         self.assertIsNotNone(info_rnd)

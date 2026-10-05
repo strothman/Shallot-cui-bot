@@ -28,6 +28,7 @@ from config import (
     CHECKPOINT_CONFIGS,
     PipelineDefaults,
     get_checkpoint_display_name,
+    get_checkpoint_preferred_cfg,
 )
 from comfy_client import ComfyClient, StasisInterruptException
 import db
@@ -41,6 +42,7 @@ from error_handler import (
 )
 from image_utils import (
     create_grid,
+    create_grid_async,
     get_quadrant_bytes_async,
     save_quadrant_images_async,
     upscale_isolated_image_async,
@@ -234,7 +236,7 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
     await save_quadrant_images_async(generation_id, images)
 
     sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-    grid_file_io = await asyncio.to_thread(create_grid, images, prompt, neg_prompt, seed, width, height)
+    grid_file_io = await create_grid_async(images, prompt, neg_prompt, seed, width, height)
     is_flux = gen_data.get("is_flux", False)
     ckpt_abbrev = get_checkpoint_abbrev(selected_model)
     if gen_data.get("gamble_info"):
@@ -243,7 +245,10 @@ async def complete_grid_generation(interaction, generation_id, images, gen_data,
         grid_prefix = f"flux_{ckpt_abbrev}_grid"
     else:
         grid_prefix = f"grid_{ckpt_abbrev}"
-    file = discord.File(fp=grid_file_io, filename=format_image_filename(grid_prefix, seed, "jpg", sref=sref_code))
+
+    effective_denoise = gen_data.get("denoise", 1.0)
+    effective_sw = sref_weight if (sref_code or sref_image_name) else None
+    file = discord.File(fp=grid_file_io, filename=format_image_filename(grid_prefix, seed, "jpg", sref=sref_code, denoise=effective_denoise, sref_weight=effective_sw))
     
     desc_parts = [f"**Prompt:** {truncate_prompt(display_prompt, 250)}", f"**Model:** {selected_model}", f"**Seed:** {seed}", f"**Size:** {width}x{height}"]
     if "{" in display_prompt and "}" in display_prompt and expanded_prompts:
@@ -360,7 +365,8 @@ async def execute_imagine(
     is_face_detailer: bool = False, 
     character: str = None, 
     model: str = None,
-    gamble_info: dict = None
+    gamble_info: dict = None,
+    sref_weight: float = None
 ):
     if model and not checkpoint:
         checkpoint = model
@@ -416,6 +422,9 @@ async def execute_imagine(
         else:
             prompt = f"{prompt} --sref {fav_str}"
 
+    if sref_weight is not None and not any(k in prompt for k in ["--sw", "--sref-weight"]):
+        prompt = f"{prompt} --sw {sref_weight}"
+
     neg_prompt = negative_prompt or db.get_negative_prompt(interaction.user.id if interaction and interaction.user else 0)
     if is_com:
         is_flux = True
@@ -462,7 +471,8 @@ async def execute_imagine(
     cleaned_prompt, user_seed = parse_seed(cleaned_prompt)
     seed = user_seed if user_seed is not None else random.randint(1, 1125899906842624)
     
-    cleaned_prompt, cfg, prepend_quality = parse_stylize(cleaned_prompt)
+    cleaned_prompt, parsed_cfg, prepend_quality = parse_stylize(cleaned_prompt)
+    cfg = parsed_cfg if parsed_cfg is not None else get_checkpoint_preferred_cfg(selected_model)
 
     if is_flux:
         cleaned_prompt = re.sub(r'[-\u2014\u2013]{1,2}sref\s+[^\s]+(?:\s*\([^)]*\))?', '', cleaned_prompt, flags=re.IGNORECASE).strip()
@@ -749,7 +759,7 @@ async def execute_imagine(
             
             ckpt_cfg = CHECKPOINT_CONFIGS.get(selected_model, {})
             if ckpt_cfg:
-                if cfg == 4.0 and "cfg" in ckpt_cfg:
+                if parsed_cfg is None and "cfg" in ckpt_cfg:
                     cfg = ckpt_cfg["cfg"]
                 if "3" in workflow:
                     if "sampler_name" in ckpt_cfg:
@@ -880,6 +890,7 @@ async def execute_imagine(
         "cref_weight": cref_weight,
         "expanded_prompts": expanded_prompts,
         "cfg": cfg,
+        "denoise": denoise_val if use_reference_img2img else 1.0,
         "status": "pending",
         "timestamp": datetime.now().isoformat(),
         "is_flux": is_flux,

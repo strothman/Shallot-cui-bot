@@ -83,36 +83,52 @@ MAGIC_ENHANCEMENTS = [
 
 RE_RAW = re.compile(r'[-\u2014\u2013]{1,2}raw\b', re.IGNORECASE)
 RE_STYLIZE = re.compile(r'[-\u2014\u2013]{1,2}(?:stylize|s)\s+(\d+)', re.IGNORECASE)
+RE_CFG = re.compile(r'[-\u2014\u2013]{1,2}(?:cfg|c)\s+([0-9\.]+)', re.IGNORECASE)
 RE_SW = re.compile(r'[-\u2014\u2013]{1,2}(?:sw|sref[-_]?weight)(?:\s+|\.)?([0-9\.]+)', re.IGNORECASE)
 RE_SREF = re.compile(r'[-\u2014\u2013]{1,2}sref\s+(.+?)(?=\s+[-\u2014\u2013]{1,2}[a-z]+|$)', re.IGNORECASE)
 
 
-def parse_stylize(prompt: str):
+def parse_stylize(prompt: str, default_cfg: float = None):
     """
-    Parses --stylize/--s (0-1000) and --raw from prompt.
-    Returns (cleaned_prompt, cfg_scale, prepend_quality_tags).
+    Parses --stylize/--s (0-1000), --cfg/--c, and --raw from prompt.
+    Returns (cleaned_prompt, cfg_scale_or_None, prepend_quality_tags).
     
-    Mapping: --stylize 0 -> CFG 1.0, --stylize 500 -> CFG 4.0, --stylize 1000 -> CFG 12.0
+    Mapping: 
+    --cfg / --c -> explicit CFG value (1.0 to 30.0)
+    --stylize 0 -> CFG 1.0, --stylize 500 -> CFG 4.0, --stylize 1000 -> CFG 12.0
     --raw disables quality tag prepend and sets CFG to 3.0
+    If no flag is present, returns default_cfg (None by default).
     """
-    cfg = 4.0
+    cfg = default_cfg
     prepend_quality = True
     
-    # Check --raw first
+    # 1. Check explicit --cfg / --c
+    cfg_match = RE_CFG.search(prompt)
+    if cfg_match:
+        try:
+            cfg = max(1.0, min(30.0, float(cfg_match.group(1))))
+            prompt = RE_CFG.sub('', prompt).strip()
+        except Exception as e:
+            logger.error(f"Error parsing explicit CFG: {e}")
+
+    # 2. Check --raw
     raw_match = RE_RAW.search(prompt)
     if raw_match:
         prepend_quality = False
-        cfg = 3.0
+        if cfg is None:
+            cfg = 3.0
         prompt = RE_RAW.sub('', prompt).strip()
     
-    # Check --stylize / --s
+    # 3. Check --stylize / --s
     stylize_match = RE_STYLIZE.search(prompt)
     if stylize_match:
         val = min(1000, max(0, int(stylize_match.group(1))))
         if val <= 500:
-            cfg = 1.0 + (val / 500.0) * 3.0
+            s_cfg = 1.0 + (val / 500.0) * 3.0
         else:
-            cfg = 4.0 + ((val - 500) / 500.0) * 8.0
+            s_cfg = 4.0 + ((val - 500) / 500.0) * 8.0
+        if cfg is None:
+            cfg = s_cfg
         prompt = RE_STYLIZE.sub('', prompt).strip()
         
         # High stylize enables quality tags; low disables them
@@ -152,19 +168,21 @@ def parse_sref(prompt: str):
     sref_url = None
     sref_weight = 0.6
     sref_info = None
+    is_explicit_sw = False
     
-    # 1. Parse --sw or --sref-weight (e.g. --sw 0.9, --sw 0.85, --sw.9, --sw 90, --sref-weight 0.9)
+    # 1. Parse --sw or --sref-weight (e.g. --sw 0.9, --sw 1.48, --sw.9, --sw 90, --sw 148, --sref-weight 1.48)
     sw_match = RE_SW.search(prompt)
     if sw_match:
         try:
             val_str = sw_match.group(1)
             if val_str.startswith('.'):
                 val = float(val_str)
-            elif val_str.isdigit() and float(val_str) > 1.0:
+            elif float(val_str) > 10.0:
                 val = float(val_str) / 100.0
             else:
                 val = float(val_str)
-            sref_weight = min(1.0, max(0.0, val))
+            sref_weight = min(5.0, max(0.0, val))
+            is_explicit_sw = True
             prompt = RE_SW.sub('', prompt).strip()
         except Exception as e:
             logger.error(f"Error parsing sref weight: {e}")
@@ -188,19 +206,44 @@ def parse_sref(prompt: str):
 
             code = random.randint(100000, 999999)
             preset = generate_dynamic_style(code)
-            sref_info = {"code": code, "name": preset["name"], "prompt": preset["prompt"], "batch_count": batch_count}
-            prompt = f"{prompt}, {preset['prompt']}"
+            sref_info = {
+                "code": code, 
+                "name": preset["name"], 
+                "prompt": preset["prompt"], 
+                "batch_count": batch_count,
+                "weight": sref_weight
+            }
+            if is_explicit_sw and abs(sref_weight - 1.0) > 0.01:
+                prompt = f"{prompt}, ({preset['prompt']}:{sref_weight:.2f})"
+            else:
+                prompt = f"{prompt}, {preset['prompt']}"
         else:
             digit_match = re.search(r'\b(\d{5,7})\b', val)
             if digit_match:
                 code = int(digit_match.group(1))
                 preset = generate_dynamic_style(code)
-                sref_info = {"code": code, "name": preset["name"], "prompt": preset["prompt"]}
-                prompt = f"{prompt}, {preset['prompt']}"
+                sref_info = {
+                    "code": code, 
+                    "name": preset["name"], 
+                    "prompt": preset["prompt"],
+                    "weight": sref_weight
+                }
+                if is_explicit_sw and abs(sref_weight - 1.0) > 0.01:
+                    prompt = f"{prompt}, ({preset['prompt']}:{sref_weight:.2f})"
+                else:
+                    prompt = f"{prompt}, {preset['prompt']}"
             elif val.isdigit():
                 code = int(val)
                 preset = generate_dynamic_style(code)
-                sref_info = {"code": code, "name": preset["name"], "prompt": preset["prompt"]}
-                prompt = f"{prompt}, {preset['prompt']}"
+                sref_info = {
+                    "code": code, 
+                    "name": preset["name"], 
+                    "prompt": preset["prompt"],
+                    "weight": sref_weight
+                }
+                if is_explicit_sw and abs(sref_weight - 1.0) > 0.01:
+                    prompt = f"{prompt}, ({preset['prompt']}:{sref_weight:.2f})"
+                else:
+                    prompt = f"{prompt}, {preset['prompt']}"
     
     return prompt, sref_url, sref_weight, sref_info

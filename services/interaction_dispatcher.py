@@ -521,7 +521,8 @@ async def dispatch_interaction(interaction: discord.Interaction) -> bool:
                     current_caption=current_cap,
                     current_detailed=current_det,
                     current_extra=current_extra,
-                    on_submit_callback=submit_cb
+                    on_submit_callback=submit_cb,
+                    current_sw=gen_data.get("sref_weight", 1.0)
                 )
                 await interaction.response.send_modal(modal)
                 return True

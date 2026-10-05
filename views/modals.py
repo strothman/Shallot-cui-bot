@@ -99,7 +99,7 @@ class RemixModal(discord.ui.Modal, title="✏️ Remix / Tweak Prompt"):
 
 
 class EditBlendPromptModal(discord.ui.Modal, title="✏️ Edit & Refine Blend Prompts"):
-    def __init__(self, generation_id: str, current_caption: str, current_detailed: str, current_extra: str = "", on_submit_callback=None):
+    def __init__(self, generation_id: str, current_caption: str, current_detailed: str, current_extra: str = "", on_submit_callback=None, current_sw: float = None):
         super().__init__()
         self.generation_id = generation_id
         self.on_submit_callback = on_submit_callback
@@ -134,19 +134,51 @@ class EditBlendPromptModal(discord.ui.Modal, title="✏️ Edit & Refine Blend P
         )
         self.add_item(self.extra_input)
 
+        sw_default = f"{current_sw:.2f}" if current_sw is not None else "1.00"
+        self.sw_input = discord.ui.TextInput(
+            label="🎲 SREF Weight (--sw 0.1 to 2.5)",
+            style=discord.TextStyle.short,
+            default=sw_default,
+            max_length=10,
+            required=False,
+            placeholder="e.g. 0.6, 1.0, 1.48"
+        )
+        self.add_item(self.sw_input)
+
     async def on_submit(self, interaction: discord.Interaction):
         try:
+            parsed_sw = None
+            if hasattr(self, "sw_input") and self.sw_input.value.strip():
+                try:
+                    val = float(self.sw_input.value.strip())
+                    parsed_sw = min(5.0, max(0.0, val / 100.0 if val > 10.0 else val))
+                except Exception:
+                    parsed_sw = None
+
             if self.on_submit_callback:
-                await self.on_submit_callback(
-                    interaction,
-                    self.generation_id,
-                    self.caption_input.value.strip(),
-                    self.detailed_input.value.strip(),
-                    self.extra_input.value.strip()
-                )
+                import inspect
+                sig = inspect.signature(self.on_submit_callback)
+                if len(sig.parameters) >= 6 or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    await self.on_submit_callback(
+                        interaction,
+                        self.generation_id,
+                        self.caption_input.value.strip(),
+                        self.detailed_input.value.strip(),
+                        self.extra_input.value.strip(),
+                        sref_weight=parsed_sw
+                    )
+                else:
+                    await self.on_submit_callback(
+                        interaction,
+                        self.generation_id,
+                        self.caption_input.value.strip(),
+                        self.detailed_input.value.strip(),
+                        self.extra_input.value.strip()
+                    )
         except Exception as e:
             logger.error(f"Error in EditBlendPromptModal submit: {e}")
             await send_error_fallback(interaction, f"Failed to update blend prompt: {e}")
+
 
 
 class EditBlendKreaModal(discord.ui.Modal):

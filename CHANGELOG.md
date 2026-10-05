@@ -4,6 +4,49 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-10-05]
+
+### Maintenance
+* Component polish: Novice-friendly user guide and quickstart documentation
+* Component polish: Updated `imagine_cog.py`
+* Component polish: Updated `vision_cog.py`
+* Component polish: Bot settings, models, and safety thresholds
+* Component polish: Image processing (grid stitching, splitting, and scaling)
+* Component polish: Updated `__init__.py`
+* Component polish: Updated `styles.py`
+* Component polish: Updated `blend_generation_service.py`
+* Component polish: Updated `generation_service.py`
+* Component polish: Updated `grid_actions_service.py`
+* Component polish: Updated `interaction_dispatcher.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_parsers.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `blend_sdxl.py`
+* Component polish: Updated `modals.py`
+* Component polish: Updated `anima_2stage.json`
+
+---
+## [2026-10-04]
+
+### Maintenance
+* Component polish: Novice-friendly user guide and quickstart documentation
+* Component polish: Updated `imagine_cog.py`
+* Component polish: Updated `vision_cog.py`
+* Component polish: Bot settings, models, and safety thresholds
+* Component polish: Image processing (grid stitching, splitting, and scaling)
+* Component polish: Updated `__init__.py`
+* Component polish: Updated `styles.py`
+* Component polish: Updated `blend_generation_service.py`
+* Component polish: Updated `generation_service.py`
+* Component polish: Updated `grid_actions_service.py`
+* Component polish: Updated `interaction_dispatcher.py`
+* Component polish: Updated `vision_service.py`
+* Component polish: Updated `test_parsers.py`
+* Component polish: Updated `test_ui_and_views.py`
+* Component polish: Updated `blend_sdxl.py`
+* Component polish: Updated `modals.py`
+
+---
 ## [2026-09-25]
 
 ### Added

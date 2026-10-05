@@ -338,17 +338,21 @@ class TestUiAndViews(unittest.TestCase):
 
         # 2. EditBlendPromptModal
         blend_res = {}
-        async def blend_cb(inter, gen_id, cap, det, extra):
+        async def blend_cb(inter, gen_id, cap, det, extra, sref_weight=None):
             blend_res["cap"] = cap
             blend_res["det"] = det
             blend_res["extra"] = extra
-        m_blend = EditBlendPromptModal("gen123", "a cat", "a cute cat on a table", "glowing", on_submit_callback=blend_cb)
+            blend_res["sref_weight"] = sref_weight
+        m_blend = EditBlendPromptModal("gen123", "a cat", "a cute cat on a table", "glowing", on_submit_callback=blend_cb, current_sw=1.48)
+        self.assertEqual(m_blend.sw_input.default, "1.48")
         m_blend.caption_input._value = "a dog"
         m_blend.detailed_input._value = "a cute dog on grass"
         m_blend.extra_input._value = "sunset"
+        m_blend.sw_input._value = "1.75"
         asyncio.run(m_blend.on_submit(mock_interaction))
         self.assertEqual(blend_res.get("cap"), "a dog")
         self.assertEqual(blend_res.get("extra"), "sunset")
+        self.assertEqual(blend_res.get("sref_weight"), 1.75)
 
         # 3. StudyImagineModal
         study_res = {}
@@ -2062,6 +2066,49 @@ class TestUiAndViews(unittest.TestCase):
         saved = db.get_generation(gen_id)
         self.assertEqual(saved["ar"], "16:9")
         self.assertEqual(saved["fused_prompt"], "A neon cyber city")
+
+    def test_handle_isolate_with_sref(self):
+        """Verify handle_isolate succeeds without NameError when session contains sref metadata and weight."""
+        import db
+        from services.grid_actions_service import handle_isolate
+        from PIL import Image
+        import io
+
+        gen_id = "test_iso_sref_123"
+        db.save_generation(gen_id, {
+            "prompt": "surrealistic portrait",
+            "original_prompt": "surrealistic portrait --sref 276678",
+            "seed": 1097359367880610,
+            "width": 512,
+            "height": 512,
+            "checkpoint": "waiIllustriousSDXL_v170.safetensors",
+            "sref_info": {"code": "276678", "name": "Surrealist", "weight": 1.48},
+            "sref_weight": 1.48,
+        })
+
+        img = Image.new("RGB", (256, 256), color="red")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        dummy_png = buf.getvalue()
+
+        mock_inter = MagicMock()
+        mock_inter.response.is_done.return_value = True
+        mock_inter.followup.send = AsyncMock()
+        mock_inter.user.display_name = "TestUser"
+        mock_inter.user.id = 123456
+        mock_inter.data = {"custom_id": f"isolate:{gen_id}:2"}
+
+        with patch("services.grid_actions_service.get_quadrant_bytes_async", AsyncMock(return_value=dummy_png)), \
+             patch("services.grid_actions_service.send_followup_fallback", AsyncMock()) as mock_followup, \
+             patch("services.grid_actions_service._update_button_state", AsyncMock()):
+            asyncio.run(handle_isolate(mock_inter, gen_id, 2))
+            mock_followup.assert_called_once()
+            call_kwargs = mock_followup.call_args.kwargs
+            files = call_kwargs.get("files", [])
+            self.assertEqual(len(files), 1)
+            filename = files[0].filename
+            self.assertIn("sref276678", filename)
+            self.assertIn("sw1.48", filename)
 
 
 if __name__ == '__main__':

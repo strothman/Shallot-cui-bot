@@ -330,7 +330,8 @@ async def execute_blend_core(
     prompt: str = None,
     style: str = None,
     secondary_style: str = None,
-    client: ComfyClient = None
+    client: ComfyClient = None,
+    sref_weight: float = None
 ):
     """Core execution logic for Florence-2 image blending and remixing in SDXL."""
     if style:
@@ -401,6 +402,7 @@ async def execute_blend_core(
             "model_choice": "wai",
             "comp_strength": "style",
             "sref_rand": "nosref",
+            "sref_weight": sref_weight if sref_weight is not None else 1.0,
             "author_str": interaction.user.name
         }
         db.save_generation(generation_id, gen_data)

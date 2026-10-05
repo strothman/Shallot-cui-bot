@@ -43,12 +43,14 @@ class VisionCog(commands.Cog):
         description="Interactively blend or remix an image using dedicated SDXL vision tags, LoRAs, and checkpoints."
     )
     @app_commands.describe(
-        image="Upload an image to blend and remix with SDXL"
+        image="Upload an image to blend and remix with SDXL",
+        sref_weight="Style reference weight (e.g. 0.6, 1.0, 1.48) (--sw)"
     )
     async def blend_sdxl(
         self,
         interaction: discord.Interaction, 
-        image: discord.Attachment
+        image: discord.Attachment,
+        sref_weight: float = None
     ):
         """Slash command to blend an uploaded image with SDXL checkpoints and LoRAs."""
         await safe_defer(interaction, thinking=False, ephemeral=False)
@@ -66,7 +68,8 @@ class VisionCog(commands.Cog):
                 image_bytes=image_bytes,
                 filename=image.filename,
                 image_url=image.url,
-                client=client
+                client=client,
+                sref_weight=sref_weight
             )
         except Exception as e:
             logger.error(f"Error reading image for blend: {e}")

@@ -34,7 +34,8 @@ from config import (
     SDXL_CHECKPOINT_CHOICES,
     COMFYUI_CHECKPOINT,
     COMFYUI_ADDRESS,
-    PipelineDefaults
+    PipelineDefaults,
+    get_checkpoint_preferred_cfg
 )
 from parsers import (
     parse_aspect_ratio, 
@@ -129,12 +130,14 @@ def build_blend_workflow(
             workflow["3"]["inputs"]["steps"] = ckpt_cfg["steps"]
         if "cfg" in ckpt_cfg and (cfg is None or cfg == 4.0 or cfg == 3.5):
             effective_cfg = ckpt_cfg["cfg"]
+        elif cfg is not None and 1.0 <= cfg <= 30.0:
+            effective_cfg = cfg
         else:
-            effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 8.0) else 4.0
+            effective_cfg = get_checkpoint_preferred_cfg(selected_model)
         if ckpt_cfg.get("negative_addon"):
             neg_prompt = f"{neg_prompt}, {ckpt_cfg['negative_addon']}" if neg_prompt else ckpt_cfg["negative_addon"]
     else:
-        effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 8.0) else 3.5
+        effective_cfg = cfg if (cfg is not None and 1.0 <= cfg <= 30.0) else get_checkpoint_preferred_cfg(selected_model)
 
     workflow["3"]["inputs"]["cfg"] = effective_cfg
     workflow["6"]["inputs"]["text"] = prompt
@@ -279,6 +282,7 @@ async def handle_update_blend_view(interaction: discord.Interaction, generation_
             gen_data["char_choice"] = "none"
     if new_model is not None:
         gen_data["model_choice"] = new_model
+        gen_data["cfg"] = get_checkpoint_preferred_cfg(new_model)
     if new_comp is not None:
         gen_data["comp_strength"] = new_comp
     if new_sref is not None:
@@ -314,8 +318,8 @@ async def handle_update_blend_view(interaction: discord.Interaction, generation_
         logger.debug(f"Ignored expected interaction update error: {e}")
 
 
-async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, generation_id: str, new_caption: str, new_detailed: str, extra_details: str = ""):
-    """Updates the caption, detailed description, and extra details for a /blend session and edits the embed in place."""
+async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, generation_id: str, new_caption: str, new_detailed: str, extra_details: str = "", sref_weight: float = None):
+    """Updates the caption, detailed description, extra details, and sref_weight for a /blend session and edits the embed in place."""
     gen_data = get_generation(generation_id)
     if not gen_data:
         await send_error_fallback(interaction, "Blend session expired.")
@@ -324,6 +328,8 @@ async def handle_submit_edit_blend_prompts(interaction: discord.Interaction, gen
     gen_data["caption"] = new_caption
     gen_data["detailed_caption"] = new_detailed
     gen_data["extra_details"] = extra_details
+    if sref_weight is not None:
+        gen_data["sref_weight"] = sref_weight
     db.save_generation(generation_id, gen_data)
 
     author_str = gen_data.get("author_str", interaction.user.name if (interaction and interaction.user) else "User")
@@ -513,6 +519,10 @@ async def handle_generate_blended(interaction: discord.Interaction, generation_i
     if ar:
         base_parts.append(f"--ar {ar}")
 
+    sw_val = gen_data.get("sref_weight")
+    if sw_val is not None and not any(k in " ".join(base_parts) for k in ["--sw", "--sref-weight"]):
+        base_parts.append(f"--sw {sw_val}")
+
     executor = _get_blend_executor()
 
     if isinstance(use_sref_rand, str) and use_sref_rand.startswith("saved_"):
@@ -596,7 +606,8 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
     cleaned_prompt, user_seed = parse_seed(cleaned_prompt)
     seed = user_seed if user_seed is not None else random.randint(1, 1125899906842624)
     
-    cleaned_prompt, cfg, prepend_quality = parse_stylize(cleaned_prompt)
+    cleaned_prompt, parsed_cfg, prepend_quality = parse_stylize(cleaned_prompt)
+    cfg = parsed_cfg if parsed_cfg is not None else get_checkpoint_preferred_cfg(selected_model)
     cleaned_prompt, sref_url, sref_weight, sref_info = parse_sref(cleaned_prompt)
     cleaned_prompt, cref_url, cref_weight = parse_cref(cleaned_prompt)
 
@@ -721,6 +732,8 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
         "cfg": cfg,
         "variation_depth": 0,
         "sref_info": sref_info,
+        "sref_weight": sref_weight,
+        "denoise": denoise_val if use_img2img else 1.0,
         "cref_image": cref_image_name,
         "cref_weight": cref_weight,
         "is_blend": True
@@ -771,7 +784,9 @@ async def execute_blend_generation(interaction: discord.Interaction, uploaded_im
 
         grid_file_io = await create_grid_async(images, cleaned_prompt, neg_prompt, seed, width, height)
         sref_code = sref_info.get("code") if (sref_info and isinstance(sref_info, dict)) else None
-        file = discord.File(fp=grid_file_io, filename=format_image_filename("blend_grid", seed, "jpg", sref=sref_code))
+        effective_denoise = denoise_val if use_img2img else 1.0
+        effective_sw = sref_weight if sref_info else None
+        file = discord.File(fp=grid_file_io, filename=format_image_filename("blend_grid", seed, "jpg", sref=sref_code, denoise=effective_denoise, sref_weight=effective_sw))
         
         elapsed_time = time.time() - start_time
         user_name = interaction.user.display_name if (interaction and interaction.user) else "User"
