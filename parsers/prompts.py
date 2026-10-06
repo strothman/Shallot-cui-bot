@@ -828,7 +828,14 @@ def sanitize_describe_text(text: str) -> str:
         return "general"
 
     text = RE_AN_OVERALL.sub(_replace_an, text)
-    return RE_OVERALL.sub(_replace_overall, text)
+    text = RE_OVERALL.sub(_replace_overall, text)
+
+    # Strip degenerate LLM markdown citation/footnote loops (e.g. ([1]())(),[2]()... or [1](), [2]()...)
+    text = re.sub(r'([,\s\.\(\)]*\[\d+\]\(\)[,\s\.\(\)]*)+', ' ', text)
+    text = re.sub(r'\(\s*\)', '', text)
+    text = re.sub(r'\[\s*\]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def format_sdxl_prompt(raw_text: str) -> str:

@@ -117,7 +117,8 @@ async def run_vision_interrogate(
     filename: str = None,
     engine: str = "auto",
     target_arch: str = "all",
-    client: ComfyClient = None
+    client: ComfyClient = None,
+    purge_pre_vision: bool = True
 ) -> dict:
     """
     Unified vision interrogation engine. Supports JoyCaption, Qwen2.5-VL, and Florence-2
@@ -130,10 +131,11 @@ async def run_vision_interrogate(
     comfy = client or _comfy_client
 
     # Proactively purge lingering diffusion models (Krea 2 / SDXL) before running heavy vision models
-    try:
-        await comfy.free_memory(unload_models=True)
-    except Exception as e:
-        logger.debug(f"Pre-vision free_memory error: {e}")
+    if purge_pre_vision:
+        try:
+            await comfy.free_memory(unload_models=True)
+        except Exception as e:
+            logger.debug(f"Pre-vision free_memory error: {e}")
 
     # Normalize input image: flatten animated GIFs / multi-frame files to static frame 0,
     # convert palette/transparency to RGB/RGBA, and downscale oversized inputs to max 1024px
@@ -228,6 +230,12 @@ async def run_vision_interrogate(
 
             if "1" in workflow and "inputs" in workflow["1"]:
                 workflow["1"]["inputs"]["image"] = uploaded_name
+
+            # Randomize generation seed if present to prevent deterministic sampling loops
+            for nid in ["3", "2", "4"]:
+                if nid in workflow and isinstance(workflow[nid], dict) and "inputs" in workflow[nid]:
+                    if "seed" in workflow[nid]["inputs"]:
+                        workflow[nid]["inputs"]["seed"] = random.randint(1, 2**32 - 1)
 
             logger.info(f"Executing {eng_name} vision workflow ({wf_path}) for {uploaded_name}...")
             res_candidate = await comfy.generate(workflow, timeout=14400)

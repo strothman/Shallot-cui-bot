@@ -4,26 +4,27 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-10-06]
+
+### Added
+* **Qwen2.5-VL Citation Loop Fix & Vision Prompt Hardening**:
+  * Implemented markdown citation/footnote loop stripping in [`parsers/prompts.py`](parsers/prompts.py) (`sanitize_describe_text`) to eliminate degenerate token counting patterns (`([1]())(),[2]()...`).
+  * Added negative prompt constraints against citations, markdown links, and footnote brackets in [`workflows/DESCRIBE_qwen_vl.json`](workflows/DESCRIBE_qwen_vl.json).
+  * Implemented dynamic seed randomization in [`services/vision_service.py`](services/vision_service.py) to prevent deterministic sampling traps.
+  * Added unit test coverage in [`tests/test_parsers.py`](tests/test_parsers.py) verifying clean resolution of citation sequences.
+* **Batch 1080p AI Upscaling Utility**:
+  * Added [`scripts/batch_upscale_1080p.py`](scripts/batch_upscale_1080p.py) using `4x-UltraSharp.pth` to generate dual lightweight JPEG (`1080p_jpg`) and lossless PNG (`1080p_png`) wallpaper sets with resume support.
+  * Added [`scripts/batch_blend_krea.py`](scripts/batch_blend_krea.py) supporting 2-stage vision analysis caching and Krea 2 Turbo rendering.
+
+---
 ## [2026-10-05]
 
+### Added
+* **Enhance blend modal with live sref weight control, smart filename metadata, and test suite updates**
+
 ### Maintenance
-* Component polish: Novice-friendly user guide and quickstart documentation
-* Component polish: Updated `imagine_cog.py`
-* Component polish: Updated `vision_cog.py`
-* Component polish: Bot settings, models, and safety thresholds
-* Component polish: Image processing (grid stitching, splitting, and scaling)
-* Component polish: Updated `__init__.py`
-* Component polish: Updated `styles.py`
-* Component polish: Updated `blend_generation_service.py`
-* Component polish: Updated `generation_service.py`
-* Component polish: Updated `grid_actions_service.py`
-* Component polish: Updated `interaction_dispatcher.py`
 * Component polish: Updated `vision_service.py`
-* Component polish: Updated `test_parsers.py`
-* Component polish: Updated `test_ui_and_views.py`
-* Component polish: Updated `blend_sdxl.py`
-* Component polish: Updated `modals.py`
-* Component polish: Updated `anima_2stage.json`
+
 
 ---
 ## [2026-10-04]

@@ -829,6 +829,10 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(sanitize_describe_text("an overall aesthetic with overalls."), "a general aesthetic with overalls.")
         self.assertEqual(sanitize_describe_text(""), "")
         self.assertEqual(sanitize_describe_text(None), "")
+        # Citation/footnote loop test
+        citation_case = "A wide, toothy([1]())(),[2]().[3]().[4]().[5]().[6]().[7]().[8](). smile."
+        self.assertEqual(sanitize_describe_text(citation_case), "A wide, toothy smile.")
+
 
         # 2. Test formatters with 'overall'
         raw_joy = "The image captures a woman with an overall graceful posture, soft lighting, 8k resolution."
