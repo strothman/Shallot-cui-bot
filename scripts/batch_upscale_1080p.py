@@ -14,6 +14,7 @@ import io
 import time
 import json
 import glob
+import argparse
 import asyncio
 import logging
 from PIL import Image
@@ -27,36 +28,44 @@ from services.upscale_service import build_fast_upscale_workflow
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("BatchUpscale1080p")
 
-SOURCE_DIR = r"C:\Users\strot\Pictures\wallpaper\krea_blends"
-PNG_DIR = os.path.join(SOURCE_DIR, "1080p_png")
-JPG_DIR = os.path.join(SOURCE_DIR, "1080p_jpg")
-PROGRESS_FILE = os.path.join(SOURCE_DIR, "upscale_1080p_progress.json")
+DEFAULT_SOURCE_DIR = r"C:\Users\strot\Pictures\wallpaper\krea_blends"
 UPSCALE_MODEL = "4x-UltraSharp.pth"
 
 
-def load_progress() -> dict:
-    if os.path.exists(PROGRESS_FILE):
+def load_progress(progress_file: str) -> dict:
+    if os.path.exists(progress_file):
         try:
-            with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+            with open(progress_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
     return {}
 
 
-def save_progress(prog: dict):
+def save_progress(progress_file: str, prog: dict):
     try:
-        temp = f"{PROGRESS_FILE}.tmp"
+        temp = f"{progress_file}.tmp"
         with open(temp, "w", encoding="utf-8") as f:
             json.dump(prog, f, indent=2)
-        os.replace(temp, PROGRESS_FILE)
+        os.replace(temp, progress_file)
     except Exception as e:
         logger.error(f"Error saving progress: {e}")
 
 
 async def main():
-    os.makedirs(PNG_DIR, exist_ok=True)
-    os.makedirs(JPG_DIR, exist_ok=True)
+    parser = argparse.ArgumentParser(description="Batch 1080p AI Upscaler")
+    parser.add_argument("--source-dir", default=DEFAULT_SOURCE_DIR, help="Source directory containing blend_*.png files")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of images to upscale")
+    parser.add_argument("--dry-run", action="store_true", help="List target images without running upscaler")
+    args = parser.parse_args()
+
+    source_dir = args.source_dir
+    png_dir = os.path.join(source_dir, "1080p_png")
+    jpg_dir = os.path.join(source_dir, "1080p_jpg")
+    progress_file = os.path.join(source_dir, "upscale_1080p_progress.json")
+
+    os.makedirs(png_dir, exist_ok=True)
+    os.makedirs(jpg_dir, exist_ok=True)
 
     client = ComfyClient(server_address=COMFYUI_ADDRESS)
 
@@ -65,25 +74,34 @@ async def main():
     except Exception:
         pass
 
-    all_files = sorted(glob.glob(os.path.join(SOURCE_DIR, "blend_*.png")))
-    progress = load_progress()
+    all_files = sorted(glob.glob(os.path.join(source_dir, "blend_*.png")))
+    progress = load_progress(progress_file)
 
     to_process = []
     for fp in all_files:
         fname = os.path.basename(fp)
         base = os.path.splitext(fname)[0]
-        png_out = os.path.join(PNG_DIR, f"{base}.png")
-        jpg_out = os.path.join(JPG_DIR, f"{base}.jpg")
+        png_out = os.path.join(png_dir, f"{base}.png")
+        jpg_out = os.path.join(jpg_dir, f"{base}.jpg")
         if fname not in progress or not os.path.exists(png_out) or not os.path.exists(jpg_out):
             to_process.append(fp)
 
     logger.info(f"\n{'='*65}\nSTARTING 1080p AI UPSCALE BATCH ({UPSCALE_MODEL})\n{'='*65}")
+    logger.info(f"Source folder      : {source_dir}")
     logger.info(f"Total target images: {len(all_files)}")
     logger.info(f"Already completed  : {len(all_files) - len(to_process)}")
     logger.info(f"Remaining to upscale: {len(to_process)}")
-    logger.info(f"JPEG folder: {JPG_DIR}")
-    logger.info(f"PNG folder : {PNG_DIR}")
+    logger.info(f"JPEG folder: {jpg_dir}")
+    logger.info(f"PNG folder : {png_dir}")
     logger.info(f"{'='*65}\n")
+
+    if args.dry_run:
+        logger.info("[Dry Run] Exiting without upscaling.")
+        return
+
+    if args.limit:
+        to_process = to_process[:args.limit]
+        logger.info(f"Applying limit: will upscale {len(to_process)} images.")
 
     if not to_process:
         logger.info("All images already upscaled!")
@@ -95,8 +113,8 @@ async def main():
     for idx, fp in enumerate(to_process, 1):
         fname = os.path.basename(fp)
         base = os.path.splitext(fname)[0]
-        png_out = os.path.join(PNG_DIR, f"{base}.png")
-        jpg_out = os.path.join(JPG_DIR, f"{base}.jpg")
+        png_out = os.path.join(png_dir, f"{base}.png")
+        jpg_out = os.path.join(jpg_dir, f"{base}.jpg")
 
         t0 = time.time()
 
@@ -167,7 +185,7 @@ async def main():
                 "elapsed_sec": round(elapsed, 1),
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }
-            save_progress(progress)
+            save_progress(progress_file, progress)
             success_count += 1
 
             logger.info(

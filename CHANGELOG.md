@@ -4,6 +4,15 @@ All notable changes to **Shallot-CUI Bot** will be documented in this file.
 
 ---
 
+## [2026-10-07]
+
+### Maintenance
+* Component polish: Updated `batch_upscale_1080p.py`
+* Component polish: Updated `batch_blend_humans.py`
+* Component polish: Updated `batch_reblend_21x9.py`
+* Component polish: Updated `batch_smart_crop_21x9.py`
+
+---
 ## [2026-10-06]
 
 ### Added
